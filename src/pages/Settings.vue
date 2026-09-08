@@ -88,6 +88,17 @@
           @clear-data="clearAllData"
         />
 
+        <ConfirmDangerDialog
+          :open="showClearConfirm"
+          title="Clear all data?"
+          @confirm="confirmClearAllData"
+          @cancel="showClearConfirm = false"
+        >
+          This permanently deletes every time entry, note and submission record
+          on this machine. Your settings and sign-ins are kept. This cannot be
+          undone — export a backup first if you have not already.
+        </ConfirmDangerDialog>
+
         <AboutSettings
           v-if="activeTab === 'About'"
           :build-date="buildDate"
@@ -110,6 +121,8 @@ import { useEntriesStore } from '../stores/entries'
 import { useUiStore } from '../stores/ui'
 import { refreshTempoReminder } from '../composables/useTempoReminder'
 import { useUpdater } from '../composables/useUpdater'
+import { useDataManagement } from '../composables/useDataManagement'
+import ConfirmDangerDialog from '../components/ConfirmDangerDialog.vue'
 import CalendarSettings from '../components/settings/CalendarSettings.vue'
 import AboutSettings from '../components/settings/AboutSettings.vue'
 import CurrentSprintSettings from '../components/settings/CurrentSprintSettings.vue'
@@ -136,12 +149,26 @@ const configStore = useConfigStore()
 const entriesStore = useEntriesStore()
 const uiStore = useUiStore()
 const updater = useUpdater()
+const dataManagement = useDataManagement()
 
 const tabs: SettingsTabName[] = ['Jira & Tempo', 'Current Sprint', 'Microsoft', 'OneNote', 'Calendar', 'Ollama', 'App Settings', 'Database & Data', 'About']
 const activeTab = ref<SettingsTabName>('Jira & Tempo')
 const isSaving = ref(false)
-const databasePath = ref('~/.timelogger/data.db')
-const databaseSize = ref('12.4 MB')
+const databasePath = ref('Loading…')
+const databaseSize = ref('Loading…')
+
+const loadDatabaseInfo = async () => {
+  try {
+    const info = await dataManagement.getDatabaseInfo()
+    databasePath.value = info.path
+    databaseSize.value = info.size
+  } catch {
+    // Nothing here is actionable for the user, so show the failure in place
+    // rather than as a toast on every visit to Settings.
+    databasePath.value = 'Unavailable'
+    databaseSize.value = 'Unavailable'
+  }
+}
 const buildDate = ref(new Date().toLocaleDateString())
 const formData = ref<SettingsFormData>({
   jira: {
@@ -458,31 +485,75 @@ watch(() => formData.value.oneNote.ticketSectionId, (sectionId) => {
   }
 })
 
-const exportDataAsJson = () => {
-  uiStore.showInfo('Exporting data as JSON...')
-  // Implementation would export data
+const exportDataAsJson = async () => {
+  try {
+    const path = await dataManagement.exportData('json')
+    // A cancelled dialog is a decision, not a failure - say nothing.
+    if (path) uiStore.showSuccess(`Backup saved to ${path}`)
+  } catch (error) {
+    uiStore.reportError(error, 'Export failed')
+  }
 }
 
-const exportDataAsCsv = () => {
-  uiStore.showInfo('Exporting data as CSV...')
-  // Implementation would export data
+const exportDataAsCsv = async () => {
+  try {
+    const path = await dataManagement.exportData('csv')
+    if (path) uiStore.showSuccess(`Entries exported to ${path}`)
+  } catch (error) {
+    uiStore.reportError(error, 'Export failed')
+  }
 }
 
-const importData = () => {
-  uiStore.showInfo('Importing data...')
-  // Implementation would import data
+const importData = async () => {
+  try {
+    const result = await dataManagement.importData()
+    if (!result) return
+    if (result.total === 0) {
+      uiStore.showInfo(
+        result.duplicates > 0
+          ? 'Everything in that backup is already here, so nothing was added.'
+          : 'That backup contained no entries or notes.'
+      )
+    } else {
+      uiStore.showSuccess(
+        `Restored ${result.total} item${result.total === 1 ? '' : 's'}` +
+        (result.duplicates > 0 ? `, skipping ${result.duplicates} already present.` : '.')
+      )
+    }
+    // The pages that render this data hold their own copies, so refresh both
+    // the counts shown here and the entries the rest of the app is showing.
+    await Promise.all([loadDatabaseInfo(), entriesStore.loadEntriesFromBackend()])
+  } catch (error) {
+    uiStore.reportError(error, 'Import failed')
+  }
 }
 
-const viewLogs = () => {
-  uiStore.showInfo('Opening logs...')
-  // Implementation would open logs
+const viewLogs = async () => {
+  try {
+    await dataManagement.openLogsFolder()
+  } catch (error) {
+    uiStore.reportError(error, 'Could not open the logs folder')
+  }
 }
+
+const showClearConfirm = ref(false)
 
 const clearAllData = () => {
-  const confirmed = confirm('⚠️ Are you sure? This will delete all your data permanently. Make sure you have a backup!')
-  if (confirmed) {
-    uiStore.showInfo('Clearing all data...')
-    // Implementation would clear data
+  showClearConfirm.value = true
+}
+
+const confirmClearAllData = async () => {
+  showClearConfirm.value = false
+  try {
+    const result = await dataManagement.clearAllData()
+    uiStore.showSuccess(
+      result.total === 0
+        ? 'There was nothing left to clear.'
+        : `Cleared ${result.total} item${result.total === 1 ? '' : 's'}.`
+    )
+    await Promise.all([loadDatabaseInfo(), entriesStore.loadEntriesFromBackend()])
+  } catch (error) {
+    uiStore.reportError(error, 'Could not clear data')
   }
 }
 
@@ -782,16 +853,8 @@ onMounted(async () => {
       formData.value.theme = theme
     }
 
-    // Try to get database path from backend
-    try {
-      const dbInfo = await invoke<{ path: string; size: string }>('get_database_info', {})
-      if (dbInfo) {
-        databasePath.value = dbInfo.path
-        databaseSize.value = dbInfo.size
-      }
-    } catch (e) {
-      console.warn('Could not fetch database info:', e)
-    }
+    // Real path and size, so the Database tab never shows invented numbers.
+    await loadDatabaseInfo()
 
     originalData.value = JSON.parse(JSON.stringify(formData.value))
   } catch (error) {

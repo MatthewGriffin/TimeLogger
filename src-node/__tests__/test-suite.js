@@ -1234,6 +1234,113 @@ async function runTests() {
   });
 
   // ============================================================
+  // SECTION 19: Backup, Restore and Reset
+  // ============================================================
+  log(colors.yellow, '\n💾 SECTION 19: Backup, Restore and Reset\n');
+
+  await testAsync('data management tools are registered', async () => {
+    for (const name of ['get_database_info', 'export_data', 'import_data', 'clear_all_data']) {
+      assert(tools.find(t => t.name === name), `${name} should be registered`);
+    }
+  });
+
+  await testAsync('database info reports a real path and size', async () => {
+    const result = await executeTool('get_database_info', {});
+    assert.strictEqual(result.success, true);
+    assert(result.path.endsWith('daily_summary.db'), 'Should point at the SQLite file');
+    assert(typeof result.sizeBytes === 'number' && result.sizeBytes >= 0, 'Size should be a byte count');
+    assert(typeof result.counts.entries === 'number', 'Should report an entry count');
+  });
+
+  await testAsync('a JSON export never contains credentials', async () => {
+    const result = await executeTool('export_data', { format: 'json' });
+    assert.strictEqual(result.success, true);
+    const payload = JSON.parse(result.content);
+    assert.strictEqual(payload.format, 'timelogger-backup');
+    assert(Array.isArray(payload.entries) && Array.isArray(payload.notes), 'Should carry entries and notes');
+    // The settings table holds the Jira API token and the Microsoft refresh
+    // token. A backup gets copied around and emailed, so it must never be a
+    // way to leak them.
+    assert.strictEqual(payload.settings, undefined, 'Settings must never be exported');
+    for (const key of ['apiToken', 'tempoToken', 'clientSecret', 'refreshToken']) {
+      assert(!result.content.includes(key), `Export must not contain ${key}`);
+    }
+  });
+
+  await testAsync('a CSV export quotes values that would break the columns', async () => {
+    db.prepare(
+      'INSERT INTO daily_summary (date, name, duration_mins) VALUES (?, ?, ?)'
+    ).run(TEST_DATE, 'Standup, then "triage"', 30);
+
+    const result = await executeTool('export_data', { format: 'csv' });
+    assert.strictEqual(result.success, true);
+    // An unquoted comma would silently shift every later column, and the
+    // embedded quotes have to be doubled per RFC 4180.
+    assert(
+      result.content.includes('"Standup, then ""triage"""'),
+      'Commas and quotes should be escaped'
+    );
+
+    db.prepare('DELETE FROM daily_summary WHERE date = ?').run(TEST_DATE);
+  });
+
+  await testAsync('import rejects anything that is not a TimeLogger backup', async () => {
+    assert.strictEqual((await executeTool('import_data', { content: 'not json' })).success, false);
+    assert.strictEqual((await executeTool('import_data', { content: '{"format":"other"}' })).success, false);
+    assert.strictEqual((await executeTool('import_data', { content: '' })).success, false);
+    // A backup from a future version may use a shape this build misreads.
+    const future = JSON.stringify({ format: 'timelogger-backup', version: 99, entries: [] });
+    assert.strictEqual((await executeTool('import_data', { content: future })).success, false);
+  });
+
+  await testAsync('import restores rows and skips ones already present', async () => {
+    const backup = JSON.stringify({
+      format: 'timelogger-backup',
+      version: 1,
+      entries: [{ date: TEST_DATE, name: 'Restored entry', start_time: '09:00', end_time: '09:30', duration_mins: 30 }],
+      notes: [{ date: TEST_DATE, note: 'Restored note', topic: 'Testing' }],
+      submissionHistory: []
+    });
+
+    const first = await executeTool('import_data', { content: backup });
+    assert.strictEqual(first.success, true);
+    assert.strictEqual(first.total, 2, 'Both rows should be restored');
+
+    // Re-importing the same file is how people recover twice by mistake; the
+    // UNIQUE constraints must make that a no-op rather than a duplicate.
+    const second = await executeTool('import_data', { content: backup });
+    assert.strictEqual(second.imported.entries, 0, 'The entry should not be duplicated');
+
+    const rows = db.prepare('SELECT COUNT(*) AS total FROM daily_summary WHERE date = ?').get(TEST_DATE);
+    assert.strictEqual(rows.total, 1, 'Only one copy of the entry should exist');
+
+    cleanTestFixtures();
+  });
+
+  await testAsync('import tolerates a backup missing newer columns', async () => {
+    // An older backup will not have the columns added since it was written.
+    const old = JSON.stringify({
+      format: 'timelogger-backup',
+      version: 1,
+      entries: [{ date: TEST_DATE, name: 'Old format', duration_mins: 15 }]
+    });
+    const result = await executeTool('import_data', { content: old });
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.imported.entries, 1);
+
+    cleanTestFixtures();
+  });
+
+  await testAsync('clearing data refuses without explicit confirmation', async () => {
+    // Deliberately never confirmed in tests: these run against the real
+    // application database, so a passing confirm here would wipe the user's
+    // own entries. Only the guard is exercised.
+    assert.strictEqual((await executeTool('clear_all_data', {})).success, false);
+    assert.strictEqual((await executeTool('clear_all_data', { confirm: false })).success, false);
+    assert.strictEqual((await executeTool('clear_all_data', { confirm: 'yes' })).success, false);
+  });
+
+  // ============================================================
   // SUMMARY
   // ============================================================
   log(colors.cyan, '\n╔════════════════════════════════════════════╗');

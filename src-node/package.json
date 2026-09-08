@@ -12,6 +12,10 @@
   "author": "",
   "license": "ISC",
   "type": "module",
+  "//overrides": "express 4 pins qs to ~6.15.1, but the array-limit bypass and the isBuffer denial of service are only fixed in 6.16.0. The change is API-compatible, so the pin is conservatism rather than a real incompatibility.",
+  "overrides": {
+    "qs": "^6.16.0"
+  },
   "dependencies": {
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "axios": "^1.20.0",
