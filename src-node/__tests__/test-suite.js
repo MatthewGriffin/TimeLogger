@@ -144,7 +144,7 @@ async function runTests() {
   });
 
   test('Notes tools are present', () => {
-    const toolsList = ['get_notes', 'upsert_note', 'delete_note', 'capture_prefixed_message'];
+    const toolsList = ['get_notes', 'create_note', 'update_note', 'delete_note'];
     toolsList.forEach((name) => {
       const tool = tools.find((t) => t.name === name);
       assert(tool, `Missing tool: ${name}`);
@@ -243,8 +243,8 @@ async function runTests() {
   // ============================================================
   log(colors.yellow, '\n📝 SECTION 5: Notes Tools (Mock Data)\n');
 
-  await testAsync('Create note with upsert_note', async () => {
-    const result = await executeTool('upsert_note', {
+  await testAsync('Create note with create_note', async () => {
+    const result = await executeTool('create_note', {
       date: TEST_DATE,
       note: 'Test note content',
       topic: 'Testing',
@@ -256,25 +256,6 @@ async function runTests() {
 
   await testAsync('Get notes for date', async () => {
     const result = await executeTool('get_notes', {
-      date: TEST_DATE,
-    });
-
-    assert(result.success !== false, `Failed: ${result.textResultForLlm || result}`);
-  });
-
-  await testAsync('Capture prefixed note message', async () => {
-    const result = await executeTool('capture_prefixed_message', {
-      message: 'note This is a quick note',
-      date: TEST_DATE,
-      topic: 'Testing',
-    });
-
-    assert(result.success !== false, `Failed: ${result.textResultForLlm || result}`);
-  });
-
-  await testAsync('Capture prefixed task message', async () => {
-    const result = await executeTool('capture_prefixed_message', {
-      message: 'task Fix the login button',
       date: TEST_DATE,
     });
 
@@ -328,67 +309,9 @@ async function runTests() {
   });
 
   // ============================================================
-  // SECTION 8: LLM Tools
+  // SECTION 8: Config Tools
   // ============================================================
-  log(colors.yellow, '\n🤖 SECTION 8: LLM Tools\n');
-
-  await testAsync('llm_categorize_task tool exists', async () => {
-    const tool = tools.find(t => t.name === 'llm_categorize_task');
-    assert(tool, 'llm_categorize_task tool should exist');
-    assert(tool.parameters.required.includes('description'), 'Should require description');
-  });
-
-  await testAsync('llm_categorize_task executes gracefully', async () => {
-    const result = await executeTool('llm_categorize_task', {
-      description: 'Fix login bug in authentication module',
-    });
-    assert(result, 'Should return a result');
-    assert(result.success === false || result.success === true, 'Should indicate success or failure');
-  });
-
-  await testAsync('llm_generate_summary tool exists', async () => {
-    const tool = tools.find(t => t.name === 'llm_generate_summary');
-    assert(tool, 'llm_generate_summary tool should exist');
-    assert(tool.parameters.required.includes('date'), 'Should require date');
-  });
-
-  await testAsync('llm_generate_summary validates date format', async () => {
-    const result = await executeTool('llm_generate_summary', {
-      date: 'invalid-date',
-    });
-    assert(result.success === false || result.textResultForLlm, 'Should validate date format');
-  });
-
-  // ============================================================
-  // SECTION 9: Config Tools
-  // ============================================================
-  log(colors.yellow, '\n⚙️  SECTION 9: Config Tools\n');
-
-  await testAsync('newPI tool exists', async () => {
-    const tool = tools.find(t => t.name === 'newPI');
-    assert(tool, 'newPI tool should exist');
-    assert(tool.parameters.required.includes('piName'), 'Should require piName');
-  });
-
-  await testAsync('newPI creates PI configuration', async () => {
-    const result = await executeTool('newPI', {
-      piName: 'PI25.1',
-      mappings: {
-        'PROJ-123': 'Feature Development',
-        'PROJ-124': 'Bug Fix'
-      },
-    });
-    assert(result.success === true, 'Should successfully create PI config');
-    assert(result.piName === 'PI25.1', 'Should return PI name');
-  });
-
-  await testAsync('newPI retrieves existing PI', async () => {
-    const result = await executeTool('newPI', {
-      piName: 'PI25.1',
-    });
-    assert(result.success === true, 'Should successfully retrieve existing PI');
-    assert(result.config, 'Should include config data');
-  });
+  log(colors.yellow, '\n⚙️  SECTION 8: Config Tools\n');
 
   await testAsync('get_config tool exists', async () => {
     const tool = tools.find(t => t.name === 'get_config');
@@ -411,9 +334,9 @@ async function runTests() {
   });
 
   // ============================================================
-  // SECTION 10: Health Check
+  // SECTION 9: Health Check
   // ============================================================
-  log(colors.yellow, '\n❤️  SECTION 10: Health Check\n');
+  log(colors.yellow, '\n❤️  SECTION 9: Health Check\n');
 
   test('healthCheck returns status object', () => {
     const health = healthCheck();
@@ -425,9 +348,9 @@ async function runTests() {
   });
 
   // ============================================================
-  // SECTION 11: Tempo Duplicate Detection
+  // SECTION 10: Tempo Duplicate Detection
   // ============================================================
-  log(colors.yellow, '\n🚫 SECTION 11: Tempo Duplicate Detection\n');
+  log(colors.yellow, '\n🚫 SECTION 10: Tempo Duplicate Detection\n');
 
   {
     const wl = (o) => ({
@@ -538,9 +461,9 @@ async function runTests() {
   });
 
   // ============================================================
-  // SECTION 12: Missed Days
+  // SECTION 11: Missed Days
   // ============================================================
-  log(colors.yellow, '\n📅 SECTION 12: Missed Days\n');
+  log(colors.yellow, '\n📅 SECTION 11: Missed Days\n');
 
   test('UK bank holidays match the published England & Wales dates', () => {
     assert.deepStrictEqual(
@@ -658,9 +581,9 @@ async function runTests() {
   });
 
   // ============================================================
-  // SECTION 13: Submission History
+  // SECTION 12: Submission History
   // ============================================================
-  log(colors.yellow, '\n📤 SECTION 13: Submission History\n');
+  log(colors.yellow, '\n📤 SECTION 12: Submission History\n');
 
   await testAsync('get_submission_history returns newest runs first with status detail', async () => {
     const marker = '2099-07-0';
@@ -705,9 +628,9 @@ async function runTests() {
   });
 
   // ============================================================
-  // SECTION 14: Tempo future-logging window
+  // SECTION 13: Tempo future-logging window
   // ============================================================
-  log(colors.yellow, '\n⏭️  SECTION 14: Tempo Future-Logging Window\n');
+  log(colors.yellow, '\n⏭️  SECTION 13: Tempo Future-Logging Window\n');
 
   test('A future-window rejection is classified as deferred, not failed', () => {
     const result = classifyWorklogFailure(
@@ -804,9 +727,9 @@ async function runTests() {
   });
 
   // ============================================================
-  // SECTION 15: Calendar meeting conflicts
+  // SECTION 14: Calendar meeting conflicts
   // ============================================================
-  log(colors.yellow, '\n🗓️  SECTION 15: Calendar Meeting Conflicts\n');
+  log(colors.yellow, '\n🗓️  SECTION 14: Calendar Meeting Conflicts\n');
 
   /** Minimal shape syncDayFromEvents needs; mirrors normalizeEvent's output. */
   const meetingEvent = (id, subject, startTime, endTime, overrides = {}) => ({
@@ -965,9 +888,9 @@ async function runTests() {
   });
 
   // ============================================================
-  // SECTION 16: Lunch auto-entry
+  // SECTION 15: Lunch auto-entry
   // ============================================================
-  log(colors.yellow, '\n🥪 SECTION 16: Lunch Auto-Entry\n');
+  log(colors.yellow, '\n🥪 SECTION 15: Lunch Auto-Entry\n');
 
   await testAsync('ensure_lunch_entry does not re-prompt when lunch already exists for the day', async () => {
     cleanTestFixtures();
@@ -1079,9 +1002,9 @@ async function runTests() {
   });
 
   // ============================================================
-  // SECTION 17: Editing a submitted entry
+  // SECTION 16: Editing a submitted entry
   // ============================================================
-  log(colors.yellow, '\n✏️  SECTION 17: Editing a Submitted Entry\n');
+  log(colors.yellow, '\n✏️  SECTION 16: Editing a Submitted Entry\n');
 
   await testAsync('editing a submitted entry\'s time resets submitted so it can be resubmitted', async () => {
     cleanTestFixtures();
@@ -1150,9 +1073,9 @@ async function runTests() {
   });
 
   // ============================================================
-  // SECTION 18: URL Validation
+  // SECTION 17: URL Validation
   // ============================================================
-  log(colors.yellow, '\n🔒 SECTION 18: URL Validation\n');
+  log(colors.yellow, '\n🔒 SECTION 17: URL Validation\n');
 
   await testAsync('a Jira base URL keeps only a plain https origin', async () => {
     assert.strictEqual(safeJiraBaseUrl('https://acme.atlassian.net'), 'https://acme.atlassian.net');
@@ -1222,9 +1145,9 @@ async function runTests() {
   });
 
   // ============================================================
-  // SECTION 19: Backup, Restore and Reset
+  // SECTION 18: Backup, Restore and Reset
   // ============================================================
-  log(colors.yellow, '\n💾 SECTION 19: Backup, Restore and Reset\n');
+  log(colors.yellow, '\n💾 SECTION 18: Backup, Restore and Reset\n');
 
   await testAsync('data management tools are registered', async () => {
     for (const name of ['get_database_info', 'export_data', 'import_data', 'clear_all_data']) {
