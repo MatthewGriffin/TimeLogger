@@ -3,7 +3,10 @@
     <div class="nav-header">
       <div class="nav-branding">
         <div class="nav-logo">⏱️</div>
-        <h1 v-if="sidebarOpen" class="nav-title">TimeLogger</h1>
+        <!-- Branding, not a page heading: the view supplies the page's <h1>,
+             and a second one here made every page report two top-level
+             headings to assistive tech. -->
+        <span v-if="sidebarOpen" class="nav-title">TimeLogger</span>
       </div>
       <button
         class="nav-toggle"

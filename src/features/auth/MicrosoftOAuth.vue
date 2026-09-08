@@ -39,7 +39,7 @@ onMounted(() => {
 <template>
   <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:Arial,sans-serif;">
     <div>
-      <h2>{{ error ? 'Sign-in blocked' : 'Opening Microsoft sign-in…' }}</h2>
+      <h1>{{ error ? 'Sign-in blocked' : 'Opening Microsoft sign-in…' }}</h1>
       <p v-if="authUrl">If you are not redirected automatically, <a :href="authUrl">click here</a>.</p>
       <p v-else-if="error">{{ error }}</p>
     </div>
