@@ -1,0 +1,22 @@
+{
+  "name": "src-node",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "node __tests__/test-suite.js",
+    "server": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "axios": "^1.20.0",
+    "better-sqlite3": "^13.0.3",
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  }
+}
