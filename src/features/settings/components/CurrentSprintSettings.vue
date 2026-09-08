@@ -118,3 +118,113 @@ const updateTestSubject = (event: Event) => {
 }
 
 </script>
+
+<style scoped>
+/* Current Sprint */
+.section-intro {
+  font-size: 0.875rem;
+  color: var(--color-text-subtle);
+  line-height: 1.5;
+  margin: 0 0 1rem;
+}
+
+.btn-lookup,
+.btn-test {
+  padding: 0.75rem 1.25rem;
+  background: rgba(6, 182, 212, 0.15);
+  border: 1px solid rgba(6, 182, 212, 0.4);
+  border-radius: 0.5rem;
+  color: #67e8f9;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  align-self: flex-start;
+}
+
+.btn-lookup:hover:not(:disabled),
+.btn-test:hover:not(:disabled) {
+  background: rgba(6, 182, 212, 0.25);
+}
+
+.btn-lookup:disabled,
+.btn-test:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.lookup-msg.ok {
+  color: #4ade80;
+}
+
+.mapping-table {
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.mapping-header,
+.mapping-row {
+  display: grid;
+  grid-template-columns: 12rem 9rem 1fr;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.6rem 0.85rem;
+}
+
+.mapping-header {
+  background: var(--color-control);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-subtle);
+}
+
+.mapping-row + .mapping-row {
+  border-top: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.mapping-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.mapping-table input {
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  background: var(--color-control);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.35rem;
+  color: var(--color-text);
+  font-size: 0.875rem;
+  font-family: inherit;
+}
+
+.mapping-table input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.mapping-ticket {
+  font-family: 'Cascadia Code', Consolas, monospace;
+}
+
+.mapping-ticket.unset {
+  border-color: rgba(248, 113, 113, 0.5);
+}
+
+.test-result {
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.test-result.ok {
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #86efac;
+}
+</style>

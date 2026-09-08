@@ -128,3 +128,69 @@ defineEmits<{
   'connect-microsoft': []
 }>()
 </script>
+
+<style scoped>
+.account-connection {
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.account-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-danger);
+  flex-shrink: 0;
+}
+
+.status-dot.connected {
+  background: #22c55e;
+}
+
+.account-hint {
+  margin: 6px 0 12px;
+  font-size: 0.85em;
+  opacity: 0.75;
+}
+
+.account-warning {
+  margin: 6px 0 12px;
+  padding: 12px 14px;
+  background: rgba(234, 179, 8, 0.1);
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  border-radius: 8px;
+  font-size: 0.85em;
+  line-height: 1.5;
+}
+
+.account-warning ul {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.account-warning p {
+  margin: 8px 0 0;
+}
+
+.account-warning code {
+  padding: 1px 5px;
+  background: rgba(15, 23, 42, 0.55);
+  border-radius: 4px;
+}
+
+.account-message {
+  margin: 10px 0 0;
+  font-size: 0.85em;
+  color: #22c55e;
+}
+</style>
