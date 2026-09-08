@@ -85,6 +85,16 @@ const notesColumns = columns('notes');
 if (!notesColumns.includes('one_note_page_id')) db.exec('ALTER TABLE notes ADD COLUMN one_note_page_id TEXT');
 if (!notesColumns.includes('one_note_synced_at')) db.exec('ALTER TABLE notes ADD COLUMN one_note_synced_at DATETIME');
 if (!notesColumns.includes('title')) db.exec('ALTER TABLE notes ADD COLUMN title TEXT');
+// A blocker is a note flagged as one. It stays open until it is explicitly
+// resolved rather than expiring with its date, because a blocker raised on
+// Tuesday is normally still a blocker at Wednesday's stand-up.
+if (!notesColumns.includes('is_blocker')) db.exec('ALTER TABLE notes ADD COLUMN is_blocker INTEGER DEFAULT 0');
+if (!notesColumns.includes('blocker_resolved_at')) db.exec('ALTER TABLE notes ADD COLUMN blocker_resolved_at DATETIME');
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_notes_open_blockers
+    ON notes(is_blocker, blocker_resolved_at)
+    WHERE is_blocker = 1 AND blocker_resolved_at IS NULL;
+`);
 
 const submissionHistoryColumns = columns('submission_history');
 if (!submissionHistoryColumns.includes('status')) db.exec("ALTER TABLE submission_history ADD COLUMN status TEXT DEFAULT 'success'");

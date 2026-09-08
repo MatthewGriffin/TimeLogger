@@ -8,6 +8,7 @@ A Windows desktop app for tracking daily work and submitting it to Jira Tempo.
 - Import calendar meetings and turn them into time entries, including partial attendance and mid-meeting switches
 - Lunch scheduling that fits around booked meetings
 - Notes, automatically sorted into topics by a local Ollama model
+- Daily Scrum tab summarising the previous working day and today, with blockers raised from notes
 - One-click submission to Tempo, with re-submission when entries change
 - System tray access for quick task/note capture and submission
 

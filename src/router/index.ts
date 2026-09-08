@@ -21,6 +21,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: 'Notes' }
   },
   {
+    path: '/scrum',
+    name: 'Scrum',
+    component: () => import('@/features/scrum/Scrum.vue'),
+    meta: { title: 'Daily Scrum' }
+  },
+  {
     path: '/calendar',
     name: 'Calendar',
     component: () => import('@/features/calendar/Calendar.vue'),

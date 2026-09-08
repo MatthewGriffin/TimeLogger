@@ -274,7 +274,8 @@ export const tools = [
       type: 'object',
       properties: {
         date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Date in YYYY-MM-DD format (optional)' },
-        topic: { type: 'string', description: 'Topic filter (optional)' }
+        topic: { type: 'string', description: 'Topic filter (optional)' },
+        open_blockers_only: { type: 'boolean', description: 'Return only blockers that are still open, ignoring the date filter' }
       },
       required: []
     },
@@ -283,7 +284,11 @@ export const tools = [
         let query = 'SELECT * FROM notes WHERE 1=1';
         const params = [];
         
-        if (args.date) {
+        // An open blocker outlives the day it was raised, so this filter
+        // deliberately ignores the date rather than intersecting with it.
+        if (args.open_blockers_only) {
+          query += ' AND is_blocker = 1 AND blocker_resolved_at IS NULL';
+        } else if (args.date) {
           query += ' AND date = ?';
           params.push(args.date);
         }
@@ -313,6 +318,9 @@ export const tools = [
             updated_at: n.updated_at,
             one_note_page_id: n.one_note_page_id || null,
             one_note_synced_at: n.one_note_synced_at || null,
+            is_blocker: Boolean(n.is_blocker),
+            blocker_resolved_at: n.blocker_resolved_at || null,
+            blocker_open: Boolean(n.is_blocker) && !n.blocker_resolved_at,
             // A note edited after its last backup is shown as out of sync.
             one_note_synced: Boolean(
               n.one_note_synced_at && !(n.updated_at > n.one_note_synced_at)
@@ -337,7 +345,8 @@ export const tools = [
         note: { type: 'string', description: 'Note content' },
         topic: { type: 'string', description: 'Note category' },
         title: { type: 'string', description: 'Note title' },
-        ticket_id: { type: 'string', description: 'Associated Jira ticket' }
+        ticket_id: { type: 'string', description: 'Associated Jira ticket' },
+        is_blocker: { type: 'boolean', description: 'Flag the note as a blocker to raise at stand-up' }
       },
       required: ['date', 'note']
     },
@@ -363,9 +372,9 @@ export const tools = [
         }
 
         const result = db.prepare(`
-          INSERT INTO notes (date, note, topic, title, ticket_id)
-          VALUES (?, ?, ?, ?, ?)
-        `).run(args.date, args.note, topic, args.title || null, ticketId || null);
+          INSERT INTO notes (date, note, topic, title, ticket_id, is_blocker)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(args.date, args.note, topic, args.title || null, ticketId || null, args.is_blocker ? 1 : 0);
         
         return {
           success: true,
@@ -391,7 +400,8 @@ export const tools = [
         note: { type: 'string', description: 'Updated note content' },
         topic: { type: 'string', description: 'Updated topic' },
         title: { type: 'string', description: 'Updated title' },
-        ticket_id: { type: 'string', description: 'Associated Jira ticket' }
+        ticket_id: { type: 'string', description: 'Associated Jira ticket' },
+        is_blocker: { type: 'boolean', description: 'Flag or unflag the note as a blocker' }
       },
       required: ['id', 'note']
     },
@@ -407,6 +417,14 @@ export const tools = [
           SET note = ?, topic = ?, title = COALESCE(?, title), ticket_id = ?, updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
         `).run(args.note, topic, args.title || null, ticketId || null, args.id);
+
+        // Re-raising a blocker reopens it, so a recurring problem is not
+        // hidden by the resolution stamp left from the last time it happened.
+        if (args.is_blocker !== undefined) {
+          db.prepare(
+            'UPDATE notes SET is_blocker = ?, blocker_resolved_at = NULL WHERE id = ?'
+          ).run(args.is_blocker ? 1 : 0, args.id);
+        }
         
         return {
           success: true,
@@ -418,6 +436,34 @@ export const tools = [
           success: false,
           message: `Failed to update note: ${error.message}`
         };
+      }
+    }
+  },
+  {
+    name: 'resolve_blocker',
+    description: 'Mark a blocker note as resolved, or reopen it',
+    parameters: {
+      type: 'object',
+      properties: {
+        id: { type: 'number', description: 'Note ID of the blocker' },
+        resolved: { type: 'boolean', description: 'True to resolve (default), false to reopen' }
+      },
+      required: ['id']
+    },
+    handler: async (args) => {
+      try {
+        const row = db.prepare('SELECT id, is_blocker FROM notes WHERE id = ?').get(args.id);
+        if (!row) return { success: false, message: `Note not found: ${args.id}` };
+        if (!row.is_blocker) return { success: false, message: 'That note is not flagged as a blocker' };
+
+        const resolved = args.resolved !== false;
+        db.prepare(
+          `UPDATE notes SET blocker_resolved_at = ${resolved ? 'CURRENT_TIMESTAMP' : 'NULL'} WHERE id = ?`
+        ).run(args.id);
+
+        return { success: true, message: resolved ? 'Blocker resolved' : 'Blocker reopened', resolved };
+      } catch (error) {
+        return { success: false, message: `Failed to update blocker: ${error.message}` };
       }
     }
   },

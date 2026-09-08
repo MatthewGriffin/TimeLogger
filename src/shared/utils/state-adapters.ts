@@ -71,7 +71,9 @@ export function normalizeNotes(value: unknown): Note[] {
       oneNoteSynced: Boolean(note.one_note_synced ?? note.oneNoteSynced),
       oneNoteId: note.one_note_id != null ? String(note.one_note_id) : undefined,
       date: note.date != null ? String(note.date) : undefined,
-      ticketId: note.ticket_id != null ? String(note.ticket_id) : undefined
+      ticketId: note.ticket_id != null ? String(note.ticket_id) : undefined,
+      isBlocker: Boolean(note.is_blocker ?? note.isBlocker),
+      blockerResolvedAt: note.blocker_resolved_at != null ? String(note.blocker_resolved_at) : undefined
     }
   })
 }

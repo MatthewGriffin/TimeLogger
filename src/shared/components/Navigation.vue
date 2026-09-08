@@ -65,6 +65,7 @@ const navItems = [
   { path: '/', label: 'Dashboard', icon: '📊' },
   { path: '/entries', label: 'Daily Entries', icon: '📝' },
   { path: '/notes', label: 'Notes', icon: '📌' },
+  { path: '/scrum', label: 'Daily Scrum', icon: '📣' },
   { path: '/calendar', label: 'Calendar', icon: '📅' },
   { path: '/submit', label: 'Submit Time', icon: '✈️' },
   { path: '/tempo', label: 'Tempo Status', icon: '🧾' }

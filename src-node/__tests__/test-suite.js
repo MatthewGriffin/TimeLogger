@@ -12,6 +12,7 @@ import {
   isoDaysFromToday,
 } from '../tools/jira-tempo.js';
 import { ukBankHolidays, isUkBankHoliday } from '../utils/uk-holidays.js';
+import { previousWorkingDay, isWorkingDay } from '../utils/working-days.js';
 import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, microsoftAuthorityUrl, escapeHtml } from '../utils/safe-url.js';
 
 // Color codes for output
@@ -1249,6 +1250,132 @@ async function runTests() {
     assert.strictEqual((await executeTool('clear_all_data', {})).success, false);
     assert.strictEqual((await executeTool('clear_all_data', { confirm: false })).success, false);
     assert.strictEqual((await executeTool('clear_all_data', { confirm: 'yes' })).success, false);
+  });
+
+  // ============================================================
+  // SECTION 19: Daily Scrum and Blockers
+  // ============================================================
+  log(colors.yellow, '\n📣 SECTION 19: Daily Scrum and Blockers\n');
+
+  await testAsync('scrum and blocker tools are registered', async () => {
+    for (const name of ['generate_scrum_summary', 'resolve_blocker']) {
+      assert(tools.find(t => t.name === name), `${name} should be registered`);
+    }
+  });
+
+  test('the previous working day skips weekends', () => {
+    // 2026-09-07 is a Monday, so "yesterday" at stand-up is the Friday.
+    assert.strictEqual(previousWorkingDay('2026-09-07'), '2026-09-04');
+    assert.strictEqual(previousWorkingDay('2026-09-08'), '2026-09-07');
+  });
+
+  test('the previous working day skips bank holidays', () => {
+    // 2025-12-29 is the Monday after Christmas; the 25th, 26th and the
+    // weekend all have to be stepped over to reach the 24th.
+    assert.strictEqual(previousWorkingDay('2025-12-29'), '2025-12-24');
+    assert.strictEqual(isWorkingDay('2025-12-25'), false);
+    assert.strictEqual(isWorkingDay('2025-12-24'), true);
+  });
+
+  test('the working-day search is bounded', () => {
+    // A window too short to clear the weekend must give up rather than spin.
+    assert.strictEqual(previousWorkingDay('2026-09-07', { maxLookBack: 1 }), null);
+  });
+
+  await testAsync('a note can be raised as a blocker and resolved', async () => {
+    const created = await executeTool('create_note', {
+      title: 'Blocked on test env',
+      note: 'Waiting on credentials for the staging environment',
+      topic: 'General',
+      date: TEST_DATE,
+      is_blocker: true
+    });
+    assert.strictEqual(created.success, true);
+    const noteId = created.noteId;
+
+    try {
+      const open = await executeTool('get_notes', { open_blockers_only: true });
+      assert.strictEqual(open.success, true);
+      assert(open.notes.some(n => n.id === noteId), 'A raised blocker should be open');
+
+      const resolved = await executeTool('resolve_blocker', { id: noteId });
+      assert.strictEqual(resolved.success, true);
+
+      const afterResolve = await executeTool('get_notes', { open_blockers_only: true });
+      assert(
+        !afterResolve.notes.some(n => n.id === noteId),
+        'A resolved blocker should drop out of the open list'
+      );
+
+      // Re-raising has to reopen it. A recurring problem that stayed hidden
+      // behind a stale resolution stamp is exactly the one worth reporting.
+      const reraised = await executeTool('update_note', {
+        id: noteId,
+        note: 'Still waiting on credentials',
+        is_blocker: true
+      });
+      assert.strictEqual(reraised.success, true);
+
+      const afterReraise = await executeTool('get_notes', { open_blockers_only: true });
+      assert(
+        afterReraise.notes.some(n => n.id === noteId),
+        'Re-raising a blocker should reopen it'
+      );
+    } finally {
+      await executeTool('delete_note', { id: noteId });
+    }
+  });
+
+  await testAsync('resolving an unknown blocker fails rather than silently passing', async () => {
+    const result = await executeTool('resolve_blocker', { id: 'no-such-note-id' });
+    assert.strictEqual(result.success, false);
+  });
+
+  await testAsync('the scrum summary reports both days and always produces a paragraph', async () => {
+    // Built without the model so the deterministic path is what is asserted;
+    // the tab has to be useful with Ollama switched off.
+    const result = await executeTool('generate_scrum_summary', { date: '2026-09-08', use_ai: false });
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.today.date, '2026-09-08');
+    assert.strictEqual(result.yesterday.date, previousWorkingDay('2026-09-08'));
+    assert(Array.isArray(result.today.entries) && Array.isArray(result.yesterday.entries));
+    assert(Array.isArray(result.blockers), 'Blockers should always be a list');
+    assert.strictEqual(result.summarySource, 'fallback');
+    assert(typeof result.summary === 'string' && result.summary.length > 0, 'A paragraph is always produced');
+  });
+
+  await testAsync('an open blocker reaches the scrum summary text', async () => {
+    const created = await executeTool('create_note', {
+      title: 'Blocked on review',
+      note: 'PR has been waiting three days for a reviewer',
+      topic: 'General',
+      date: TEST_DATE,
+      is_blocker: true
+    });
+    const noteId = created.noteId;
+
+    try {
+      const result = await executeTool('generate_scrum_summary', { date: '2026-09-08', use_ai: false });
+      assert.strictEqual(result.success, true);
+      assert(result.blockers.some(b => b.id === noteId), 'The open blocker should be listed');
+      assert(
+        result.summary.toLowerCase().includes('block'),
+        'The paragraph should mention the blocker'
+      );
+    } finally {
+      await executeTool('delete_note', { id: noteId });
+    }
+  });
+
+  await testAsync('with no open blockers the summary says so', async () => {
+    const before = await executeTool('get_notes', { open_blockers_only: true });
+    if (before.notes.length === 0) {
+      const result = await executeTool('generate_scrum_summary', { date: '2026-09-08', use_ai: false });
+      assert(
+        result.summary.toLowerCase().includes('no blockers'),
+        'An empty blocker list should be stated, not omitted'
+      );
+    }
   });
 
   // ============================================================
