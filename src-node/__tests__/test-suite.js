@@ -123,7 +123,6 @@ async function runTests() {
 
   test('Jira/Tempo tools are present', () => {
     const tempoTools = [
-      'tempo_setup_check',
       'tempo_verify_connection',
       'tempo_get_work_attributes',
       'tempo_post_worklog',
@@ -153,7 +152,7 @@ async function runTests() {
   });
 
   test('Setup tools are present', () => {
-    const toolsList = ['tempo_setup_check', 'tempo_verify_connection'];
+    const toolsList = ['test_jira_connection', 'test_ollama_connection', 'tempo_verify_connection'];
     toolsList.forEach((name) => {
       const tool = tools.find((t) => t.name === name);
       assert(tool, `Missing tool: ${name}`);
@@ -286,17 +285,6 @@ async function runTests() {
   // SECTION 6: Setup Tool Tests
   // ============================================================
   log(colors.yellow, '\n⚙️  SECTION 6: Setup Tools\n');
-
-  await testAsync('tempo_setup_check completes', async () => {
-    try {
-      const result = await executeTool('tempo_setup_check', {});
-      // Tool may fail due to missing vault, but should execute without crash
-      assert(result !== undefined, 'Should return a result');
-    } catch (err) {
-      // Expected if vault doesn't exist, but shouldn't crash
-      assert(err.message, 'Should provide error message');
-    }
-  });
 
   await testAsync('tempo_verify_connection completes', async () => {
     try {
