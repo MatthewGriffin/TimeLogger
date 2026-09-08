@@ -9,6 +9,8 @@
     "core:default",
     "shell:allow-open",
     "updater:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    "dialog:allow-save",
+    "dialog:allow-open"
   ]
 }

@@ -21,6 +21,7 @@ import * as Setup from './tools/setup.js';
 import * as LLM from './tools/llm.js';
 import * as AiModel from './tools/ai-model.js';
 import * as Reminders from './tools/reminders.js';
+import * as DataManagement from './tools/data-management.js';
 
 // Register all tools
 export const tools = [
@@ -56,6 +57,9 @@ export const tools = [
 
   // Notification reminders
   ...Reminders.tools,
+
+  // Backup, restore and reset
+  ...DataManagement.tools,
 ];
 
 /**
