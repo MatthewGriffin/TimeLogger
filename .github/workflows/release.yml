@@ -43,12 +43,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "${{ steps.version.outputs.tag }}" 2>$null | Out-Null
+          # `gh release view` exits 1 when the tag is absent, which is the
+          # normal case. Swallow it so the step itself still succeeds.
+          gh release view "${{ steps.version.outputs.tag }}" 2>&1 | Out-Null
           $exists = if ($LASTEXITCODE -eq 0) { 'true' } else { 'false' }
           "exists=$exists" >> $env:GITHUB_OUTPUT
           if ($exists -eq 'true') {
             Write-Host "::notice::${{ steps.version.outputs.tag }} already exists, skipping release."
           }
+          exit 0
 
       - name: Install frontend dependencies
         if: steps.existing.outputs.exists == 'false'
