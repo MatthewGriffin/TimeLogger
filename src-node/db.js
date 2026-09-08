@@ -12,6 +12,12 @@ if (!existsSync(APP_DATA_DIR)) {
 
 export const db = new Database(DB_PATH);
 db.pragma('foreign_keys = ON');
+// WAL lets the reads that back the UI run while a write is in flight, and is
+// the recommended mode for a single-application local database. NORMAL is the
+// matching durability setting: safe against process crashes, and only at risk
+// from a power loss mid-write, which would cost at most the last transaction.
+db.pragma('journal_mode = WAL');
+db.pragma('synchronous = NORMAL');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS daily_summary (

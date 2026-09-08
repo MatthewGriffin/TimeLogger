@@ -758,18 +758,31 @@ export const tools = [
         const failedEntries = [];
         const duplicateEntries = [];
 
+        // A ticket is commonly logged against several times in one day, and a
+        // key always maps to the same numeric id, so resolve each key once per
+        // submission rather than once per entry.
+        const issueIdCache = new Map();
+        const resolveIssueId = async (ticketKey) => {
+          if (issueIdCache.has(ticketKey)) return issueIdCache.get(ticketKey);
+
+          const issueResp = await makeHttpRequest(`${credentials.baseUrl}/rest/api/3/issue/${ticketKey}?fields=id`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Basic ${b64}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          const resolved = Number(issueResp.data?.id);
+          // Only successful lookups are cached; a transient failure throws and
+          // is handled per entry, leaving the next entry free to retry.
+          if (Number.isSafeInteger(resolved)) issueIdCache.set(ticketKey, resolved);
+          return resolved;
+        };
+
         for (const entry of entries) {
           try {
-            // Resolve issue ID
-            const issueResp = await makeHttpRequest(`${credentials.baseUrl}/rest/api/3/issue/${entry.ticket_id}?fields=id`, {
-              method: 'GET',
-              headers: {
-                'Authorization': `Basic ${b64}`,
-                'Content-Type': 'application/json'
-              }
-            });
-            
-            const issueId = Number(issueResp.data?.id);
+            const issueId = await resolveIssueId(entry.ticket_id);
             if (!Number.isSafeInteger(issueId)) {
               failedEntries.push({ id: entry.id, name: entry.name, reason: 'Invalid issue ID' });
               continue;
