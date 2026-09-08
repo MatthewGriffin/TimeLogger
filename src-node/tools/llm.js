@@ -409,6 +409,8 @@ Format as a concise list.`;
         const available = await ollamaClient.initialize();
         if (!available) {
           return {
+            success: false,
+            message: 'LLM not available for task categorization',
             textResultForLlm: 'LLM not available. Install Ollama: https://ollama.ai',
             resultType: 'failure'
           };
@@ -437,6 +439,8 @@ Format as a concise list.`;
         }
       } catch (error) {
         return {
+          success: false,
+          message: `Task categorization failed: ${error.message}`,
           textResultForLlm: `Task categorization failed: ${error.message}`,
           resultType: 'failure'
         };
@@ -518,6 +522,8 @@ Provide a concise summary of the day's work.`;
         };
       } catch (error) {
         return {
+          success: false,
+          message: `Summary generation failed: ${error.message}`,
           textResultForLlm: `Summary generation failed: ${error.message}`,
           resultType: 'failure'
         };
