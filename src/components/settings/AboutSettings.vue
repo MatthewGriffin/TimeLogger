@@ -5,7 +5,7 @@
       <div class="about-card">
         <div class="about-item">
           <span class="about-label">Application Version</span>
-          <span class="about-value">v0.2.0</span>
+          <span class="about-value">v{{ appVersion }}</span>
         </div>
         <div class="about-item">
           <span class="about-label">Build Date</span>
@@ -13,7 +13,7 @@
         </div>
         <div class="about-item">
           <span class="about-label">Tauri Version</span>
-          <span class="about-value">2.11.4</span>
+          <span class="about-value">{{ tauriVersion }}</span>
         </div>
       </div>
 
@@ -44,10 +44,26 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { getVersion, getTauriVersion } from '@tauri-apps/api/app'
+
 defineProps<{ buildDate: string }>()
 defineEmits<{
   'check-updates': []
   'open-documentation': []
   'report-issue': []
 }>()
+
+const appVersion = ref('…')
+const tauriVersion = ref('…')
+
+onMounted(async () => {
+  try {
+    appVersion.value = await getVersion()
+    tauriVersion.value = await getTauriVersion()
+  } catch {
+    appVersion.value = 'unknown'
+    tauriVersion.value = 'unknown'
+  }
+})
 </script>

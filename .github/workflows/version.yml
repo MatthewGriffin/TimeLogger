@@ -1,0 +1,35 @@
+name: Version
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  version-bump:
+    name: Version bump
+    runs-on: ubuntu-latest
+    # Dependabot never bumps the app version, so only enforce the increase for
+    # human-authored pull requests.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Read version on main
+        id: baseline
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          version=$(git show origin/main:src-tauri/tauri.conf.json | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).version))")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check versions are consistent and increased
+        if: github.actor != 'dependabot[bot]'
+        run: node scripts/check-version.mjs "${{ steps.baseline.outputs.version }}"
+
+      - name: Check versions are consistent
+        if: github.actor == 'dependabot[bot]'
+        run: node scripts/check-version.mjs
