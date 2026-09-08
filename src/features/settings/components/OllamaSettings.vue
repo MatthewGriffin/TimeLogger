@@ -98,3 +98,85 @@ const refreshModels = async () => {
 
 onMounted(refreshModels)
 </script>
+
+<style scoped>
+/* Sliders */
+.slider {
+  width: 100%;
+  height: 6px;
+  /* Matches the shared `.form-group input` radius in styles/forms.css. This
+     rule used to read 3px, but plain `.slider` never outranked that shared
+     selector so the value was dead; scoping this block would have silently
+     started applying it. Pinned to the value that actually rendered. */
+  border-radius: 0.5rem;
+  background: var(--color-control);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px var(--color-accent-ring);
+}
+
+.slider::-webkit-slider-thumb:hover {
+  background: var(--color-accent-strong);
+  box-shadow: 0 4px 8px rgba(6, 182, 212, 0.5);
+  transform: scale(1.1);
+}
+
+.slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px var(--color-accent-ring);
+}
+
+.slider::-moz-range-thumb:hover {
+  background: var(--color-accent-strong);
+  box-shadow: 0 4px 8px rgba(6, 182, 212, 0.5);
+  transform: scale(1.1);
+}
+
+.slider::-moz-range-track {
+  background: transparent;
+  border: none;
+}
+
+.slider::-moz-range-progress {
+  background: var(--color-accent-ring);
+  height: 6px;
+  border-radius: 3px;
+}
+
+.slider-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--color-text-subtle);
+  margin-top: 0.25rem;
+}
+
+.model-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.model-row select {
+  flex: 1;
+}
+</style>

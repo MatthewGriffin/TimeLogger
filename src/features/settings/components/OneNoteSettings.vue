@@ -96,3 +96,11 @@ defineEmits<{
   'notebook-changed': []
 }>()
 </script>
+
+<style scoped>
+.error-hint {
+  background: rgba(239, 68, 68, 0.1);
+  border-bottom-color: var(--color-danger);
+  color: var(--color-danger-soft);
+}
+</style>

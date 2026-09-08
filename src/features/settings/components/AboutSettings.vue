@@ -67,3 +67,37 @@ onMounted(async () => {
   }
 })
 </script>
+
+<style scoped>
+/* About Card */
+.about-card {
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.about-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.about-item:last-child {
+  border-bottom: none;
+}
+
+.about-label {
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.about-value {
+  color: var(--color-text-subtle);
+  font-family: 'Space Mono', monospace;
+  font-size: 0.9rem;
+}
+</style>
