@@ -38,12 +38,6 @@ const getIcon = (type: string) => {
 </script>
 
 <style scoped>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
 .notification-center {
   position: fixed;
   bottom: 2rem;
@@ -58,9 +52,9 @@ const getIcon = (type: string) => {
   gap: 1rem;
   padding: 1rem 1.5rem;
   background: rgba(30, 41, 59, 0.95);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.5rem;
-  color: #e2e8f0;
+  color: var(--color-text);
   margin-bottom: 0.75rem;
   backdrop-filter: blur(10px);
   cursor: pointer;
@@ -70,7 +64,7 @@ const getIcon = (type: string) => {
 
 .notification:hover {
   background: rgba(30, 41, 59, 0.98);
-  border-color: rgba(148, 163, 184, 0.3);
+  border-color: var(--color-border-stronger);
   transform: translateX(-4px);
 }
 
@@ -88,7 +82,7 @@ const getIcon = (type: string) => {
 }
 
 .notification-success .notification-icon {
-  color: #10b981;
+  color: var(--color-success);
 }
 
 .notification-error {
@@ -97,7 +91,7 @@ const getIcon = (type: string) => {
 }
 
 .notification-error .notification-icon {
-  color: #ef4444;
+  color: var(--color-danger);
 }
 
 .notification-info {
@@ -106,7 +100,7 @@ const getIcon = (type: string) => {
 }
 
 .notification-info .notification-icon {
-  color: #3b82f6;
+  color: var(--color-info);
 }
 
 .notification-warning {
@@ -128,7 +122,7 @@ const getIcon = (type: string) => {
   flex-shrink: 0;
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   cursor: pointer;
   font-size: 1.2rem;
   padding: 0;
@@ -136,7 +130,7 @@ const getIcon = (type: string) => {
 }
 
 .notification-close:hover {
-  color: #cbd5e1;
+  color: var(--color-text-muted);
 }
 
 /* Animations */

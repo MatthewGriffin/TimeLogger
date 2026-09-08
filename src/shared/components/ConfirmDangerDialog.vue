@@ -103,7 +103,7 @@ const confirmIfAllowed = () => {
   background: rgba(30, 41, 59, 0.98);
   border: 1px solid rgba(248, 113, 113, 0.35);
   border-radius: 0.75rem;
-  color: #e2e8f0;
+  color: var(--color-text);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
 
@@ -111,35 +111,35 @@ const confirmIfAllowed = () => {
   margin: 0 0 0.75rem;
   font-size: 1.1rem;
   font-weight: 600;
-  color: #fca5a5;
+  color: var(--color-danger-soft);
 }
 
 .confirm-text {
   margin: 0 0 1rem;
   font-size: 0.9rem;
   line-height: 1.55;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
 }
 
 .confirm-label {
   display: block;
   margin-bottom: 0.4rem;
   font-size: 0.82rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
 }
 
 .confirm-input {
   width: 100%;
   padding: 0.5rem 0.65rem;
   background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(148, 163, 184, 0.3);
+  border: 1px solid var(--color-border-stronger);
   border-radius: 0.375rem;
   color: #f1f5f9;
   font-size: 0.9rem;
 }
 
 .confirm-input:focus {
-  outline: 2px solid #ef4444;
+  outline: 2px solid var(--color-danger);
   outline-offset: 1px;
 }
 
@@ -162,8 +162,8 @@ const confirmIfAllowed = () => {
 
 .confirm-cancel {
   background: transparent;
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  color: #cbd5e1;
+  border: 1px solid var(--color-border-stronger);
+  color: var(--color-text-muted);
 }
 
 .confirm-cancel:hover {

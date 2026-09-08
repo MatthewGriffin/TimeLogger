@@ -190,3 +190,39 @@ pub fn show_generic(title: &str, message: &str) -> Result<(), String> {
     let notif = Notification::new(title, message);
     notif.show()
 }
+
+// ---------------------------------------------------------------------------
+// Commands exposed to the webview. These wrap the functions above so the
+// frontend gets a uniform Result<String, String> instead of Result<(), String>.
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn show_notification(title: String, message: String) -> Result<String, String> {
+  show_generic(&title, &message)?;
+  Ok("Notification shown".to_string())
+}
+
+#[tauri::command]
+pub fn show_submission_success_notification(submission_date: String) -> Result<String, String> {
+  show_submission_success(&submission_date)?;
+  Ok("Notification shown".to_string())
+}
+
+#[tauri::command]
+pub fn show_submission_error_notification(error: String) -> Result<String, String> {
+  show_submission_error(&error)?;
+  Ok("Notification shown".to_string())
+}
+
+#[tauri::command]
+pub fn show_daily_reminder_notification(task_count: i32) -> Result<String, String> {
+  show_daily_reminder(task_count as usize)?;
+  Ok("Notification shown".to_string())
+}
+
+#[tauri::command]
+pub fn show_tempo_reminder_notification(entry_count: i32, minutes: i32) -> Result<String, String> {
+  show_tempo_reminder(entry_count.max(0) as usize, minutes.max(0) as usize)?;
+  Ok("Notification shown".to_string())
+}
+

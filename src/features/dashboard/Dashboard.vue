@@ -188,33 +188,14 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
 .dashboard {
   min-height: 100vh;
-  color: #e2e8f0;
+  color: var(--color-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   overflow-y: auto;
 }
 
 /* Page Header */
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 2rem 3rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
-  background: rgba(15, 23, 42, 0.5);
-  backdrop-filter: blur(10px);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-
 .header-content {
   display: flex;
   align-items: center;
@@ -237,13 +218,13 @@ onMounted(async () => {
   font-size: 1.5rem;
   font-weight: 600;
   font-family: 'Space Mono', monospace;
-  color: #06b6d4;
+  color: var(--color-accent);
   letter-spacing: 0.05em;
 }
 
 .date-display {
   font-size: 0.875rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
@@ -255,8 +236,8 @@ onMounted(async () => {
 
 .btn-link {
   padding: 0.75rem 1.5rem;
-  background: linear-gradient(135deg, #06b6d4, #0891b2);
-  color: #0f172a;
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-strong));
+  color: var(--color-on-accent);
   border: none;
   border-radius: 0.5rem;
   cursor: pointer;
@@ -271,7 +252,7 @@ onMounted(async () => {
 
 .btn-link:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 16px rgba(6, 182, 212, 0.3);
+  box-shadow: 0 8px 16px var(--color-accent-ring);
 }
 
 /* Content */
@@ -294,7 +275,7 @@ onMounted(async () => {
   gap: 1.5rem;
   padding: 1.5rem;
   background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.6));
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border: 1px solid var(--color-border);
   border-radius: 0.75rem;
   backdrop-filter: blur(10px);
   transition: all 0.3s ease;
@@ -306,7 +287,7 @@ onMounted(async () => {
 .stat-card:nth-child(3) { animation-delay: 0.2s; }
 
 .stat-card:hover {
-  border-color: rgba(148, 163, 184, 0.3);
+  border-color: var(--color-border-stronger);
   background: linear-gradient(135deg, rgba(30, 41, 59, 1), rgba(20, 30, 50, 0.8));
   transform: translateY(-2px);
 }
@@ -318,7 +299,7 @@ onMounted(async () => {
   justify-content: center;
   width: 4rem;
   height: 4rem;
-  background: rgba(6, 182, 212, 0.1);
+  background: var(--color-accent-soft);
   border-radius: 0.5rem;
   flex-shrink: 0;
 }
@@ -332,7 +313,7 @@ onMounted(async () => {
 
 .stat-label {
   font-size: 0.875rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-weight: 600;
@@ -342,7 +323,7 @@ onMounted(async () => {
   font-size: 2rem;
   font-weight: 700;
   font-family: 'Space Mono', monospace;
-  color: #06b6d4;
+  color: var(--color-accent);
 }
 
 @keyframes slideUp {
@@ -367,7 +348,7 @@ onMounted(async () => {
   margin-bottom: 1.5rem;
   letter-spacing: -0.3px;
   padding-bottom: 1rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .integrations-grid {
@@ -379,7 +360,7 @@ onMounted(async () => {
 .integration-card {
   padding: 1.5rem;
   background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.6));
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border: 1px solid var(--color-border);
   border-radius: 0.75rem;
   text-align: center;
   transition: all 0.3s ease;
@@ -399,7 +380,7 @@ onMounted(async () => {
 }
 
 .integration-card:hover {
-  border-color: rgba(148, 163, 184, 0.3);
+  border-color: var(--color-border-stronger);
   transform: translateY(-2px);
 }
 
@@ -410,7 +391,7 @@ onMounted(async () => {
 .integration-name {
   font-size: 1rem;
   font-weight: 600;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
 }
 
 .integration-status {
@@ -418,13 +399,13 @@ onMounted(async () => {
   font-weight: 600;
   padding: 0.5rem 1rem;
   border-radius: 2rem;
-  background: rgba(51, 65, 85, 0.5);
-  color: #cbd5e1;
+  background: var(--color-control);
+  color: var(--color-text-muted);
 }
 
 .integration-card.configured .integration-status {
   background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
+  color: var(--color-success);
 }
 
 .integration-card.failed .integration-status {
@@ -449,7 +430,7 @@ onMounted(async () => {
   gap: 1.5rem;
   padding: 1.25rem;
   background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.6));
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border: 1px solid var(--color-border);
   border-radius: 0.75rem;
   transition: all 0.3s ease;
   animation: slideUp 0.6s ease-out forwards;
@@ -461,14 +442,14 @@ onMounted(async () => {
 .activity-item:nth-child(4) { animation-delay: 0.7s; }
 
 .activity-item:hover {
-  border-color: rgba(148, 163, 184, 0.3);
+  border-color: var(--color-border-stronger);
   background: linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(20, 30, 50, 0.8));
   transform: translateX(4px);
 }
 
 .activity-time {
   font-size: 0.875rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   font-family: 'Space Mono', monospace;
   min-width: 70px;
   font-weight: 600;
@@ -480,13 +461,13 @@ onMounted(async () => {
 
 .activity-title {
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--color-text);
   margin-bottom: 0.25rem;
 }
 
 .activity-description {
   font-size: 0.875rem;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
 }
 
 .activity-icon {

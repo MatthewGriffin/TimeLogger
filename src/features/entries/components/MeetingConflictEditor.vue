@@ -125,16 +125,16 @@ const submit = (): void => {
 .conflict-label input[type='radio'] {
   width: 16px;
   height: 16px;
-  accent-color: #06b6d4;
+  accent-color: var(--color-accent);
 }
 
 .conflict-subject {
-  color: #e2e8f0;
+  color: var(--color-text);
   font-weight: 600;
 }
 
 .conflict-time {
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   font-family: 'Cascadia Code', Consolas, monospace;
   font-size: 0.8rem;
 }
@@ -144,7 +144,7 @@ const submit = (): void => {
   align-items: center;
   gap: 0.6rem;
   margin: 0.4rem 0 0.4rem 1.7rem;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   font-size: 0.85rem;
 }
 
@@ -152,7 +152,7 @@ const submit = (): void => {
   background: rgba(15, 23, 42, 0.6);
   border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: 0.35rem;
-  color: #e2e8f0;
+  color: var(--color-text);
   padding: 0.25rem 0.5rem;
 }
 
@@ -177,10 +177,10 @@ const submit = (): void => {
 
 .btn-assign {
   padding: 0.5rem 1.25rem;
-  background: linear-gradient(135deg, #06b6d4, #0891b2);
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-strong));
   border: none;
   border-radius: 0.4rem;
-  color: #0f172a;
+  color: var(--color-on-accent);
   font-weight: 600;
   font-size: 0.875rem;
   cursor: pointer;

@@ -587,34 +587,17 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 </script>
 
 <style scoped>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
 .daily-entries {
   min-height: 100vh;
-  color: #e2e8f0;
+  color: var(--color-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   overflow-y: auto;
 }
 
 /* Page Header */
-.page-header {
-  padding: 2rem 3rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
-  background: rgba(15, 23, 42, 0.5);
-  backdrop-filter: blur(10px);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-
 .page-header h1 {
   font-size: 1.8rem;
   font-weight: 700;
-  margin-bottom: 1.5rem;
 }
 
 .header-actions {
@@ -626,7 +609,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 
 .date-display {
   font-size: 1.1rem;
-  color: #06b6d4;
+  color: var(--color-accent);
   font-weight: 600;
   min-width: 200px;
   text-align: center;
@@ -635,7 +618,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 .btn-sync {
   padding: 0.5rem 1rem;
   background: rgba(16, 185, 129, 0.15);
-  border: 1px solid #10b981;
+  border: 1px solid var(--color-success);
   color: #34d399;
   border-radius: 0.5rem;
   cursor: pointer;
@@ -656,9 +639,9 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 .btn-today,
 .btn-nav {
   padding: 0.5rem 1rem;
-  background: rgba(51, 65, 85, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  color: #cbd5e1;
+  background: var(--color-control);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text-muted);
   border-radius: 0.5rem;
   cursor: pointer;
   font-weight: 500;
@@ -668,7 +651,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 
 .btn-today:hover,
 .btn-nav:hover {
-  background: rgba(51, 65, 85, 0.8);
+  background: var(--color-control-hover);
   border-color: rgba(148, 163, 184, 0.4);
 }
 
@@ -679,9 +662,9 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 }
 
 .btn-today {
-  background: rgba(6, 182, 212, 0.2);
-  border-color: #06b6d4;
-  color: #06b6d4;
+  background: var(--color-accent-muted);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 
 /* Loading and Error States */
@@ -697,8 +680,8 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 .spinner {
   width: 40px;
   height: 40px;
-  border: 4px solid rgba(6, 182, 212, 0.2);
-  border-top-color: #06b6d4;
+  border: 4px solid var(--color-accent-muted);
+  border-top-color: var(--color-accent);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -716,7 +699,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   border: 1px solid rgba(239, 68, 68, 0.3);
   border-radius: 0.5rem;
   margin: 2rem 3rem;
-  color: #fca5a5;
+  color: var(--color-danger-soft);
 }
 
 .error-icon {
@@ -741,7 +724,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   align-items: center;
   margin-bottom: 1.5rem;
   padding-bottom: 1rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .section-header h2 {
@@ -751,14 +734,14 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 
 .total-hours {
   font-size: 1.1rem;
-  color: #06b6d4;
+  color: var(--color-accent);
   font-weight: 600;
 }
 
 /* Table */
 .entries-table {
   background: rgba(30, 41, 59, 0.8);
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border: 1px solid var(--color-border);
   border-radius: 0.75rem;
   overflow: hidden;
   backdrop-filter: blur(10px);
@@ -769,10 +752,10 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr;
   gap: 1rem;
   padding: 1rem 1.5rem;
-  background: rgba(51, 65, 85, 0.5);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  background: var(--color-control);
+  border-bottom: 1px solid var(--color-border);
   font-weight: 600;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   text-transform: uppercase;
   font-size: 0.85rem;
   letter-spacing: 0.05em;
@@ -789,7 +772,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   gap: 1rem;
   padding: 1rem 1.5rem;
   align-items: center;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid var(--color-border);
   transition: background 0.3s ease;
 }
 
@@ -799,23 +782,23 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 
 .col-task {
   font-weight: 500;
-  color: #e2e8f0;
+  color: var(--color-text);
 }
 
 .col-ticket {
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   font-family: 'Space Mono', monospace;
   font-size: 0.9rem;
 }
 
 .col-time {
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   font-family: 'Space Mono', monospace;
   text-align: center;
 }
 
 .col-duration {
-  color: #06b6d4;
+  color: var(--color-accent);
   font-weight: 600;
   text-align: center;
 }
@@ -829,7 +812,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 .btn-icon {
   background: none;
   border: none;
-  color: #06b6d4;
+  color: var(--color-accent);
   font-size: 1.2rem;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -838,7 +821,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 
 .btn-icon:hover:not(:disabled) {
   transform: scale(1.2);
-  color: #0891b2;
+  color: var(--color-accent-strong);
 }
 
 .btn-icon:disabled {
@@ -847,16 +830,10 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 }
 
 .btn-icon.delete:hover:not(:disabled) {
-  color: #ef4444;
+  color: var(--color-danger);
 }
 
 /* Empty State */
-.empty-state {
-  text-align: center;
-  padding: 3rem;
-  color: #94a3b8;
-}
-
 .empty-icon {
   font-size: 3rem;
   margin-bottom: 1rem;
@@ -865,7 +842,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 /* Add Section */
 .add-section {
   background: rgba(30, 41, 59, 0.8);
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border: 1px solid var(--color-border);
   border-radius: 0.75rem;
   padding: 2rem;
   backdrop-filter: blur(10px);
@@ -876,7 +853,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   font-weight: 700;
   margin-bottom: 1.5rem;
   padding-bottom: 1rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid var(--color-border);
 }
 
 /* Form */
@@ -895,23 +872,23 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 .form-group label {
   font-weight: 600;
   font-size: 0.9rem;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
 }
 
 .form-group input {
   padding: 0.75rem;
-  background: rgba(51, 65, 85, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: var(--color-control);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.5rem;
-  color: #e2e8f0;
+  color: var(--color-text);
   font-size: 0.95rem;
   transition: all 0.3s ease;
 }
 
 .form-group input:focus {
   outline: none;
-  border-color: #06b6d4;
-  background: rgba(51, 65, 85, 0.8);
+  border-color: var(--color-accent);
+  background: var(--color-control-hover);
 }
 
 .form-group input:disabled {
@@ -927,8 +904,8 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 
 .btn-submit {
   padding: 0.75rem 2rem;
-  background: linear-gradient(135deg, #06b6d4, #0891b2);
-  color: #0f172a;
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-strong));
+  color: var(--color-on-accent);
   border: none;
   border-radius: 0.5rem;
   cursor: pointer;
@@ -940,7 +917,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 
 .btn-submit:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 8px 16px rgba(6, 182, 212, 0.3);
+  box-shadow: 0 8px 16px var(--color-accent-ring);
 }
 
 .btn-submit:disabled {
@@ -949,32 +926,8 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 }
 
 /* Modal */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
 .modal {
-  background: linear-gradient(135deg, #0f172a, #1a1f3a);
-  border: 1px solid rgba(148, 163, 184, 0.1);
-  border-radius: 1rem;
-  padding: 2rem;
   max-width: 500px;
-  width: 90%;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.5rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
 }
 
 .modal-header h2 {
@@ -982,42 +935,13 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   font-weight: 700;
 }
 
-.modal-close {
-  background: none;
-  border: none;
-  color: #cbd5e1;
-  font-size: 1.5rem;
-  cursor: pointer;
-  transition: color 0.3s ease;
-}
-
 .modal-close:hover:not(:disabled) {
-  color: #e2e8f0;
+  color: var(--color-text);
 }
 
 .modal-close:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.modal-footer {
-  display: flex;
-  gap: 1rem;
-  justify-content: flex-end;
-  margin-top: 2rem;
-  padding-top: 1rem;
-  border-top: 1px solid rgba(148, 163, 184, 0.1);
-}
-
-.btn-primary {
-  padding: 0.75rem 1.5rem;
-  background: linear-gradient(135deg, #06b6d4, #0891b2);
-  color: #0f172a;
-  border: none;
-  border-radius: 0.5rem;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.3s ease;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -1029,19 +953,8 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   cursor: not-allowed;
 }
 
-.btn-secondary {
-  padding: 0.75rem 1.5rem;
-  background: rgba(51, 65, 85, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  color: #cbd5e1;
-  border-radius: 0.5rem;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.3s ease;
-}
-
 .btn-secondary:hover:not(:disabled) {
-  background: rgba(51, 65, 85, 0.8);
+  background: var(--color-control-hover);
 }
 
 .btn-secondary:disabled {
@@ -1069,9 +982,9 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 }
 
 .btn-ai {
-  background: rgba(6, 182, 212, 0.2);
+  background: var(--color-accent-muted);
   border: 1px solid rgba(6, 182, 212, 0.4);
-  color: #06b6d4;
+  color: var(--color-accent);
   padding: 0.5rem 0.75rem;
   border-radius: 0.375rem;
   cursor: pointer;
@@ -1090,10 +1003,10 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 }
 
 .btn-ai:hover:not(:disabled) {
-  background: rgba(6, 182, 212, 0.3);
-  border-color: #06b6d4;
+  background: var(--color-accent-ring);
+  border-color: var(--color-accent);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.2);
+  box-shadow: 0 4px 12px var(--color-accent-muted);
 }
 
 /* Overrides the lift from .btn-ai:hover above (same specificity, so ordering
@@ -1127,16 +1040,16 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   display: block;
   font-weight: 600;
   font-size: 0.9rem;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   margin-bottom: 0.5rem;
 }
 
 .suggestion-preview {
   padding: 1rem;
-  background: rgba(51, 65, 85, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: var(--color-control);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.5rem;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   font-size: 0.95rem;
   word-break: break-word;
   max-height: 100px;
@@ -1145,10 +1058,10 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 
 .suggestion-highlight {
   padding: 1rem;
-  background: rgba(6, 182, 212, 0.1);
-  border: 2px solid rgba(6, 182, 212, 0.3);
+  background: var(--color-accent-soft);
+  border: 2px solid var(--color-accent-ring);
   border-radius: 0.5rem;
-  color: #06b6d4;
+  color: var(--color-accent);
   font-size: 1rem;
   font-weight: 600;
   word-break: break-word;
@@ -1161,10 +1074,10 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   width: 100%;
   padding: 0.75rem 1rem;
   margin-bottom: 0.5rem;
-  background: rgba(51, 65, 85, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: var(--color-control);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.5rem;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   font-size: 0.95rem;
   text-align: left;
   cursor: pointer;
@@ -1179,7 +1092,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 
 .ticket-match-key {
   flex-shrink: 0;
-  color: #06b6d4;
+  color: var(--color-accent);
   font-weight: 600;
 }
 
@@ -1190,7 +1103,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 
 .ticket-match-status {
   flex-shrink: 0;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   font-size: 0.8rem;
 }
 
@@ -1198,8 +1111,8 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   display: flex;
   gap: 0.75rem;
   padding: 1rem;
-  background: rgba(6, 182, 212, 0.1);
-  border-left: 3px solid #06b6d4;
+  background: var(--color-accent-soft);
+  border-left: 3px solid var(--color-accent);
   border-radius: 0.375rem;
   margin-top: 1rem;
 }
@@ -1211,7 +1124,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 
 .ai-info p {
   margin: 0;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   font-size: 0.9rem;
   line-height: 1.4;
 }

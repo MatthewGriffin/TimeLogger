@@ -151,9 +151,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   max-width: 30rem;
   padding: 1.5rem;
   background: rgba(30, 41, 59, 0.98);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.75rem;
-  color: #e2e8f0;
+  color: var(--color-text);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
 
@@ -167,13 +167,13 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   margin: 0 0 0.5rem;
   font-size: 0.9rem;
   line-height: 1.5;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
 }
 
 .update-hint {
   margin: 0;
   font-size: 0.82rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
 }
 
 .update-notes {
@@ -186,14 +186,14 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   border-radius: 0.5rem;
   font-size: 0.82rem;
   line-height: 1.5;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   white-space: pre-wrap;
 }
 
 .update-bar {
   height: 0.4rem;
   margin: 0.5rem 0 0.75rem;
-  background: rgba(148, 163, 184, 0.2);
+  background: var(--color-border-strong);
   border-radius: 999px;
   overflow: hidden;
 }
@@ -204,7 +204,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   /* Scaled rather than resized so progress updates never trigger layout. */
   transform: scaleX(0);
   transform-origin: left center;
-  background: #3b82f6;
+  background: var(--color-info);
   border-radius: 999px;
   transition: transform 0.2s ease;
 }
@@ -238,7 +238,7 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 }
 
 .update-primary {
-  background: #3b82f6;
+  background: var(--color-info);
   border: none;
   color: #fff;
 }
@@ -249,8 +249,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 .update-secondary {
   background: transparent;
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  color: #cbd5e1;
+  border: 1px solid var(--color-border-stronger);
+  color: var(--color-text-muted);
 }
 
 .update-secondary:hover {

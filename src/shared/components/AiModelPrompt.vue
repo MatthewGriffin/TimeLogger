@@ -165,9 +165,9 @@ defineExpose({ check })
   max-width: 26rem;
   padding: 1rem 1.25rem;
   background: rgba(30, 41, 59, 0.96);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.5rem;
-  color: #e2e8f0;
+  color: var(--color-text);
   backdrop-filter: blur(10px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
@@ -193,13 +193,13 @@ defineExpose({ check })
   margin: 0;
   font-size: 0.82rem;
   line-height: 1.45;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
 }
 
 .model-prompt-bar {
   height: 0.35rem;
   margin: 0.5rem 0;
-  background: rgba(148, 163, 184, 0.2);
+  background: var(--color-border-strong);
   border-radius: 999px;
   overflow: hidden;
 }
@@ -210,7 +210,7 @@ defineExpose({ check })
   /* Scaled rather than resized so progress updates never trigger layout. */
   transform: scaleX(0);
   transform-origin: left center;
-  background: #3b82f6;
+  background: var(--color-info);
   border-radius: 999px;
   transition: transform 0.3s ease;
 }
@@ -224,7 +224,7 @@ defineExpose({ check })
 
 .model-prompt-primary {
   padding: 0.4rem 0.75rem;
-  background: #3b82f6;
+  background: var(--color-info);
   border: none;
   border-radius: 0.375rem;
   color: #fff;
@@ -241,7 +241,7 @@ defineExpose({ check })
 .model-prompt-close {
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   font-size: 1rem;
   line-height: 1;
   padding: 0.25rem;
@@ -250,7 +250,7 @@ defineExpose({ check })
 }
 
 .model-prompt-close:hover {
-  color: #cbd5e1;
+  color: var(--color-text-muted);
 }
 
 .model-prompt-enter-active,

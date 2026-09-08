@@ -208,22 +208,7 @@ const skipAll = (): void => close()
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
 .modal {
-  background: linear-gradient(135deg, #0f172a, #1a1f3a);
-  border: 1px solid rgba(148, 163, 184, 0.1);
-  border-radius: 1rem;
-  padding: 2rem;
-  width: 90%;
   max-height: 90vh;
   overflow-y: auto;
 }
@@ -233,12 +218,7 @@ const skipAll = (): void => close()
 }
 
 .modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   margin-bottom: 1rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
 }
 
 .modal-header h2 {
@@ -247,20 +227,17 @@ const skipAll = (): void => close()
 }
 
 .modal-close {
-  background: none;
-  border: none;
-  color: #cbd5e1;
   font-size: 1.4rem;
-  cursor: pointer;
+  transition: none;
 }
 
 .modal-close:hover {
-  color: #e2e8f0;
+  color: var(--color-text);
 }
 
 .prompt-intro {
   font-size: 0.875rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   line-height: 1.5;
   margin: 0 0 1.25rem;
 }
@@ -293,7 +270,7 @@ const skipAll = (): void => close()
 
 .prompt-subject {
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--color-text);
 }
 
 .prompt-done {
@@ -314,9 +291,9 @@ const skipAll = (): void => close()
 .prompt-keyword {
   padding: 0.5rem 0.65rem;
   background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.4rem;
-  color: #e2e8f0;
+  color: var(--color-text);
   font-size: 0.875rem;
   font-family: inherit;
 }
@@ -335,7 +312,7 @@ const skipAll = (): void => close()
 .prompt-search:focus,
 .prompt-keyword:focus {
   outline: none;
-  border-color: #06b6d4;
+  border-color: var(--color-accent);
 }
 
 .btn-mini {
@@ -356,7 +333,7 @@ const skipAll = (): void => close()
 .prompt-note {
   display: block;
   font-size: 0.8rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   margin-top: 0.5rem;
 }
 
@@ -372,7 +349,7 @@ const skipAll = (): void => close()
   align-items: center;
   gap: 0.5rem;
   font-size: 0.85rem;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -380,7 +357,7 @@ const skipAll = (): void => close()
 .remember-toggle input {
   width: 16px;
   height: 16px;
-  accent-color: #06b6d4;
+  accent-color: var(--color-accent);
 }
 
 .prompt-keyword {
@@ -396,10 +373,10 @@ const skipAll = (): void => close()
 
 .btn-assign {
   padding: 0.5rem 1.25rem;
-  background: linear-gradient(135deg, #06b6d4, #0891b2);
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-strong));
   border: none;
   border-radius: 0.4rem;
-  color: #0f172a;
+  color: var(--color-on-accent);
   font-weight: 600;
   font-size: 0.875rem;
   cursor: pointer;
@@ -413,9 +390,9 @@ const skipAll = (): void => close()
 .btn-skip {
   padding: 0.5rem 1.25rem;
   background: rgba(51, 65, 85, 0.6);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.4rem;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   font-size: 0.875rem;
   cursor: pointer;
 }
@@ -425,24 +402,16 @@ const skipAll = (): void => close()
 }
 
 .modal-footer {
-  display: flex;
-  justify-content: flex-end;
+  gap: 0;
   margin-top: 1.5rem;
-  padding-top: 1rem;
-  border-top: 1px solid rgba(148, 163, 184, 0.1);
 }
 
 .btn-secondary {
   padding: 0.6rem 1.4rem;
-  background: rgba(51, 65, 85, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 0.5rem;
-  color: #cbd5e1;
-  font-weight: 600;
-  cursor: pointer;
+  transition: none;
 }
 
 .btn-secondary:hover {
-  background: rgba(51, 65, 85, 0.8);
+  background: var(--color-control-hover);
 }
 </style>

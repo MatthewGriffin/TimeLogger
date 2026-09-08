@@ -1,5 +1,8 @@
+@import "./tokens.css";
+@import "./components.css";
+
 :root {
-  color: #e2e8f0;
+  color: var(--color-text);
   background:
     radial-gradient(circle at top, rgba(59, 130, 246, 0.22), transparent 35%),
     linear-gradient(135deg, #050816 0%, #0b1220 100%);
@@ -30,6 +33,19 @@ select {
   font: inherit;
 }
 
-* {
+/**
+ * One reset for the whole app.
+ *
+ * This previously lived, identically, inside nine components' `<style scoped>`
+ * blocks. Vue compiles a scoped `*` to `[data-v-hash]`, which has the same
+ * specificity as a plain class but is emitted later, so those nine copies
+ * silently beat any shared class in `components.css`. Declaring it once here
+ * removes both the duplication and that trap.
+ */
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
   box-sizing: border-box;
 }
