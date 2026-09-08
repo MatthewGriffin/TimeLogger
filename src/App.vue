@@ -6,7 +6,9 @@ import { useRouter, useRoute } from 'vue-router'
 import Navigation from './components/Navigation.vue'
 import NotificationCenter from './components/NotificationCenter.vue'
 import AiModelPrompt from './components/AiModelPrompt.vue'
+import UpdateDialog from './components/UpdateDialog.vue'
 import { startTempoReminderScheduler, stopTempoReminderScheduler } from './composables/useTempoReminder'
+import { checkForUpdateOnStartup } from './composables/useUpdater'
 import { useAppStore } from './stores/app'
 import { useUiStore } from './stores/ui'
 
@@ -46,6 +48,10 @@ onMounted(async () => {
   void aiModelPrompt.value?.check()
 
   startTempoReminderScheduler()
+
+  // Same reasoning as the model prompt: never awaited, and silent unless
+  // there is actually a new version to offer.
+  checkForUpdateOnStartup()
 
   // Tray menu "Add Task" / "Add Note" / "Submit Time" navigate here. For the
   // first two, a same-named DOM event then tells the destination page to
@@ -134,6 +140,7 @@ declare global {
       </div>
       <NotificationCenter />
       <AiModelPrompt ref="aiModelPrompt" />
+      <UpdateDialog />
     </div>
   </main>
 </template>

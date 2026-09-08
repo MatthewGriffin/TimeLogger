@@ -770,6 +770,9 @@ pub fn run() {
     // Start menu used to create a second instance. Both instances then fought
     // over port 3001, each killing the other's backend and leaving nothing
     // listening ("failed to reach backend"). Reuse the running instance.
+    .plugin(tauri_plugin_updater::Builder::new().build())
+    // The updater relaunches the app once the new version is installed.
+    .plugin(tauri_plugin_process::init())
     .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
       if let Some(window) = app.webview_windows().values().next() {
         let _ = window.show();
