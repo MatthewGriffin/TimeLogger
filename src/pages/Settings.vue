@@ -109,6 +109,7 @@ import { useConfigStore } from '../stores/config'
 import { useEntriesStore } from '../stores/entries'
 import { useUiStore } from '../stores/ui'
 import { refreshTempoReminder } from '../composables/useTempoReminder'
+import { useUpdater } from '../composables/useUpdater'
 import CalendarSettings from '../components/settings/CalendarSettings.vue'
 import AboutSettings from '../components/settings/AboutSettings.vue'
 import CurrentSprintSettings from '../components/settings/CurrentSprintSettings.vue'
@@ -134,6 +135,7 @@ import type {
 const configStore = useConfigStore()
 const entriesStore = useEntriesStore()
 const uiStore = useUiStore()
+const updater = useUpdater()
 
 const tabs: SettingsTabName[] = ['Jira & Tempo', 'Current Sprint', 'Microsoft', 'OneNote', 'Calendar', 'Ollama', 'App Settings', 'Database & Data', 'About']
 const activeTab = ref<SettingsTabName>('Jira & Tempo')
@@ -484,17 +486,20 @@ const clearAllData = () => {
   }
 }
 
-const checkForUpdates = () => {
-  uiStore.showInfo('Checking for updates...')
-  // Implementation would check for updates
+const checkForUpdates = async () => {
+  uiStore.showInfo('Checking for updates…')
+  const found = await updater.checkForUpdate()
+  // Only the "nothing to do" case needs a toast; anything else is the
+  // update dialog's job to show.
+  if (!found && updater.stage.value === 'idle') uiStore.showSuccess('TimeLogger is up to date.')
 }
 
 const openDocumentation = () => {
-  window.open('https://github.com/yourusername/timelogger/wiki', '_blank')
+  window.open('https://github.com/MatthewGriffin/TimeLogger#readme', '_blank')
 }
 
 const reportIssue = () => {
-  window.open('https://github.com/yourusername/timelogger/issues', '_blank')
+  window.open('https://github.com/MatthewGriffin/TimeLogger/issues/new', '_blank')
 }
 
 const microsoftConnected = ref(false)

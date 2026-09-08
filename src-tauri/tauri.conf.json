@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "TimeLogger",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "identifier": "com.timelogger.app",
   "build": {
     "frontendDist": "../dist",
@@ -31,6 +31,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "nsis",
     "resources": [
       "../src-node"
@@ -44,6 +45,17 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERDQjdCNjZFMjRDMzMyNEYKUldSUE1zTWticmEzM0xQQUQ1dGtwUDhtdzNXTGJvZTh1b0NRZXIyWXhkYXA4MTJMMlkxYlBhaXgK",
+      "endpoints": [
+        "https://github.com/MatthewGriffin/TimeLogger/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

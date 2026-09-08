@@ -78,7 +78,40 @@ jobs:
 
       - name: Build installer
         if: steps.existing.outputs.exists == 'false'
+        # Signing is what makes the build installable as an update: the app
+        # verifies this signature against the public key in tauri.conf.json
+        # and refuses anything that does not match.
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx tauri build
+
+      - name: Build update manifest
+        if: steps.existing.outputs.exists == 'false'
+        shell: pwsh
+        run: |
+          $installer = "src-tauri/target/release/bundle/nsis/TimeLogger_${{ steps.version.outputs.version }}_x64-setup.exe"
+          $signature = "$installer.sig"
+          if (-not (Test-Path $signature)) {
+            Write-Error "No signature at $signature - is TAURI_SIGNING_PRIVATE_KEY set on the repository?"
+            exit 1
+          }
+          # Installed apps read this from the 'latest' release, so the download
+          # URL must point at the tag rather than at 'latest' - otherwise an
+          # older client would follow it to a newer build than it was told about.
+          $manifest = [ordered]@{
+            version   = "${{ steps.version.outputs.version }}"
+            notes     = "See https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}"
+            pub_date  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            platforms = [ordered]@{
+              'windows-x86_64' = [ordered]@{
+                signature = (Get-Content $signature -Raw).Trim()
+                url       = "https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/TimeLogger_${{ steps.version.outputs.version }}_x64-setup.exe"
+              }
+            }
+          }
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content latest.json -Encoding utf8
+          Get-Content latest.json
 
       - name: Publish release
         if: steps.existing.outputs.exists == 'false'
@@ -92,7 +125,7 @@ jobs:
             Get-ChildItem -Recurse src-tauri/target/release/bundle | Select-Object FullName
             exit 1
           }
-          gh release create "${{ steps.version.outputs.tag }}" $installer `
+          gh release create "${{ steps.version.outputs.tag }}" $installer "$installer.sig" latest.json `
             --title "TimeLogger ${{ steps.version.outputs.tag }}" `
             --generate-notes `
             --target "${{ github.event.workflow_run.head_sha }}"

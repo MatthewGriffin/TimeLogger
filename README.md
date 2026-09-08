@@ -60,6 +60,29 @@ Releases are automated. Every pull request into `main` is a new app version.
 If a version has already been released the release workflow skips rather than
 failing, so re-runs are safe.
 
+## Updates
+
+Installed copies update themselves. On launch the app quietly asks GitHub for
+the `latest.json` published with each release; if a newer version exists it
+offers to download and install it, then restarts. Users can also trigger the
+check from **Settings → About → Check for Updates**.
+
+Each installer is signed with a minisign key at release time and the app
+verifies that signature before installing, so a build that was not produced by
+this pipeline is rejected. The key lives in two repository secrets:
+
+- `TAURI_SIGNING_PRIVATE_KEY`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+
+The matching public key is committed in `src-tauri/tauri.conf.json`.
+
+> **Keep the private key backed up.** It cannot be recovered, and replacing it
+> means every already-installed copy stops accepting updates and has to be
+> reinstalled by hand.
+
+Updating works from **0.4.0** onward, the first release to ship a signature and
+a manifest. Earlier versions need a one-off manual install.
+
 ## License
 
 MIT
