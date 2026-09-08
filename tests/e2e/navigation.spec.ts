@@ -1,125 +1,112 @@
 import { test, expect } from '@playwright/test';
+import { ROUTES, visit, pageHeading, collectRealConsoleErrors } from './helpers';
 
-test.describe('TimeLogger - All Pages Navigation', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:5173/');
-    await page.waitForLoadState('networkidle');
+/**
+ * Every route must render its own page. These assertions are deliberately tied
+ * to the real heading of each view: the previous version of this suite used
+ * non-hash URLs, so every test silently landed on the dashboard and passed
+ * regardless of whether the target page worked.
+ */
+const PAGES = [
+  { name: 'Dashboard', route: ROUTES.dashboard, heading: 'Dashboard' },
+  { name: 'Daily Entries', route: ROUTES.entries, heading: 'Daily Entries' },
+  { name: 'Notes', route: ROUTES.notes, heading: 'Notes' },
+  { name: 'Calendar', route: ROUTES.calendar, heading: 'Calendar' },
+  { name: 'Submit Time', route: ROUTES.submit, heading: 'Submit Time' },
+  { name: 'Tempo Status', route: ROUTES.tempo, heading: 'Tempo Status' },
+  { name: 'Settings', route: ROUTES.settings, heading: 'Settings' },
+] as const;
+
+test.describe('Routing', () => {
+  for (const page_ of PAGES) {
+    test(`${page_.name} renders at ${page_.route}`, async ({ page }) => {
+      await page.goto(page_.route);
+      await expect(pageHeading(page)).toHaveText(page_.heading);
+    });
+  }
+
+  test('unknown routes fall back to the dashboard', async ({ page }) => {
+    await page.goto('#/this-route-does-not-exist');
+    await expect(pageHeading(page)).toHaveText('Dashboard');
+  });
+});
+
+test.describe('Navigation sidebar', () => {
+  const NAV_ITEMS = [
+    { label: 'Dashboard', path: '/' },
+    { label: 'Daily Entries', path: '/entries' },
+    { label: 'Notes', path: '/notes' },
+    { label: 'Calendar', path: '/calendar' },
+    { label: 'Submit Time', path: '/submit' },
+    { label: 'Tempo Status', path: '/tempo' },
+    { label: 'Settings', path: '/settings' },
+  ];
+
+  test('shows a link for every page', async ({ page }) => {
+    await visit(page, ROUTES.dashboard);
+    for (const item of NAV_ITEMS) {
+      await expect(page.locator(`nav a[aria-label="${item.label}"], nav a[href="#${item.path}"]`).first())
+        .toBeVisible();
+    }
   });
 
-  test('Dashboard page should load', async ({ page }) => {
-    await page.goto('http://localhost:5173/');
-    const content = page.locator('body');
-    await expect(content).toBeVisible();
+  test('clicking a link navigates and marks the link active', async ({ page }) => {
+    await visit(page, ROUTES.dashboard);
+
+    const notesLink = page.locator('nav a[href="#/notes"]').first();
+    await notesLink.click();
+
+    await expect(pageHeading(page)).toHaveText('Notes');
+    await expect(page).toHaveURL(/#\/notes$/);
+    await expect(notesLink).toHaveClass(/active/);
   });
 
-  test('Daily Entries page should load', async ({ page }) => {
-    // Try different navigation methods
-    let success = false;
-    
-    // Method 1: Click nav link
-    const navLink = page.locator('a:has-text("Entries"), a:has-text("Daily"), [href*="entries"]').first();
-    if (await navLink.isVisible().catch(() => false)) {
-      await navLink.click();
-      success = true;
-    }
-    
-    // Method 2: Direct navigation
-    if (!success) {
-      await page.goto('http://localhost:5173/entries');
-    }
-    
-    // Verify page loaded
-    const content = page.locator('body');
-    await expect(content).toBeVisible();
+  test('browser back returns to the previous page', async ({ page }) => {
+    await visit(page, ROUTES.dashboard);
+    await page.locator('nav a[href="#/calendar"]').first().click();
+    await expect(pageHeading(page)).toHaveText('Calendar');
+
+    await page.goBack();
+    await expect(pageHeading(page)).toHaveText('Dashboard');
   });
+});
 
-  test('Notes page should load', async ({ page }) => {
-    let success = false;
-    
-    const navLink = page.locator('a:has-text("Notes"), [href*="notes"]').first();
-    if (await navLink.isVisible().catch(() => false)) {
-      await navLink.click();
-      success = true;
-    }
-    
-    if (!success) {
-      await page.goto('http://localhost:5173/notes');
-    }
-    
-    const content = page.locator('body');
-    await expect(content).toBeVisible();
-  });
+test.describe('Settings tabs', () => {
+  /* Each tab must mount its own panel, identified by that panel's heading. */
+  const TABS = [
+    { tab: 'Jira & Tempo', heading: 'Jira & Tempo Settings' },
+    { tab: 'Current Sprint', heading: 'Current Sprint' },
+    { tab: 'Microsoft', heading: 'Microsoft Integration Settings' },
+    { tab: 'OneNote', heading: 'OneNote Configuration' },
+    { tab: 'Calendar', heading: 'Outlook Calendar Integration' },
+    { tab: 'Ollama', heading: 'Ollama AI Settings' },
+    { tab: 'App Settings', heading: 'Application Settings' },
+    { tab: 'Database & Data', heading: 'Database & Data Management' },
+    { tab: 'About', heading: 'About TimeLogger' },
+  ];
 
-  test('Calendar page should load', async ({ page }) => {
-    let success = false;
-    
-    const navLink = page.locator('a:has-text("Calendar"), [href*="calendar"]').first();
-    if (await navLink.isVisible().catch(() => false)) {
-      await navLink.click();
-      success = true;
-    }
-    
-    if (!success) {
-      await page.goto('http://localhost:5173/calendar');
-    }
-    
-    const content = page.locator('body');
-    await expect(content).toBeVisible();
-  });
+  for (const { tab, heading } of TABS) {
+    test(`${tab} tab opens its panel`, async ({ page }) => {
+      await visit(page, ROUTES.settings);
 
-  test('Submit page should load', async ({ page }) => {
-    let success = false;
-    
-    const navLink = page.locator('a:has-text("Submit"), [href*="submit"]').first();
-    if (await navLink.isVisible().catch(() => false)) {
-      await navLink.click();
-      success = true;
-    }
-    
-    if (!success) {
-      await page.goto('http://localhost:5173/submit');
-    }
-    
-    const content = page.locator('body');
-    await expect(content).toBeVisible();
-  });
+      const button = page.locator('.tab-button', { hasText: tab }).first();
+      await button.click();
 
-  test('Settings page should load', async ({ page }) => {
-    let success = false;
-    
-    const navLink = page.locator('a:has-text("Settings"), [href*="settings"]').first();
-    if (await navLink.isVisible().catch(() => false)) {
-      await navLink.click();
-      success = true;
-    }
-    
-    if (!success) {
-      await page.goto('http://localhost:5173/settings');
-    }
-    
-    const content = page.locator('body');
-    await expect(content).toBeVisible();
-  });
+      await expect(button).toHaveClass(/active/);
+      await expect(page.locator('h2', { hasText: heading }).first()).toBeVisible();
+    });
+  }
+});
 
-  test('Settings tabs should switch between extracted sections', async ({ page }) => {
-    await page.getByRole('link', { name: /settings/i }).click();
-    await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+test.describe('Page health', () => {
+  test('no unexpected console errors while visiting every page', async ({ page }) => {
+    const errors = collectRealConsoleErrors(page);
 
-    const tabs = [
-      ['Jira & Tempo', 'Jira & Tempo Settings'],
-      ['Current Sprint', 'Current Sprint'],
-      ['Microsoft', 'Microsoft Integration Settings'],
-      ['OneNote', 'OneNote Configuration'],
-      ['Calendar', 'Outlook Calendar Integration'],
-      ['Ollama', 'Ollama AI Settings'],
-      ['App Settings', 'Application Settings'],
-      ['Database & Data', 'Database & Data Management'],
-      ['About', 'About TimeLogger'],
-    ] as const;
-
-    for (const [tab, heading] of tabs) {
-      await page.getByRole('button', { name: new RegExp(tab, 'i') }).click();
-      await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+    for (const page_ of PAGES) {
+      await page.goto(page_.route);
+      await expect(pageHeading(page)).toHaveText(page_.heading);
     }
+
+    expect(errors, `Unexpected console errors:\n${errors.join('\n')}`).toEqual([]);
   });
 });
