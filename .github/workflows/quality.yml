@@ -2,6 +2,7 @@ name: Quality
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
@@ -13,6 +14,21 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-          cache-dependency-path: package-lock.json
-      - run: npm ci
+          cache-dependency-path: |
+            package-lock.json
+            src-node/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: src-node
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
       - run: npm run check
