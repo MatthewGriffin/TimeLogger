@@ -20,7 +20,10 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
       - name: Install backend dependencies
-        run: npm ci
+        # better-sqlite3 ships prebuilt binaries, but npm auto-runs `node-gyp
+        # rebuild` because binding.gyp is present, which fails on the runner's
+        # Visual Studio version. Skipping scripts uses the shipped prebuild.
+        run: npm ci --ignore-scripts
         working-directory: src-node
       - name: Cache cargo
         uses: actions/cache@v4
