@@ -17,28 +17,6 @@ function buildBasicAuth(email, apiToken) {
 
 export const tools = [
   {
-    name: 'tempo_setup_check',
-    description: 'Check whether Jira and Tempo credentials are available',
-    parameters: {
-      type: 'object',
-      properties: {
-        baseUrl: { type: 'string' },
-        email: { type: 'string' },
-        apiToken: { type: 'string' },
-        tempoToken: { type: 'string' }
-      },
-      required: []
-    },
-    handler: async (args) => ({
-      success: true,
-      configured: Boolean(args.baseUrl && args.email && args.apiToken),
-      tempoConfigured: Boolean(args.tempoToken),
-      message: args.baseUrl && args.email && args.apiToken
-        ? 'Jira configuration is available'
-        : 'Jira credentials are not configured'
-    })
-  },
-  {
     name: 'test_jira_connection',
     description: 'Test connection to Jira with provided credentials',
     parameters: {
@@ -116,28 +94,6 @@ export const tools = [
     }
   },
   {
-    name: 'verify_microsoft_setup',
-    description: 'Verify that Microsoft Graph API is configured',
-    parameters: {
-      type: 'object',
-      properties: {},
-      required: []
-    },
-    handler: async () => {
-      try {
-        return {
-          success: true,
-          message: '✅ Microsoft Graph API configured'
-        };
-      } catch (error) {
-        return {
-          success: false,
-          message: `Microsoft setup verification failed: ${error.message}`
-        };
-      }
-    }
-  },
-  {
     name: 'test_ollama_connection',
     description: 'Test connection to local Ollama instance and verify LLM availability',
     parameters: {
@@ -184,71 +140,4 @@ export const tools = [
       }
     }
   },
-  {
-    name: 'test_tempo_connection',
-    description: 'Test connection to Tempo with provided API token',
-    parameters: {
-      type: 'object',
-      properties: {
-        baseUrl: { type: 'string', description: 'Jira base URL (e.g., https://your-domain.atlassian.net)' },
-        tempoToken: { type: 'string', description: 'Tempo API token' }
-      },
-      required: ['baseUrl', 'tempoToken']
-    },
-    handler: async (args) => {
-      console.log('🔍 test_tempo_connection called with:', {
-        baseUrl: args.baseUrl,
-        hasToken: !!args.tempoToken
-      });
-
-      if (!args.baseUrl || !args.tempoToken) {
-        const missing = [];
-        if (!args.baseUrl) missing.push('baseUrl');
-        if (!args.tempoToken) missing.push('tempoToken');
-        
-        throw new Error(`Missing: ${missing.join(', ')}`);
-      }
-
-      const cleanBaseUrl = args.baseUrl.replace(/\/$/, ''); // Remove trailing slash
-      const testUrl = `${cleanBaseUrl}/rest/tempo-timesheets/4/user`;
-      
-      console.log('🌐 Testing Tempo connection to:', testUrl);
-      
-      try {
-        const response = await makeHttpRequest(testUrl, {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${args.tempoToken}`,
-            'Content-Type': 'application/json'
-          },
-          timeoutMs: 10000
-        });
-        
-        console.log('✅ Tempo connection successful!');
-        console.log('   Status:', response.status);
-        
-        return {
-          success: true,
-          message: `✅ Connected to Tempo successfully`
-        };
-      } catch (error) {
-        console.error('❌ Tempo connection failed');
-        console.error('   Error:', error.message);
-        
-        // Provide helpful hints based on error type
-        let hint = '';
-        if (error.message.includes('HTTP 401')) {
-          hint = ' - Check your Tempo API token';
-        } else if (error.message.includes('HTTP 404')) {
-          hint = ' - Check your Jira base URL (should be https://your-domain.atlassian.net)';
-        } else if (error.message.includes('ENOTFOUND') || error.message.includes('getaddrinfo')) {
-          hint = ' - Network error: cannot reach Jira. Check URL and internet connection';
-        } else if (error.message.includes('timeout')) {
-          hint = ' - Connection timeout: Jira is not responding';
-        }
-        
-        throw new Error(`Tempo connection failed: ${error.message}${hint}`);
-      }
-    }
-  }
 ];

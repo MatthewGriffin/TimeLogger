@@ -5,49 +5,49 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/',
     name: 'Dashboard',
-    component: () => import('../pages/Dashboard.vue'),
+    component: () => import('@/features/dashboard/Dashboard.vue'),
     meta: { title: 'Dashboard' }
   },
   {
     path: '/entries',
     name: 'DailyEntries',
-    component: () => import('../pages/DailyEntries.vue'),
+    component: () => import('@/features/entries/DailyEntries.vue'),
     meta: { title: 'Daily Entries' }
   },
   {
     path: '/notes',
     name: 'Notes',
-    component: () => import('../pages/Notes.vue'),
+    component: () => import('@/features/notes/Notes.vue'),
     meta: { title: 'Notes' }
   },
   {
     path: '/calendar',
     name: 'Calendar',
-    component: () => import('../pages/Calendar.vue'),
+    component: () => import('@/features/calendar/Calendar.vue'),
     meta: { title: 'Calendar' }
   },
   {
     path: '/submit',
     name: 'Submit',
-    component: () => import('../pages/Submit.vue'),
+    component: () => import('@/features/submit/Submit.vue'),
     meta: { title: 'Submit Time' }
   },
   {
     path: '/tempo',
     name: 'TempoStatus',
-    component: () => import('../pages/TempoStatus.vue'),
+    component: () => import('@/features/tempo/TempoStatus.vue'),
     meta: { title: 'Tempo Status' }
   },
   {
     path: '/settings',
     name: 'Settings',
-    component: () => import('../pages/Settings.vue'),
+    component: () => import('@/features/settings/Settings.vue'),
     meta: { title: 'Settings' }
   },
   {
     path: '/oauth',
     name: 'MicrosoftOAuth',
-    component: () => import('../pages/MicrosoftOAuth.vue'),
+    component: () => import('@/features/auth/MicrosoftOAuth.vue'),
     meta: { title: 'Microsoft Authentication' }
   }
 ]
