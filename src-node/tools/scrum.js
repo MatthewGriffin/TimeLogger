@@ -7,7 +7,6 @@
  */
 
 import { db } from '../index.js';
-import { ollamaClient } from '../api/ollama-client.js';
 import { localDateKey } from '../utils/dates.js';
 import { previousWorkingDay } from '../utils/working-days.js';
 import { plannedWorkFor } from './scrum-plan.js';
@@ -188,69 +187,6 @@ function fallbackSummary(yesterday, today, blockers) {
   return parts.join(' ');
 }
 
-/** Render one day as prompt context. */
-function dayContext(label, day) {
-  const planned = describePlanned(day.planned);
-  const plannedLines = planned
-    ? ['Planned but not yet started (no time logged against these):',
-       ...day.planned.map(item => `- ${item.ticket_id}${item.summary ? `: ${item.summary}` : ''}`)]
-    : [];
-
-  if (day.entries.length === 0 && plannedLines.length === 0) return `${label}: nothing logged.`;
-
-  const lines = groupByTicket(day.entries).map(
-    group => `- ${group.ticket}: ${group.tasks.join(', ')} (${formatDuration(group.minutes)})`
-  );
-  const notes = day.notes
-    .slice(0, 8)
-    .map(note => `- ${note.ticket_id ? `${note.ticket_id}: ` : ''}${String(note.title || note.note).trim().slice(0, 200)}`);
-  return [
-    `${label} (${day.date}):`,
-    ...(lines.length > 0 ? lines : ['- Nothing logged yet.']),
-    ...(notes.length > 0 ? ['Notes:', ...notes] : []),
-    ...plannedLines
-  ].join('\n');
-}
-
-/**
- * Ask the LLM for the paragraph.
- *
- * The prompt is closed over the facts gathered above and says so explicitly,
- * because an unconstrained model will happily invent plausible-sounding work
- * that was never done - which is worse than no summary at all when it is about
- * to be read aloud to the team.
- */
-async function llmSummary(yesterday, today, blockers) {
-  const available = await ollamaClient.initialize();
-  if (!available) return null;
-
-  const blockerContext = blockers.length > 0
-    ? blockers
-        .map(b => `- ${b.ticket_id ? `${b.ticket_id}: ` : ''}${String(b.title || b.note).trim().slice(0, 200)} (raised ${b.date})`)
-        .join('\n')
-    : 'None.';
-
-  const prompt = `Write a short daily stand-up update in first person, as one paragraph of 2 to 4 sentences.
-
-Cover what was done on the previous working day, what is planned for today, and any blockers. Mention ticket numbers where given. Anything listed as planned has not been started yet, so describe it as intended work and never state or imply that time has been spent on it. Use only the facts below; do not invent work, do not add commentary, and do not use bullet points or headings. Reply with the paragraph only.
-
-${dayContext('Previous working day', yesterday)}
-
-${dayContext('Today', today)}
-
-Blockers:
-${blockerContext}`;
-
-  try {
-    const result = await ollamaClient.generate(prompt);
-    const text = String(result?.response || '').trim();
-    if (!text) return null;
-    return { text, model: result.model };
-  } catch {
-    return null;
-  }
-}
-
 export const tools = [
   {
     name: 'generate_scrum_summary',
@@ -258,8 +194,7 @@ export const tools = [
     parameters: {
       type: 'object',
       properties: {
-        date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'The "today" date; defaults to the current local date' },
-        use_ai: { type: 'boolean', description: 'Use the local model to write the paragraph (default true)' }
+        date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'The "today" date; defaults to the current local date' }
       },
       required: []
     },
@@ -293,24 +228,14 @@ export const tools = [
         current.planned = plannedWorkFor(today);
         const blockers = openBlockers();
 
-        let summary = null;
-        let source = 'fallback';
-        if (args.use_ai !== false) {
-          const generated = await llmSummary(previous, current, blockers);
-          if (generated) {
-            summary = generated.text;
-            source = 'ai';
-          }
-        }
-        if (!summary) summary = fallbackSummary(previous, current, blockers);
+        const summary = fallbackSummary(previous, current, blockers);
 
         return {
           success: true,
           yesterday: previous,
           today: current,
           blockers,
-          summary,
-          summarySource: source
+          summary
         };
       } catch (error) {
         return { success: false, message: `Failed to build scrum summary: ${error.message}` };

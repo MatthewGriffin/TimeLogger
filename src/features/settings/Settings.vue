@@ -565,13 +565,24 @@ const checkForUpdates = async () => {
   if (!found && updater.stage.value === 'idle') uiStore.showSuccess('TimeLogger is up to date.')
 }
 
-const openDocumentation = () => {
-  window.open('https://github.com/MatthewGriffin/TimeLogger#readme', '_blank')
+/**
+ * Open a link in the user's real browser.
+ *
+ * `window.open` does nothing in the Tauri webview - there is no browser chrome
+ * to open a tab in - so these buttons appeared dead. The Rust command is the
+ * same one used for OAuth sign-in.
+ */
+const openExternal = async (url: string) => {
+  try {
+    await invoke('open_external_url', { url })
+  } catch (error) {
+    uiStore.showError(error instanceof Error ? error.message : `Could not open ${url}`)
+  }
 }
 
-const reportIssue = () => {
-  window.open('https://github.com/MatthewGriffin/TimeLogger/issues/new', '_blank')
-}
+const openDocumentation = () => openExternal('https://github.com/MatthewGriffin/TimeLogger#readme')
+
+const reportIssue = () => openExternal('https://github.com/MatthewGriffin/TimeLogger/issues/new')
 
 const microsoftConnected = ref(false)
 const microsoftAccount = ref('')
