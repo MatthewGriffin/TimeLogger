@@ -1,215 +1,70 @@
-# Playwright E2E Testing Setup
+# End-to-end tests
 
-## 📋 Overview
+Playwright tests that drive the Vue app in a browser. They cover routing,
+navigation, the settings panels and the dashboard, plus a set of contract tests
+for the Node sidecar's tool API.
 
-This directory contains end-to-end tests for the TimeLogger application using Playwright.
+## Running them
 
-### Test Coverage
-
-- **dashboard.spec.ts** - Dashboard page rendering and navigation
-- **navigation.spec.ts** - All 6 main pages load correctly
-- **backend-integration.spec.ts** - Backend API connectivity and response handling
-- **time-entry.spec.ts** - CRUD operations for time entries, data persistence
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Node.js 18+
-- Playwright browsers installed: `npx playwright install`
-- Backend server running on port 3001
-- Frontend dev server running on port 5173
-
-### Run All Tests
 ```bash
 npm run test:e2e
 ```
 
-### Run Tests in Debug Mode
-```bash
-npm run test:e2e:debug
-```
+That is the whole setup. Playwright starts Vite itself, so nothing needs to be
+running first.
 
-### Run Tests in UI Mode (Interactive)
-```bash
-npm run test:e2e:ui
-```
+| Command | Purpose |
+| --- | --- |
+| `npm run test:e2e` | Run the suite |
+| `npm run test:e2e:ui` | Interactive runner |
+| `npm run test:e2e:debug` | Step through with the inspector |
+| `npm run test:e2e:report` | Open the last HTML report |
+| `npx playwright test navigation.spec.ts` | One file |
+| `npx playwright test -g "Settings tabs"` | Tests matching a name |
 
-### View Test Report
-```bash
-npm run test:e2e:report
-```
+Browsers are installed with `npx playwright install chromium`.
 
-## 📊 Test Results
+## Files
 
-Test results are generated in multiple formats:
-- **HTML Report**: `tests/results/html/index.html`
-- **JUnit XML**: `tests/results/junit.xml` (CI/CD integration)
-- **JSON**: `tests/results/results.json` (Programmatic access)
+| File | Covers |
+| --- | --- |
+| `helpers.ts` | Shared routes, the page-heading locator and the backend probe |
+| `navigation.spec.ts` | Every route, the sidebar, browser history, all nine settings tabs |
+| `dashboard.spec.ts` | The four stat cards, the unsubmitted link and recent activity |
+| `backend-api.spec.ts` | The sidecar's tool API: create, read, duration, delete, submitted flag |
 
-## 🔧 Configuration
+## Things that will catch you out
 
-### playwright.config.ts
-- **Test Directory**: `tests/e2e/**/*.spec.ts`
-- **Web Server**: Automatically starts `npm run dev`
-- **Base URL**: `http://localhost:5173`
-- **Browsers**: Chromium, Firefox, WebKit
-- **Retry**: 2x on CI, 0x locally
-- **Screenshot**: On failure only
-- **Video**: On failure only
+**The app uses hash routing.** `page.goto('/entries')` does not open the entries
+page - it silently lands on the dashboard and the test passes having tested
+nothing. This is what the whole suite used to do. Navigate with the constants in
+`helpers.ts` (`ROUTES.entries` is `#/entries`).
 
-### Environment Variables
+**There are two `<h1>` elements.** The sidebar renders one for the app name and
+the view renders another, so a bare `h1` locator matches both and fails Playwright's
+strict mode. Use `pageHeading(page)`, which scopes to `.app-content h1`.
 
-- `CI=true` - Enable CI mode (retries, single worker)
-- `DEBUG=pw:api` - Enable Playwright debugging
+**Chromium only.** The app ships on WebView2, so Firefox and WebKit results would
+say nothing about what users actually run.
 
-## 📝 Test Structure
+**The backend tests need the sidecar, and it is not started here.** It is launched
+by the Tauri shell, so it is present when you have the app open and absent in CI.
+Those tests skip when it is unreachable rather than failing.
 
-Each test file follows this pattern:
+**The backend tests hit your real database.** There is no separate test database.
+They write to `1999-01-04`, far outside any working range, and delete only the
+entries they created. If you add one, follow the same pattern - an earlier version
+of these tests wrote onto *today's* date and never cleaned up, which corrupted real
+timesheets.
 
-```typescript
-test.describe('Feature Group', () => {
-  test.beforeEach(async ({ page }) => {
-    // Setup before each test
-  });
+**`upsert_daily_summary` splits an entry around anything it overlaps.** Tests run in
+parallel against that one date, so each owns a disjoint slice of the day. Reusing a
+time range another test holds gives you a shorter segment than you asked for, and a
+confusing failure. The current allocation is listed at the top of
+`backend-api.spec.ts`.
 
-  test('specific scenario', async ({ page }) => {
-    // Test implementation
-    expect(result).toBe(expected);
-  });
-});
-```
+## In CI
 
-## 🐛 Debugging
-
-### Run Single Test File
-```bash
-npx playwright test tests/e2e/dashboard.spec.ts
-```
-
-### Run Tests Matching Pattern
-```bash
-npx playwright test -g "Dashboard"
-```
-
-### Debug Mode (Interactive Inspector)
-```bash
-npx playwright test --debug
-```
-
-### View Browser Console
-Tests automatically check for console errors and report them.
-
-### Screenshots & Videos
-On failure:
-- Screenshot saved to `tests/results/...`
-- Video saved to `tests/results/...`
-
-## ✅ Test Categories
-
-### 1. Page Loading Tests
-Verify each page renders without errors
-- Dashboard ✓
-- Daily Entries ✓
-- Notes ✓
-- Calendar ✓
-- Submit ✓
-- Settings ✓
-
-### 2. Navigation Tests
-Verify navigation between pages works
-- Sidebar links clickable
-- Routes respond to direct navigation
-- Page transitions smooth
-
-### 3. Backend Integration Tests
-Verify frontend connects to backend API
-- Health check endpoint
-- Tools API responds
-- CORS configured correctly
-- Network errors logged
-
-### 4. CRUD Operation Tests
-Verify time entry operations
-- Create time entry ✓
-- Read time entry ✓
-- Update time entry (if implemented)
-- Delete time entry (if implemented)
-- Data persistence ✓
-- Calculations accurate ✓
-
-## 🎯 Expected Test Results
-
-All tests should **PASS** when:
-- ✅ Backend server running on port 3001
-- ✅ Frontend dev server running on port 5173
-- ✅ Database initialized with schema
-- ✅ All API routes respond
-
-## 📈 Continuous Integration
-
-These tests are designed for CI/CD pipelines:
-
-```yaml
-# Example GitHub Actions workflow
-- name: Run E2E Tests
-  run: npm run test:e2e
-  
-- name: Upload Report
-  if: always()
-  uses: actions/upload-artifact@v3
-  with:
-    name: playwright-report
-    path: tests/results/html/
-```
-
-## 🔍 Troubleshooting
-
-### Tests timing out
-- Ensure backend is running: `npm --prefix src-node start`
-- Ensure frontend is running: `npm run dev`
-- Check network connectivity
-
-### Browser not launching
-- Install browsers: `npx playwright install`
-- Check disk space
-- Try: `npx playwright install --force`
-
-### Port already in use
-- Backend: Change port in `src-node/server.js` (currently 3001)
-- Frontend: Vite uses port 5173, auto-incrementing if in use
-
-### No screenshots/videos
-- Ensure tests are failing (screenshots only on failure by default)
-- Change `screenshot` setting in `playwright.config.ts` to `'always'`
-
-## 📚 Resources
-
-- [Playwright Docs](https://playwright.dev)
-- [Test Best Practices](https://playwright.dev/docs/best-practices)
-- [Debugging Guides](https://playwright.dev/docs/debug)
-- [API Reference](https://playwright.dev/docs/api/intro)
-
-## 🏗️ Adding New Tests
-
-1. Create new `.spec.ts` file in `tests/e2e/`
-2. Import: `import { test, expect } from '@playwright/test'`
-3. Write test suite with `test.describe()` and `test()`
-4. Use `await page.goto()`, `page.locator()`, etc.
-5. Run: `npm run test:e2e`
-
-Example:
-```typescript
-import { test, expect } from '@playwright/test';
-
-test('my new test', async ({ page }) => {
-  await page.goto('http://localhost:5173/');
-  const heading = page.locator('h1');
-  await expect(heading).toBeVisible();
-});
-```
-
----
-
-**Last Updated**: 2026-09-04  
-**Playwright Version**: 1.62.1  
-**Test Environment**: Node.js 18+
+The suite runs in the `validate` job of `.github/workflows/quality.yml`, after
+`npm run check`. There is no sidecar on the runner, so the expected result is
+26 passed and 6 skipped. The report is uploaded as an artifact when a run fails.
