@@ -55,6 +55,7 @@ function cleanTestFixtures() {
     db.prepare('DELETE FROM notes WHERE date = ?').run(TEST_DATE);
     db.prepare('DELETE FROM submission_history WHERE date = ?').run(TEST_DATE);
     db.prepare('DELETE FROM calendar_conflict_choices WHERE date = ?').run(TEST_DATE);
+    db.prepare('DELETE FROM scrum_plan WHERE date = ?').run(TEST_DATE);
   } catch {
     // A missing table means nothing to clean; never fail the run on cleanup.
   }
@@ -1376,6 +1377,149 @@ async function runTests() {
         'An empty blocker list should be stated, not omitted'
       );
     }
+  });
+
+  // ============================================================
+  // SECTION 20: Planned Work
+  // ============================================================
+  log(colors.yellow, '\n🗓️  SECTION 20: Planned Work\n');
+
+  await testAsync('planned work tools are registered', async () => {
+    for (const name of ['list_planned_work', 'add_planned_work', 'remove_planned_work']) {
+      assert(tools.find(t => t.name === name), `${name} should be registered`);
+    }
+  });
+
+  await testAsync('a ticket can be planned and listed', async () => {
+    cleanTestFixtures();
+    const added = await executeTool('add_planned_work', {
+      date: TEST_DATE,
+      ticket_id: 'TEST-900',
+      summary: 'Investigate the flaky import',
+      status: 'To Do'
+    });
+    assert.strictEqual(added.success, true);
+    assert.strictEqual(added.created, true, 'A new ticket should report as created');
+
+    const listed = await executeTool('list_planned_work', { date: TEST_DATE });
+    assert.strictEqual(listed.count, 1);
+    assert.strictEqual(listed.planned[0].ticket_id, 'TEST-900');
+    assert.strictEqual(listed.planned[0].summary, 'Investigate the flaky import');
+    cleanTestFixtures();
+  });
+
+  await testAsync('planning the same ticket twice updates rather than duplicates', async () => {
+    cleanTestFixtures();
+    await executeTool('add_planned_work', { date: TEST_DATE, ticket_id: 'TEST-901', summary: 'First' });
+    const again = await executeTool('add_planned_work', { date: TEST_DATE, ticket_id: 'TEST-901', summary: 'Second' });
+
+    assert.strictEqual(again.created, false, 'Re-adding an existing ticket is not a creation');
+    const listed = await executeTool('list_planned_work', { date: TEST_DATE });
+    assert.strictEqual(listed.count, 1, 'The same ticket should not appear twice');
+    assert.strictEqual(listed.planned[0].summary, 'Second', 'The summary should be refreshed');
+    cleanTestFixtures();
+  });
+
+  await testAsync('planned work can be removed', async () => {
+    cleanTestFixtures();
+    const added = await executeTool('add_planned_work', { date: TEST_DATE, ticket_id: 'TEST-902' });
+    const removed = await executeTool('remove_planned_work', { id: added.plannedId });
+    assert.strictEqual(removed.success, true);
+
+    const listed = await executeTool('list_planned_work', { date: TEST_DATE });
+    assert.strictEqual(listed.count, 0);
+    cleanTestFixtures();
+  });
+
+  await testAsync('removing unknown planned work is rejected', async () => {
+    const result = await executeTool('remove_planned_work', { id: 99999999 });
+    assert.strictEqual(result.success, false, 'A missing row should not report success');
+  });
+
+  await testAsync('a ticket id is required', async () => {
+    const result = await executeTool('add_planned_work', { date: TEST_DATE, ticket_id: '   ' });
+    assert.strictEqual(result.success, false, 'Blank ticket ids should be rejected');
+  });
+
+  /**
+   * The central guarantee of the feature. Planned work states an intention and
+   * must never become time: if it reached daily_summary it would be picked up
+   * by submission and logged against the ticket in Tempo.
+   */
+  await testAsync('planned work never reaches the time log', async () => {
+    cleanTestFixtures();
+    await executeTool('add_planned_work', {
+      date: TEST_DATE,
+      ticket_id: 'TEST-903',
+      summary: 'Should never be submitted'
+    });
+
+    const summary = await executeTool('get_daily_summary', { date: TEST_DATE });
+    assert.strictEqual(summary.entriesCount, 0, 'Planning work must not create a time entry');
+    assert.strictEqual(summary.totalMinutes, 0, 'Planned work carries no time');
+
+    const rows = db.prepare('SELECT COUNT(*) AS n FROM daily_summary WHERE date = ?').get(TEST_DATE);
+    assert.strictEqual(rows.n, 0, 'Nothing should be written to daily_summary');
+
+    // Submission works from the unsubmitted entries of a day, so an empty
+    // count is what actually keeps planned work out of Tempo.
+    assert.strictEqual(
+      summary.unsubmittedCount,
+      0,
+      'Planned work must never appear as something to submit'
+    );
+    cleanTestFixtures();
+  });
+
+  await testAsync('the summary reports planned work as intent when nothing is logged', async () => {
+    cleanTestFixtures();
+    await executeTool('add_planned_work', {
+      date: TEST_DATE,
+      ticket_id: 'TEST-904',
+      summary: 'Pick up the parser bug'
+    });
+
+    const result = await executeTool('generate_scrum_summary', { date: TEST_DATE, use_ai: false });
+    assert.strictEqual(result.success, true);
+    assert(result.summary.includes('TEST-904'), 'Planned tickets belong in the paragraph');
+    assert(
+      /plan to work on/i.test(result.summary),
+      'With nothing logged the day should be described as intent'
+    );
+    assert(
+      !/am working on TEST-904/i.test(result.summary),
+      'Planned work must not be described as work already under way'
+    );
+    assert.strictEqual(result.today.planned.length, 1);
+    assert.strictEqual(result.today.entries.length, 0, 'Planned work is not an entry');
+    cleanTestFixtures();
+  });
+
+  await testAsync('the summary separates logged work from what is still planned', async () => {
+    cleanTestFixtures();
+    db.prepare(
+      'INSERT INTO daily_summary (date, ticket_id, name, duration_mins) VALUES (?, ?, ?, ?)'
+    ).run(TEST_DATE, 'TEST-905', 'Fixing the importer', 90);
+    await executeTool('add_planned_work', {
+      date: TEST_DATE,
+      ticket_id: 'TEST-906',
+      summary: 'Then review the API'
+    });
+
+    const result = await executeTool('generate_scrum_summary', { date: TEST_DATE, use_ai: false });
+    assert(/am working on/i.test(result.summary), 'Logged time is what is actually happening');
+    assert(/plan to pick up/i.test(result.summary), 'Planned work is what is still to come');
+    assert(result.summary.includes('TEST-905'), 'The logged ticket should be reported');
+    assert(result.summary.includes('TEST-906'), 'The planned ticket should be reported');
+    cleanTestFixtures();
+  });
+
+  await testAsync('planned work is scoped to its own day', async () => {
+    cleanTestFixtures();
+    await executeTool('add_planned_work', { date: TEST_DATE, ticket_id: 'TEST-907' });
+    const otherDay = await executeTool('list_planned_work', { date: '1990-01-08' });
+    assert.strictEqual(otherDay.count, 0, 'A plan belongs to the day it was made for');
+    cleanTestFixtures();
   });
 
   // ============================================================

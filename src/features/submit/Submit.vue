@@ -1,5 +1,5 @@
 <template>
-  <div class="submit-page">
+  <div class="submit-page page-shell">
     <!-- Page Header -->
     <div class="page-header">
       <h1>Submit Time</h1>
@@ -655,14 +655,6 @@ const submitSelected = async () => {
 </script>
 
 <style scoped>
-.submit-page {
-  min-height: 100vh;
-  color: var(--color-text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
 
 /* Page Header */
 .page-header h1 {

@@ -47,9 +47,9 @@ const formattedDuration = computed(() => {
 
 .entry-ticket {
   flex-shrink: 0;
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   font-size: 0.8rem;
-  color: var(--color-primary);
+  color: var(--color-accent);
 }
 
 .entry-name {

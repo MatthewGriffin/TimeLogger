@@ -37,7 +37,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:Arial,sans-serif;">
+  <div class="oauth-page">
     <div>
       <h1>{{ error ? 'Sign-in blocked' : 'Opening Microsoft sign-in…' }}</h1>
       <p v-if="authUrl">If you are not redirected automatically, <a :href="authUrl">click here</a>.</p>
@@ -45,3 +45,28 @@ onMounted(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.oauth-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: var(--page-gutter);
+  text-align: center;
+  font-family: var(--font-sans);
+  color: var(--color-text);
+}
+
+.oauth-page h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0 0 var(--space-sm);
+}
+
+.oauth-page p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text-subtle);
+}
+</style>

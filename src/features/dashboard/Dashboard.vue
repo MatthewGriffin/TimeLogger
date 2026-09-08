@@ -1,5 +1,5 @@
 <template>
-  <div class="dashboard">
+  <div class="dashboard page-shell">
     <!-- Page Header -->
     <div class="page-header">
       <div class="header-content">
@@ -18,7 +18,7 @@
     <ConfigurationStatus />
 
     <!-- Main content area -->
-    <div class="dashboard-content">
+    <div class="dashboard-content page-body">
       <!-- Quick Stats -->
       <div class="stats-grid">
         <div class="stat-card">
@@ -87,31 +87,31 @@
             <div class="activity-icon">{{ item.icon }}</div>
           </div>
         </div>
+      </div>
 
-        <!-- Integration Status -->
-        <div class="integrations-section">
-          <h2 class="section-title">Integrations</h2>
-          <div class="integrations-grid">
-            <div class="integration-card" :class="integrationClass('jira')">
-              <div class="integration-icon">🔗</div>
-              <div class="integration-name">Jira</div>
-              <div class="integration-status">{{ integrationLabel('jira') }}</div>
-            </div>
-            <div class="integration-card" :class="integrationClass('microsoft')">
-              <div class="integration-icon">📅</div>
-              <div class="integration-name">Microsoft</div>
-              <div class="integration-status">{{ integrationLabel('microsoft') }}</div>
-            </div>
-            <div class="integration-card" :class="integrationClass('tempo')">
-              <div class="integration-icon">⏱️</div>
-              <div class="integration-name">Tempo</div>
-              <div class="integration-status">{{ integrationLabel('tempo') }}</div>
-            </div>
-            <div class="integration-card" :class="integrationClass('ollama')">
-              <div class="integration-icon">🤖</div>
-              <div class="integration-name">Ollama</div>
-              <div class="integration-status">{{ integrationLabel('ollama') }}</div>
-            </div>
+      <!-- Integration Status -->
+      <div class="integrations-section">
+        <h2 class="section-title">Integrations</h2>
+        <div class="integrations-grid">
+          <div class="integration-card" :class="integrationClass('jira')">
+            <div class="integration-icon">🔗</div>
+            <div class="integration-name">Jira</div>
+            <div class="integration-status">{{ integrationLabel('jira') }}</div>
+          </div>
+          <div class="integration-card" :class="integrationClass('microsoft')">
+            <div class="integration-icon">📅</div>
+            <div class="integration-name">Microsoft</div>
+            <div class="integration-status">{{ integrationLabel('microsoft') }}</div>
+          </div>
+          <div class="integration-card" :class="integrationClass('tempo')">
+            <div class="integration-icon">⏱️</div>
+            <div class="integration-name">Tempo</div>
+            <div class="integration-status">{{ integrationLabel('tempo') }}</div>
+          </div>
+          <div class="integration-card" :class="integrationClass('ollama')">
+            <div class="integration-icon">🤖</div>
+            <div class="integration-name">Ollama</div>
+            <div class="integration-status">{{ integrationLabel('ollama') }}</div>
           </div>
         </div>
       </div>
@@ -280,13 +280,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.dashboard {
-  min-height: 100vh;
-  color: var(--color-text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  overflow-y: auto;
-}
-
 /* Page Header */
 .header-content {
   display: flex;
@@ -348,18 +341,13 @@ onMounted(async () => {
 }
 
 /* Content */
-.dashboard-content {
-  padding: 3rem;
-  max-width: 1400px;
-  margin: 0 auto;
-}
 
 /* Stats Grid */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 2rem;
-  margin-bottom: 3rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-lg);
+  margin-bottom: var(--space-2xl);
 }
 
 .stat-card {
@@ -484,22 +472,13 @@ onMounted(async () => {
 
 /* Integrations */
 .integrations-section {
-  margin-bottom: 3rem;
-}
-
-.section-title {
-  font-size: 1.3rem;
-  font-weight: 700;
-  margin-bottom: 1.5rem;
-  letter-spacing: -0.3px;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--space-2xl);
 }
 
 .integrations-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-lg);
 }
 
 .integration-card {
@@ -560,7 +539,7 @@ onMounted(async () => {
 
 /* Activity Section */
 .activity-section {
-  margin-bottom: 3rem;
+  margin-bottom: var(--space-2xl);
 }
 
 .activity-list {
@@ -630,7 +609,7 @@ onMounted(async () => {
 
   .stats-grid {
     grid-template-columns: 1fr;
-    gap: 1.5rem;
+    gap: var(--space-lg);
   }
 
   .timer-value {

@@ -1,5 +1,5 @@
 <template>
-  <div class="notes-page">
+  <div class="notes-page page-shell">
     <!-- Page Header -->
     <div class="page-header">
       <h1>Notes</h1>
@@ -513,14 +513,6 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 </script>
 
 <style scoped>
-.notes-page {
-  min-height: 100vh;
-  color: var(--color-text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
 
 /* Page Header */
 .page-header h1 {

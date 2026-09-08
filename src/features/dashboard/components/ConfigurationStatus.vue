@@ -46,17 +46,16 @@ const navigateToSettings = () => {
 .config-banner {
   background: linear-gradient(135deg, rgba(251, 146, 60, 0.1), rgba(245, 158, 11, 0.1));
   border: 1px solid rgba(251, 146, 60, 0.3);
-  border-left: 4px solid #fb923c;
   border-radius: 0.5rem;
-  margin: 0 2rem 2rem;
+  margin: 0 var(--page-gutter) var(--space-xl);
   overflow: hidden;
 }
 
 .banner-content {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 1rem;
+  gap: var(--space-md);
+  padding: var(--space-md);
 }
 
 .banner-icon {

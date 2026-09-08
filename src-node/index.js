@@ -18,6 +18,7 @@ import * as Outlook from './tools/outlook.js';
 import * as Config from './tools/config.js';
 import * as Sprint from './tools/sprint.js';
 import * as Scrum from './tools/scrum.js';
+import * as ScrumPlan from './tools/scrum-plan.js';
 import * as Setup from './tools/setup.js';
 import * as AiModel from './tools/ai-model.js';
 import * as Reminders from './tools/reminders.js';
@@ -42,6 +43,7 @@ export const tools = [
   
   // Daily scrum report
   ...Scrum.tools,
+  ...ScrumPlan.tools,
   
   // OneNote
   ...OneNote.tools,
