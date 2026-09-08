@@ -1,48 +1,61 @@
 import { test, expect } from '@playwright/test';
+import { ROUTES, visit, pageHeading } from './helpers';
 
-test.describe('TimeLogger - Dashboard Page', () => {
+/**
+ * The dashboard is the landing page, so a regression here is the first thing a
+ * user sees. These assertions cover the four stat cards and the activity feed
+ * added in v0.5.4 - the previous version of this file computed visibility flags
+ * and then never asserted on them.
+ */
+test.describe('Dashboard', () => {
   test.beforeEach(async ({ page }) => {
-    // Navigate to app
-    await page.goto('http://localhost:5173/');
-    // Wait for dashboard to load
-    await page.waitForSelector('[class*="dashboard"], h1, .main-content', { timeout: 10000 });
+    await visit(page, ROUTES.dashboard);
   });
 
-  test('Dashboard page should load', async ({ page }) => {
-    // Check for main content
-    const content = await page.locator('body').isVisible();
-    expect(content).toBeTruthy();
+  test('shows all four stat cards', async ({ page }) => {
+    for (const label of ["Today's Hours", 'This Week', 'Unsubmitted', 'Missed Days']) {
+      await expect(page.locator('.stat-label', { hasText: label }).first()).toBeVisible();
+    }
   });
 
-  test('Dashboard should display today\'s summary', async ({ page }) => {
-    // Look for dashboard elements
-    const dashboardVisible = await page.locator(':text("Dashboard"), :text("Welcome"), :text("Today")').first().isVisible().catch(() => false);
-    
-    // Either dashboard header or any content on page is fine
-    const pageContent = await page.content();
-    expect(pageContent.length).toBeGreaterThan(100);
+  test('hour totals render as numbers, not placeholders', async ({ page }) => {
+    const todayCard = page
+      .locator('.stat-card')
+      .filter({ hasText: "Today's Hours" })
+      .first();
+
+    /* Guards against the card silently rendering "NaN" or an empty string when
+       the backend is unavailable, which is how it fails in practice. */
+    await expect(todayCard.locator('.stat-value')).toHaveText(/^\d+(\.\d+)?h?$/);
   });
 
-  test('Navigation sidebar should be visible', async ({ page }) => {
-    // Look for navigation
-    const navVisible = await page.locator('nav, [class*="sidebar"], [class*="navigation"]').first().isVisible().catch(() => false);
-    
-    // Or check for route links
-    const hasLinks = await page.locator('a').count().then(count => count > 0);
-    expect(navVisible || hasLinks).toBeTruthy();
+  test('the unsubmitted card links to the submit page', async ({ page }) => {
+    const link = page.locator('a.stat-card-link').first();
+    await expect(link).toHaveAttribute('href', '#/submit');
+
+    await link.click();
+    await expect(pageHeading(page)).toHaveText('Submit Time');
   });
 
-  test('Should have no console errors', async ({ page }) => {
-    const errors: string[] = [];
-    page.on('console', msg => {
-      if (msg.type() === 'error') {
-        errors.push(msg.text());
-      }
-    });
-    
-    // Do some navigation
-    await page.waitForTimeout(1000);
-    
-    expect(errors.length).toBe(0);
+  test('recent activity shows entries or an explicit empty state', async ({ page }) => {
+    const items = page.locator('.activity-item');
+    const empty = page.locator('.activity-empty');
+
+    /* Exactly one of the two must be present - an activity panel that renders
+       neither means the section failed to load. */
+    const itemCount = await items.count();
+    if (itemCount > 0) {
+      expect(itemCount).toBeLessThanOrEqual(5);
+      await expect(empty).toHaveCount(0);
+    } else {
+      await expect(empty).toBeVisible();
+    }
+  });
+
+  test('the clock renders in 24-hour form', async ({ page }) => {
+    const clock = page.locator('.current-time');
+    await expect(clock).toBeVisible();
+    /* en-GB, so no AM/PM suffix. */
+    await expect(clock).not.toHaveText(/[AP]M/i);
   });
 });

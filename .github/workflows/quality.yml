@@ -38,3 +38,21 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
       - run: npm run check
+      - name: Install Playwright browser
+        # Chromium only: the app ships on WebView2, so the other engines would
+        # not tell us anything about what users actually run.
+        run: npx playwright install chromium
+      - name: Run end-to-end tests
+        # Playwright starts Vite itself (see playwright.config.ts). The Node
+        # sidecar is launched by the Tauri shell, which does not run here, so
+        # the tests that need it skip rather than fail.
+        run: npm run test:e2e
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            tests/results
+            test-results
+          retention-days: 7

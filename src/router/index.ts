@@ -49,6 +49,14 @@ const routes: RouteRecordRaw[] = [
     name: 'MicrosoftOAuth',
     component: () => import('@/features/auth/MicrosoftOAuth.vue'),
     meta: { title: 'Microsoft Authentication' }
+  },
+  {
+    // Without this an unknown hash renders an empty content area, so a stale
+    // deep link or a mistyped tray navigation leaves a blank window with no
+    // indication of what went wrong.
+    path: '/:pathMatch(.*)*',
+    name: 'NotFound',
+    redirect: '/'
   }
 ]
 
