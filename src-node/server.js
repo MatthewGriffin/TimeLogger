@@ -9,6 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { router as setupRoutes } from './api/setup-routes.js';
+import { apiLimiter } from './api/rate-limit.js';
 import { tools, executeTool } from './index.js';
 
 // Setup file logging
@@ -68,6 +69,10 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.use(express.json());
+
+// Bound how fast any local process can drive the API. Applied before the
+// routes so every handler below inherits it.
+app.use('/api', apiLimiter);
 
 // Handle preflight requests
 app.options('*', cors(corsOptions));

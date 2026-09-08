@@ -10,8 +10,14 @@ import crypto from 'crypto';
 import { db } from '../index.js';
 import { graphClient, readMicrosoftConfig, GRAPH_SCOPE_STRING, buildTokenEndpoint } from './graph-client.js';
 import { ollamaClient } from './ollama-client.js';
+import { setupLimiter } from './rate-limit.js';
+import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, escapeHtml } from '../utils/safe-url.js';
 
 export const router = express.Router();
+
+// Every route below is user-driven and most trigger an outbound call to a
+// third party, so none of them should be callable in a tight loop.
+router.use(setupLimiter);
 
 // Must match the redirect URI registered in Azure and used by the sign-in URL.
 const OAUTH_REDIRECT_URI = 'http://localhost:3001/api/setup/oauth-callback';
@@ -95,8 +101,16 @@ router.post('/setup/test-jira', async (req, res) => {
       });
     }
 
+    const jiraOrigin = safeJiraBaseUrl(baseUrl);
+    if (!jiraOrigin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Jira base URL must be a plain https:// address, for example https://your-site.atlassian.net',
+      });
+    }
+
     // Test Jira connection
-    const jiraResponse = await fetch(`${baseUrl}/rest/api/3/myself`, {
+    const jiraResponse = await fetch(`${jiraOrigin}/rest/api/3/myself`, {
       headers: {
         Authorization: `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`,
         'Content-Type': 'application/json',
@@ -117,7 +131,7 @@ router.post('/setup/test-jira', async (req, res) => {
       INSERT OR REPLACE INTO settings (key, value)
       VALUES ('jira_config', ?)
     `).run(JSON.stringify({
-      baseUrl,
+      baseUrl: jiraOrigin,
       email,
       username: user.name || user.emailAddress,
     }));
@@ -199,6 +213,14 @@ router.post('/setup/test-graph', async (req, res) => {
       });
     }
 
+    const safeTenant = safeTenantId(tenantId, null);
+    if (!safeTenant) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tenant ID must be a directory GUID, a verified domain, or one of: common, organizations, consumers',
+      });
+    }
+
     // A public client registration has no secret. Microsoft rejects any secret
     // sent by one (AADSTS700025), and client_credentials cannot be used at all,
     // so validity is proven by the interactive sign-in instead.
@@ -206,7 +228,7 @@ router.post('/setup/test-graph', async (req, res) => {
       db.prepare(`
         INSERT OR REPLACE INTO settings (key, value)
         VALUES ('microsoft_config', ?)
-      `).run(JSON.stringify({ tenantId, clientId, clientSecret: null, publicClient: true, connected: false }));
+      `).run(JSON.stringify({ tenantId: safeTenant, clientId, clientSecret: null, publicClient: true, connected: false }));
 
       return res.json({
         success: true,
@@ -217,7 +239,7 @@ router.post('/setup/test-graph', async (req, res) => {
     }
 
     // Validate using Microsoft identity endpoint
-    const tokenResponse = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
+    const tokenResponse = await fetch(`https://login.microsoftonline.com/${safeTenant}/oauth2/v2.0/token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -248,7 +270,7 @@ router.post('/setup/test-graph', async (req, res) => {
         db.prepare(`
           INSERT OR REPLACE INTO settings (key, value)
           VALUES ('microsoft_config', ?)
-        `).run(JSON.stringify({ tenantId, clientId, clientSecret: null, publicClient: true, connected: false }));
+        `).run(JSON.stringify({ tenantId: safeTenant, clientId, clientSecret: null, publicClient: true, connected: false }));
 
         return res.json({
           success: true,
@@ -270,7 +292,7 @@ router.post('/setup/test-graph', async (req, res) => {
     db.prepare(`
       INSERT OR REPLACE INTO settings (key, value)
       VALUES ('microsoft_config', ?)
-    `).run(JSON.stringify({ tenantId, clientId, clientSecret, publicClient: false, connected: true }));
+    `).run(JSON.stringify({ tenantId: safeTenant, clientId, clientSecret, publicClient: false, connected: true }));
 
     // Only credential validity is checked here. Calling /me would fail by
     // design because this is an app-only token, while calendar and OneNote
@@ -319,7 +341,14 @@ router.get('/setup/oauth-authorize-url', async (req, res) => {
       prompt: 'select_account',
     });
 
-    const tenantId = stored.tenantId || 'common';
+    const tenantId = safeTenantId(stored.tenantId, 'common');
+    if (!tenantId) {
+      return res.status(400).json({
+        success: false,
+        message: 'The stored tenant ID is not valid. Re-enter it in Settings.',
+      });
+    }
+
     return res.json({
       success: true,
       url: `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?${params.toString()}`,
@@ -341,7 +370,14 @@ router.post('/setup/oauth-token', async (req, res) => {
   try {
     const { tenantId, clientId, clientSecret, code, redirectUri } = req.body;
 
-    const effectiveTenantId = tenantId === 'consumers' ? 'consumers' : (tenantId || 'common');
+    const effectiveTenantId = safeTenantId(tenantId, 'common');
+    if (!effectiveTenantId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Tenant ID must be a directory GUID, a verified domain, or one of: common, organizations, consumers',
+      });
+    }
+
     const scope = 'openid profile offline_access https://graph.microsoft.com/Calendars.Read https://graph.microsoft.com/Notes.ReadWrite';
     const tokenBody = new URLSearchParams({
       client_id: clientId,
@@ -390,11 +426,19 @@ router.post('/setup/oauth-token', async (req, res) => {
  * "not configured".
  */
 router.get('/setup/oauth-callback', async (req, res) => {
-  const page = (title, message) => `
+  /**
+   * Render the status page.
+   *
+   * `message` is always a literal written here; `detail` carries values from
+   * the query string or from an upstream error body, so it is escaped. Doing
+   * the escaping inside the template means no call site can forget it.
+   */
+  const page = (title, message, detail = '') => `
       <html>
         <body style="font-family: system-ui, sans-serif; text-align: center; padding: 50px;">
-          <h2>${title}</h2>
+          <h2>${escapeHtml(title)}</h2>
           <p>${message}</p>
+          ${detail ? `<p style="color:#b00;">${escapeHtml(detail)}</p>` : ''}
         </body>
         <script>
           setTimeout(() => window.close(), 4000);
@@ -419,7 +463,7 @@ router.get('/setup/oauth-callback', async (req, res) => {
     if (error) {
       const message = error_description || error;
       recordFailure(message);
-      return res.send(page('Authentication Failed', `<strong>Error:</strong> ${message}<br>You can close this window and try again.`));
+      return res.send(page('Authentication Failed', 'You can close this window and try again.', message));
     }
 
     if (!code) {
@@ -489,7 +533,7 @@ router.get('/setup/oauth-callback', async (req, res) => {
         // keep raw text
       }
       recordFailure(`Token exchange failed (${response.status}): ${detail}`);
-      return res.send(page('Authentication Failed', `Could not complete sign-in.<br>${detail}`));
+      return res.send(page('Authentication Failed', 'Could not complete sign-in.', detail));
     }
 
     const tokenData = JSON.parse(text);
@@ -513,7 +557,7 @@ router.get('/setup/oauth-callback', async (req, res) => {
     res.send(page('Authentication Successful!', 'Microsoft account connected. You can close this window.'));
   } catch (error) {
     recordFailure(error.message);
-    res.status(500).send(page('Error', error.message));
+    res.status(500).send(page('Error', 'Something went wrong completing sign-in.', error.message));
   }
 });
 
@@ -532,8 +576,16 @@ router.post('/setup/test-ollama', async (req, res) => {
       });
     }
 
+    const ollamaOrigin = safeOllamaHost(host);
+    if (!ollamaOrigin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ollama host must be an http:// or https:// address, for example http://localhost:11434',
+      });
+    }
+
     // Test Ollama endpoint
-    const response = await fetch(`${host}/api/tags`);
+    const response = await fetch(`${ollamaOrigin}/api/tags`);
 
     if (!response.ok) {
       return res.status(400).json({
@@ -548,7 +600,7 @@ router.post('/setup/test-ollama', async (req, res) => {
     if (models.length === 0) {
       return res.json({
         success: true,
-        message: `Connected to Ollama at ${host}, but no models installed. Run 'ollama pull mistral' first.`,
+        message: `Connected to Ollama at ${ollamaOrigin}, but no models installed. Run 'ollama pull mistral' first.`,
         models: [],
         warning: true,
       });
@@ -559,7 +611,7 @@ router.post('/setup/test-ollama', async (req, res) => {
       INSERT OR REPLACE INTO settings (key, value)
       VALUES ('ollama_config', ?)
     `).run(JSON.stringify({
-      host,
+      host: ollamaOrigin,
       models: models.map(m => m.name),
     }));
 

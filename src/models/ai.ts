@@ -10,7 +10,6 @@ export interface BackendAiResponse {
   suggested?: string
   summary?: string
   fallback?: string
-  enhanced?: string
   category?: string
   model?: string
 }

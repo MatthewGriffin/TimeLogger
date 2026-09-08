@@ -4,7 +4,7 @@
     <div class="settings-form">
       <div class="form-group checkbox">
         <input v-model="props.formData.enabled" type="checkbox" id="ollama-enabled" />
-        <label for="ollama-enabled">Enable AI features (task name suggestions, note enhancement, daily summaries)</label>
+        <label for="ollama-enabled">Enable AI features (task name suggestions, note topic sorting, daily summaries)</label>
       </div>
 
       <div class="form-group">
@@ -53,7 +53,7 @@
       </div>
 
       <div class="form-hint">
-        💡 Ollama is used for AI-powered task suggestions, summaries, and note enhancement. All processing happens locally on your machine.
+        💡 Ollama is used for AI-powered task suggestions, daily summaries, and sorting notes into topics. All processing happens locally on your machine.
       </div>
     </div>
   </div>

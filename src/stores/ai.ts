@@ -31,7 +31,7 @@ export const useAiStore = defineStore('ai', () => {
     error.value = ''
     try {
       const response = await request()
-      const result = textResult(response, ['suggested', 'summary', 'enhanced', 'fallback'], fallback)
+      const result = textResult(response, ['suggested', 'summary', 'fallback'], fallback)
       if (result.usedFallback && response.message) error.value = response.message
       lastResult.value = result
       return result
@@ -48,13 +48,6 @@ export const useAiStore = defineStore('ai', () => {
       () => executeApi<BackendAiResponse>('generate_daily_summary', { date, style }),
       `Summary for ${date}: No entries recorded.`,
       'AI summary generation failed'
-    )
-
-  const enhanceNote = (note: string, context?: string, style = 'professional') =>
-    run(
-      () => executeApi<BackendAiResponse>('llm_enhance_note', { note, context, style }),
-      note,
-      'AI note enhancement failed'
     )
 
   const categorizeTask = async (description: string, categories?: string[]) => {
@@ -80,7 +73,6 @@ export const useAiStore = defineStore('ai', () => {
     error,
     lastResult,
     generateDailySummary,
-    enhanceNote,
     categorizeTask,
     clearError
   }

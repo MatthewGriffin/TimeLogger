@@ -7,7 +7,7 @@ A Windows desktop app for tracking daily work and submitting it to Jira Tempo.
 - Log time entries against Jira tickets with ticket search
 - Import calendar meetings and turn them into time entries, including partial attendance and mid-meeting switches
 - Lunch scheduling that fits around booked meetings
-- Notes, with optional AI enhancement and activity-type categorisation via a local Ollama model
+- Notes, automatically sorted into topics by a local Ollama model
 - One-click submission to Tempo, with re-submission when entries change
 - System tray access for quick task/note capture and submission
 
