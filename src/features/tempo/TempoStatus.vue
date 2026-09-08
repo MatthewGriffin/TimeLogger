@@ -1,7 +1,7 @@
 <template>
-  <div class="tempo-page">
-    <div class="tempo-header">
-      <div>
+  <div class="tempo-page page-shell">
+    <div class="page-header">
+      <div class="header-titles">
         <h1>Tempo Status</h1>
         <p class="page-sub">What is actually recorded in Tempo, not what this app believes it submitted.</p>
       </div>
@@ -20,6 +20,7 @@
       </div>
     </div>
 
+    <div class="page-body">
     <div class="date-bar">
       <label>From</label>
       <input v-model="fromDate" type="date" class="date-input" @change="selectedRange = 'Custom'" />
@@ -191,6 +192,7 @@
         </div>
       </div>
     </template>
+    </div>
   </div>
 </template>
 
@@ -417,29 +419,20 @@ const importWorklogs = async (worklogIds?: number[]) => {
 </script>
 
 <style scoped>
-.tempo-page {
-  min-height: 100vh;
-  color: var(--color-text);
-  padding: 24px;
-}
-
-.tempo-header {
-  display: flex;
-  justify-content: space-between;
+.page-header {
   align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 20px;
+  gap: var(--space-md);
   flex-wrap: wrap;
 }
 
-.tempo-header h1 {
-  font-size: 26px;
+.page-header h1 {
+  font-size: 1.625rem;
   font-weight: 700;
 }
 
 .page-sub {
-  margin-top: 4px;
-  font-size: 13px;
+  margin-top: var(--space-2xs);
+  font-size: 0.8125rem;
   color: var(--color-text-subtle);
 }
 
@@ -471,9 +464,9 @@ const importWorklogs = async (worklogIds?: number[]) => {
 
 .btn-range.active,
 .btn-filter.active {
-  background: var(--color-info);
-  border-color: var(--color-info);
-  color: #fff;
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-on-accent);
 }
 
 .btn-refresh:disabled {
@@ -646,10 +639,10 @@ const importWorklogs = async (worklogIds?: number[]) => {
 
 .import-btn {
   padding: 5px 10px;
-  border: 1px solid var(--color-info);
+  border: 1px solid var(--color-accent-ring);
   border-radius: 6px;
-  background: rgba(59, 130, 246, 0.12);
-  color: #93c5fd;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -657,7 +650,7 @@ const importWorklogs = async (worklogIds?: number[]) => {
 }
 
 .import-btn:hover:not(:disabled) {
-  background: rgba(59, 130, 246, 0.25);
+  background: var(--color-accent-muted);
 }
 
 .import-btn:disabled {
@@ -668,17 +661,17 @@ const importWorklogs = async (worklogIds?: number[]) => {
 .import-all-btn {
   margin-left: auto;
   padding: 6px 12px;
-  border: 1px solid var(--color-info);
+  border: 1px solid var(--color-accent-ring);
   border-radius: 6px;
-  background: rgba(59, 130, 246, 0.12);
-  color: #93c5fd;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
 
 .import-all-btn:hover:not(:disabled) {
-  background: rgba(59, 130, 246, 0.25);
+  background: var(--color-accent-muted);
 }
 
 .import-all-btn:disabled {

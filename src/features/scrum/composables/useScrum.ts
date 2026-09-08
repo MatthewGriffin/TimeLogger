@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { executeApi, ApiError } from '@/shared/utils/api'
 import type { ScrumBlocker, ScrumDay, ScrumEntry, ScrumNote, ScrumReport } from '@/features/scrum/models/scrum'
+import type { ScrumPlanItem } from '@/features/scrum/models/scrumPlanItem'
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
@@ -31,12 +32,24 @@ function toNote(raw: unknown): ScrumNote {
   }
 }
 
+function toPlanItem(raw: unknown): ScrumPlanItem {
+  const row = asRecord(raw)
+  return {
+    id: Number(row.id),
+    date: String(row.date ?? ''),
+    ticketId: String(row.ticket_id ?? ''),
+    summary: asString(row.summary),
+    status: asString(row.status)
+  }
+}
+
 function toDay(raw: unknown): ScrumDay {
   const row = asRecord(raw)
   return {
     date: String(row.date ?? ''),
     entries: Array.isArray(row.entries) ? row.entries.map(toEntry) : [],
     notes: Array.isArray(row.notes) ? row.notes.map(toNote) : [],
+    planned: Array.isArray(row.planned) ? row.planned.map(toPlanItem) : [],
     totalMinutes: Number(row.totalMinutes) || 0
   }
 }
@@ -104,5 +117,20 @@ export function useScrum() {
     }
   }
 
-  return { report, isLoading, isRegenerating, error, load, regenerate, resolveBlocker }
+  /**
+   * Rebuild the report from the database without invoking the model.
+   *
+   * Used after planned work changes so the paragraph reflects it immediately;
+   * the AI rewrite stays an explicit click because it takes seconds.
+   */
+  const refresh = async () => {
+    error.value = ''
+    try {
+      report.value = await fetchReport(false)
+    } catch (err) {
+      error.value = err instanceof ApiError ? err.message : String(err)
+    }
+  }
+
+  return { report, isLoading, isRegenerating, error, load, regenerate, resolveBlocker, refresh }
 }

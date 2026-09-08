@@ -55,7 +55,7 @@ const ageLabel = (date: string) => {
 }
 
 .scrum-blockers.has-blockers {
-  border-color: var(--color-warning, #f59e0b);
+  border-color: var(--color-warning);
 }
 
 .blockers-header {
@@ -80,7 +80,7 @@ const ageLabel = (date: string) => {
 }
 
 .has-blockers .blockers-count {
-  background: var(--color-warning, #f59e0b);
+  background: var(--color-warning);
   color: #1f2937;
 }
 
@@ -121,9 +121,9 @@ const ageLabel = (date: string) => {
 }
 
 .blocker-ticket {
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   font-size: 0.78rem;
-  color: var(--color-primary);
+  color: var(--color-accent);
 }
 
 .blocker-text {
@@ -147,7 +147,7 @@ const ageLabel = (date: string) => {
 }
 
 .blocker-resolve:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 </style>

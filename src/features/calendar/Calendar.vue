@@ -1,5 +1,5 @@
 <template>
-  <div class="calendar-page">
+  <div class="calendar-page page-shell">
     <!-- Page Header -->
     <div class="page-header">
       <div class="header-content">
@@ -403,14 +403,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.calendar-page {
-  min-height: 100vh;
-  color: var(--color-text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
 
 /* Page Header */
 .page-header {

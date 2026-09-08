@@ -1,3 +1,5 @@
+import type { ScrumPlanItem } from '@/features/scrum/models/scrumPlanItem'
+
 export interface ScrumEntry {
   id: number
   ticketId: string | null
@@ -27,6 +29,7 @@ export interface ScrumDay {
   date: string
   entries: ScrumEntry[]
   notes: ScrumNote[]
+  planned: ScrumPlanItem[]
   totalMinutes: number
 }
 

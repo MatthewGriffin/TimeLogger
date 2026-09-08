@@ -46,11 +46,56 @@
   --color-danger-soft: #fca5a5;
   --color-success: #10b981;
   --color-info: #3b82f6;
+  --color-warning: #f59e0b;
 
   /* Shape */
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: 1rem;
+
+  /*
+   * Monospace, for ticket keys and durations.
+   *
+   * Referenced with an inline fallback in several places before it existed,
+   * which worked but meant the family could not be changed in one place.
+   */
+  --font-mono: "Cascadia Mono", Consolas, monospace;
+
+  /*
+   * Spacing.
+   *
+   * Everything visual was tokenised here except the one thing that had drifted
+   * most: the same "gap between sections" existed as 3rem, 1.5rem, 1.25rem and
+   * a bare 24px across the pages, because there was nothing to reach for. The
+   * scale is geometric so sizes stay visibly distinct - adjacent steps that
+   * differ by a couple of pixels get picked at random and drift straight back.
+   */
+  --space-2xs: 0.25rem;
+  --space-xs: 0.5rem;
+  --space-sm: 0.75rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+
+  /*
+   * The page gutter, so every page starts on the same vertical line. 3rem is
+   * what most pages already used and what `.page-header` is built around;
+   * the outliers (1.5rem, a bare 24px) were the drift, not the intent.
+   */
+  --page-gutter: 3rem;
+  --page-block: 2rem;
+  --page-max: 1400px;
+  --page-max-wide: 1600px;
+
+  /*
+   * Typography.
+   *
+   * Named because seven pages had each redeclared a font stack led by
+   * `-apple-system, BlinkMacSystemFont`, which resolves to nothing on the
+   * Windows-only target and merely fell through to Segoe UI by luck.
+   */
+  --font-sans: "Segoe UI", system-ui, sans-serif;
 
   /* Motion. A single duration keeps hover states feeling like one app. */
   --transition: 0.3s ease;

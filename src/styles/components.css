@@ -17,11 +17,79 @@
  * Page header
  * ------------------------------------------------------------------------ */
 
+/* ---------------------------------------------------------------------------
+ * Page shell
+ * ------------------------------------------------------------------------ */
+
+/**
+ * The outer wrapper every routed page uses.
+ *
+ * Each page previously carried its own copy of `min-height: 100vh`,
+ * `overflow-y: auto` and a font stack. Two of those were actively wrong:
+ * `main.app-content` is already the scroll container, so a second
+ * `overflow-y: auto` inside it nested one scroller in another and broke
+ * sticky headers, and the copied `-apple-system, BlinkMacSystemFont` stack
+ * resolves to nothing on this app's Windows-only target.
+ *
+ * Deliberately no `overflow` here: scrolling belongs to the shell above.
+ */
+.page-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
+
+/**
+ * The content column under a `.page-header`, aligned to the same gutter the
+ * header uses so headings and body share one vertical line.
+ */
+.page-body {
+  flex: 1;
+  width: 100%;
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: var(--page-block) var(--page-gutter);
+}
+
+/* Two-column pages earn more room before their side rail gets cramped. */
+.page-body.wide {
+  max-width: var(--page-max-wide);
+}
+
+/* ---------------------------------------------------------------------------
+ * Section heading
+ * ------------------------------------------------------------------------ */
+
+/**
+ * A heading needs more space above it than below, so it reads as belonging to
+ * what follows rather than floating between two blocks. Sections that sit
+ * first in their column drop the leading space via `:first-child`.
+ */
+.section-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  margin-top: var(--space-2xl);
+  margin-bottom: var(--space-lg);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.section-title:first-child {
+  margin-top: 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * Page header
+ * ------------------------------------------------------------------------ */
+
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 2rem 3rem;
+  padding: var(--page-block) var(--page-gutter);
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface-sunken);
   backdrop-filter: blur(10px);

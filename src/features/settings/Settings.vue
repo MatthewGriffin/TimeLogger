@@ -1,5 +1,5 @@
 <template>
-  <div class="settings-page">
+  <div class="settings-page page-shell">
     <!-- Page Header -->
     <div class="page-header">
       <h1>Settings</h1>
@@ -864,14 +864,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.settings-page {
-  min-height: 100vh;
-  color: var(--color-text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
 
 .btn-save {
   padding: 0.75rem 1.5rem;

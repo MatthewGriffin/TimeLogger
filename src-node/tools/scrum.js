@@ -10,6 +10,7 @@ import { db } from '../index.js';
 import { ollamaClient } from '../api/ollama-client.js';
 import { localDateKey } from '../utils/dates.js';
 import { previousWorkingDay } from '../utils/working-days.js';
+import { plannedWorkFor } from './scrum-plan.js';
 import { readSprintConfig, matchMeetingTicket } from './sprint.js';
 
 /** Read the configured lunch name so it can be filtered out by whatever it is called. */
@@ -126,6 +127,22 @@ function groupByTicket(entries) {
 }
 
 /**
+ * Render planned tickets as prose.
+ *
+ * No duration is ever shown: planned work has no time logged against it, and
+ * implying otherwise is exactly the confusion this feature has to avoid.
+ */
+function describePlanned(planned) {
+  if (!planned || planned.length === 0) return null;
+  return planned
+    .map(item => {
+      const summary = String(item.summary || '').trim();
+      return summary ? `${item.ticket_id}: ${summary}` : item.ticket_id;
+    })
+    .join('; ');
+}
+
+/**
  * Compose the report without the LLM.
  *
  * This is a first-class path, not an error case: Ollama is optional throughout
@@ -148,8 +165,16 @@ function fallbackSummary(yesterday, today, blockers) {
   const past = describe(yesterday);
   parts.push(past ? `Yesterday I worked on ${past}.` : 'Yesterday I had no time logged.');
 
+  // Wording switches on the evidence available. At stand-up the current day is
+  // usually still empty, so planned work has to be able to carry the sentence
+  // on its own - but once time exists it is what actually happened, and the
+  // plan becomes what is still to come.
   const now = describe(today);
-  parts.push(now ? `Today I am working on ${now}.` : 'Today I have nothing logged yet.');
+  const planned = describePlanned(today.planned);
+  if (now && planned) parts.push(`Today I am working on ${now}, and plan to pick up ${planned}.`);
+  else if (now) parts.push(`Today I am working on ${now}.`);
+  else if (planned) parts.push(`Today I plan to work on ${planned}.`);
+  else parts.push('Today I have nothing logged yet.');
 
   if (blockers.length > 0) {
     const list = blockers
@@ -165,7 +190,14 @@ function fallbackSummary(yesterday, today, blockers) {
 
 /** Render one day as prompt context. */
 function dayContext(label, day) {
-  if (day.entries.length === 0) return `${label}: nothing logged.`;
+  const planned = describePlanned(day.planned);
+  const plannedLines = planned
+    ? ['Planned but not yet started (no time logged against these):',
+       ...day.planned.map(item => `- ${item.ticket_id}${item.summary ? `: ${item.summary}` : ''}`)]
+    : [];
+
+  if (day.entries.length === 0 && plannedLines.length === 0) return `${label}: nothing logged.`;
+
   const lines = groupByTicket(day.entries).map(
     group => `- ${group.ticket}: ${group.tasks.join(', ')} (${formatDuration(group.minutes)})`
   );
@@ -174,8 +206,9 @@ function dayContext(label, day) {
     .map(note => `- ${note.ticket_id ? `${note.ticket_id}: ` : ''}${String(note.title || note.note).trim().slice(0, 200)}`);
   return [
     `${label} (${day.date}):`,
-    ...lines,
-    ...(notes.length > 0 ? ['Notes:', ...notes] : [])
+    ...(lines.length > 0 ? lines : ['- Nothing logged yet.']),
+    ...(notes.length > 0 ? ['Notes:', ...notes] : []),
+    ...plannedLines
   ].join('\n');
 }
 
@@ -199,7 +232,7 @@ async function llmSummary(yesterday, today, blockers) {
 
   const prompt = `Write a short daily stand-up update in first person, as one paragraph of 2 to 4 sentences.
 
-Cover what was done on the previous working day, what is planned for today, and any blockers. Mention ticket numbers where given. Use only the facts below; do not invent work, do not add commentary, and do not use bullet points or headings. Reply with the paragraph only.
+Cover what was done on the previous working day, what is planned for today, and any blockers. Mention ticket numbers where given. Anything listed as planned has not been started yet, so describe it as intended work and never state or imply that time has been spent on it. Use only the facts below; do not invent work, do not add commentary, and do not use bullet points or headings. Reply with the paragraph only.
 
 ${dayContext('Previous working day', yesterday)}
 
@@ -248,12 +281,16 @@ export const tools = [
             date,
             entries,
             notes: notesForDay(date, ticketIds),
+            planned: [],
             totalMinutes: entries.reduce((sum, e) => sum + (e.duration_mins || 0), 0)
           };
         };
 
         const previous = build(yesterday);
         const current = build(today);
+        // Only the reported day carries a plan. Yesterday's intent is not
+        // worth reporting: what matters about yesterday is what was done.
+        current.planned = plannedWorkFor(today);
         const blockers = openBlockers();
 
         let summary = null;

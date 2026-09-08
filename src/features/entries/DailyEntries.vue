@@ -1,5 +1,5 @@
 <template>
-  <div class="daily-entries">
+  <div class="daily-entries page-shell">
     <!-- Page Header -->
     <div class="page-header">
       <h1>Daily Entries</h1>
@@ -246,7 +246,7 @@
             </button>
           </div>
 
-          <div class="ai-info">
+          <div class="lookup-note">
             <span>ℹ️</span>
             <p>Only tickets assigned to you, reported by you, or recently updated by you are searched.</p>
           </div>
@@ -587,12 +587,6 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 </script>
 
 <style scoped>
-.daily-entries {
-  min-height: 100vh;
-  color: var(--color-text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-  overflow-y: auto;
-}
 
 /* Page Header */
 .page-header h1 {
@@ -1107,22 +1101,22 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   font-size: 0.8rem;
 }
 
-.ai-info {
+.lookup-note {
   display: flex;
-  gap: 0.75rem;
-  padding: 1rem;
+  gap: var(--space-sm);
+  padding: var(--space-md);
   background: var(--color-accent-soft);
-  border-left: 3px solid var(--color-accent);
+  border: 1px solid var(--color-accent-ring);
   border-radius: 0.375rem;
-  margin-top: 1rem;
+  margin-top: var(--space-md);
 }
 
-.ai-info span {
+.lookup-note span {
   font-size: 1.2rem;
   flex-shrink: 0;
 }
 
-.ai-info p {
+.lookup-note p {
   margin: 0;
   color: var(--color-text-muted);
   font-size: 0.9rem;

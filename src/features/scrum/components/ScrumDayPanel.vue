@@ -115,9 +115,9 @@ const formattedTotal = computed(() => {
 }
 
 .note-ticket {
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   font-size: 0.78rem;
-  color: var(--color-primary);
+  color: var(--color-accent);
   margin-right: 0.35rem;
 }
 </style>

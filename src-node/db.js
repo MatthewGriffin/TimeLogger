@@ -69,6 +69,19 @@ db.exec(`
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (date, event_id)
   );
+  -- Work intended for the day but not yet done. Deliberately kept out of
+  -- daily_summary: planned work carries no time and must never reach Tempo,
+  -- and a separate table makes that a structural guarantee rather than a
+  -- convention that a later query could quietly break.
+  CREATE TABLE IF NOT EXISTS scrum_plan (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    ticket_id TEXT NOT NULL,
+    summary TEXT,
+    status TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (date, ticket_id)
+  );
 `);
 
 const columns = (table) => db.prepare(`PRAGMA table_info(${table})`).all().map(column => column.name);
