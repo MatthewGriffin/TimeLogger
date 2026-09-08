@@ -12,6 +12,31 @@
 /** Schemes we are ever willing to call out on. */
 const ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
 
+// Hostnames that resolve inside the machine or the local network. A public
+// service must never be reachable at one of these: allowing it turns an
+// outbound request into a probe of whatever the host can see.
+const LOOPBACK_NAMES = new Set(['localhost', '127.0.0.1', '::1', '0.0.0.0', '[::1]']);
+const PRIVATE_V4 = [
+  /^10\./,
+  /^127\./,
+  /^192\.168\./,
+  /^169\.254\./, // link-local, covers cloud metadata at 169.254.169.254
+  /^172\.(1[6-9]|2\d|3[01])\./,
+];
+
+/**
+ * Whether a hostname points somewhere inside the machine or private network.
+ */
+export function isPrivateHost(hostname) {
+  const host = String(hostname).toLowerCase().replace(/^\[|\]$/g, '');
+  if (LOOPBACK_NAMES.has(host)) return true;
+  if (host.endsWith('.local') || host.endsWith('.internal')) return true;
+  if (PRIVATE_V4.some((range) => range.test(host))) return true;
+  // IPv6 unique-local (fc00::/7) and link-local (fe80::/10).
+  if (/^f[cd][0-9a-f]{2}:/.test(host) || /^fe[89ab][0-9a-f]:/.test(host)) return true;
+  return false;
+}
+
 /**
  * Parse a user-supplied base URL and return a safe origin to build requests
  * from, or `null` if it is unusable.
@@ -20,7 +45,7 @@ const ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
  * are discarded, so a crafted value cannot redirect the request elsewhere or
  * smuggle an auth header.
  */
-export function safeBaseUrl(input, { allowHttp = false } = {}) {
+export function safeBaseUrl(input, { allowHttp = false, allowPrivateHosts = true } = {}) {
   if (typeof input !== 'string' || input.trim() === '') return null;
 
   let url;
@@ -35,6 +60,7 @@ export function safeBaseUrl(input, { allowHttp = false } = {}) {
   // Embedded credentials would be forwarded on every request.
   if (url.username || url.password) return null;
   if (!url.hostname) return null;
+  if (!allowPrivateHosts && isPrivateHost(url.hostname)) return null;
 
   return url.origin;
 }
@@ -42,11 +68,12 @@ export function safeBaseUrl(input, { allowHttp = false } = {}) {
 /**
  * Validate a Jira base URL.
  *
- * Jira Cloud is always HTTPS. Allowing HTTP here would let the wizard send a
- * Basic auth header containing the API token over plaintext.
+ * Jira Cloud is always HTTPS and always public. Allowing HTTP would leak the
+ * API token in the Basic auth header, and allowing a private address would let
+ * this route be used to probe the local network.
  */
 export function safeJiraBaseUrl(input) {
-  return safeBaseUrl(input, { allowHttp: false });
+  return safeBaseUrl(input, { allowHttp: false, allowPrivateHosts: false });
 }
 
 /**
@@ -81,6 +108,18 @@ export function safeTenantId(input, fallback = 'common') {
   if (DOMAIN.test(tenant)) return tenant;
 
   return null;
+}
+
+/**
+ * Build a URL on the Microsoft identity platform for a given tenant.
+ *
+ * The host is fixed here and the tenant is inserted as an encoded single path
+ * segment, so no caller can move the request off login.microsoftonline.com.
+ */
+export function microsoftAuthorityUrl(tenantId, endpointPath) {
+  const tenant = safeTenantId(tenantId, 'common');
+  if (!tenant) return null;
+  return `https://login.microsoftonline.com/${encodeURIComponent(tenant)}/${endpointPath}`;
 }
 
 /**

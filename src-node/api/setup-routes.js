@@ -11,7 +11,7 @@ import { db } from '../index.js';
 import { graphClient, readMicrosoftConfig, GRAPH_SCOPE_STRING, buildTokenEndpoint } from './graph-client.js';
 import { ollamaClient } from './ollama-client.js';
 import { setupLimiter } from './rate-limit.js';
-import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, escapeHtml } from '../utils/safe-url.js';
+import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, microsoftAuthorityUrl, escapeHtml } from '../utils/safe-url.js';
 
 export const router = express.Router();
 
@@ -239,7 +239,7 @@ router.post('/setup/test-graph', async (req, res) => {
     }
 
     // Validate using Microsoft identity endpoint
-    const tokenResponse = await fetch(`https://login.microsoftonline.com/${safeTenant}/oauth2/v2.0/token`, {
+    const tokenResponse = await fetch(microsoftAuthorityUrl(safeTenant, 'oauth2/v2.0/token'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -341,8 +341,8 @@ router.get('/setup/oauth-authorize-url', async (req, res) => {
       prompt: 'select_account',
     });
 
-    const tenantId = safeTenantId(stored.tenantId, 'common');
-    if (!tenantId) {
+    const authorizeUrl = microsoftAuthorityUrl(stored.tenantId, 'oauth2/v2.0/authorize');
+    if (!authorizeUrl) {
       return res.status(400).json({
         success: false,
         message: 'The stored tenant ID is not valid. Re-enter it in Settings.',
@@ -351,7 +351,7 @@ router.get('/setup/oauth-authorize-url', async (req, res) => {
 
     return res.json({
       success: true,
-      url: `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?${params.toString()}`,
+      url: `${authorizeUrl}?${params.toString()}`,
       redirectUri: OAUTH_REDIRECT_URI,
     });
   } catch (error) {
@@ -370,8 +370,8 @@ router.post('/setup/oauth-token', async (req, res) => {
   try {
     const { tenantId, clientId, clientSecret, code, redirectUri } = req.body;
 
-    const effectiveTenantId = safeTenantId(tenantId, 'common');
-    if (!effectiveTenantId) {
+    const tokenUrl = microsoftAuthorityUrl(tenantId, 'oauth2/v2.0/token');
+    if (!tokenUrl) {
       return res.status(400).json({
         success: false,
         message: 'Tenant ID must be a directory GUID, a verified domain, or one of: common, organizations, consumers',
@@ -388,7 +388,7 @@ router.post('/setup/oauth-token', async (req, res) => {
       scope,
     });
 
-    const response = await fetch(`https://login.microsoftonline.com/${effectiveTenantId}/oauth2/v2.0/token`, {
+    const response = await fetch(tokenUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
