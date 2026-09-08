@@ -1,7 +1,7 @@
 {
   "name": "timelogger-app",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.2.0",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -11,7 +11,8 @@
     "build": "vue-tsc -b && vite build",
     "test:backend": "npm --prefix src-node test",
     "check:rust": "cargo check --manifest-path src-tauri/Cargo.toml",
-    "check": "npm run build && npm run test:backend && npm run check:rust",
+    "check:version": "node scripts/check-version.mjs",
+    "check": "npm run check:version && npm run build && npm run test:backend && npm run check:rust",
     "preview": "vite preview",
     "test:e2e": "playwright test",
     "test:e2e:debug": "playwright test --debug",

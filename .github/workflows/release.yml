@@ -1,0 +1,95 @@
+name: Release
+
+# Runs only after Quality succeeds on main, so a release is never published
+# from a commit that failed its checks.
+on:
+  workflow_run:
+    workflows: [Quality]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            src-node/package-lock.json
+
+      - name: Read version
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=v$version" >> $env:GITHUB_OUTPUT
+
+      - name: Check whether this version was already released
+        id: existing
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${{ steps.version.outputs.tag }}" 2>$null | Out-Null
+          $exists = if ($LASTEXITCODE -eq 0) { 'true' } else { 'false' }
+          "exists=$exists" >> $env:GITHUB_OUTPUT
+          if ($exists -eq 'true') {
+            Write-Host "::notice::${{ steps.version.outputs.tag }} already exists, skipping release."
+          }
+
+      - name: Install frontend dependencies
+        if: steps.existing.outputs.exists == 'false'
+        run: npm ci
+
+      - name: Install backend dependencies
+        # better-sqlite3 ships prebuilt binaries, but npm auto-runs `node-gyp
+        # rebuild` because binding.gyp is present, which fails on the runner's
+        # Visual Studio version. Skipping scripts uses the shipped prebuild.
+        if: steps.existing.outputs.exists == 'false'
+        run: npm ci --ignore-scripts
+        working-directory: src-node
+
+      - name: Cache cargo
+        if: steps.existing.outputs.exists == 'false'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Build installer
+        if: steps.existing.outputs.exists == 'false'
+        run: npx tauri build
+
+      - name: Publish release
+        if: steps.existing.outputs.exists == 'false'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $installer = "src-tauri/target/release/bundle/nsis/TimeLogger_${{ steps.version.outputs.version }}_x64-setup.exe"
+          if (-not (Test-Path $installer)) {
+            Write-Error "Installer not found at $installer"
+            Get-ChildItem -Recurse src-tauri/target/release/bundle | Select-Object FullName
+            exit 1
+          }
+          gh release create "${{ steps.version.outputs.tag }}" $installer `
+            --title "TimeLogger ${{ steps.version.outputs.tag }}" `
+            --generate-notes `
+            --target "${{ github.event.workflow_run.head_sha }}"
