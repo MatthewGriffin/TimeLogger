@@ -9,7 +9,7 @@
 
 import axios from 'axios';
 import { db } from '../index.js';
-import { safeTenantId } from '../utils/safe-url.js';
+import { microsoftAuthorityUrl } from '../utils/safe-url.js';
 
 const GRAPH_BASE_URL = 'https://graph.microsoft.com/v1.0';
 
@@ -33,11 +33,11 @@ export const GRAPH_SCOPE_STRING = GRAPH_SCOPES.join(' ');
  * the token request - which carries the client secret - somewhere else.
  */
 export function buildTokenEndpoint(tenantId) {
-  const tenant = safeTenantId(tenantId, 'common');
-  if (!tenant) {
+  const url = microsoftAuthorityUrl(tenantId, 'oauth2/v2.0/token');
+  if (!url) {
     throw new Error('Invalid Microsoft tenant ID. Re-enter it in Settings.');
   }
-  return `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`;
+  return url;
 }
 
 /**

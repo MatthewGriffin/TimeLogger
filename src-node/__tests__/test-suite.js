@@ -12,7 +12,7 @@ import {
   isoDaysFromToday,
 } from '../tools/jira-tempo.js';
 import { ukBankHolidays, isUkBankHoliday } from '../utils/uk-holidays.js';
-import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, escapeHtml } from '../utils/safe-url.js';
+import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, microsoftAuthorityUrl, escapeHtml } from '../utils/safe-url.js';
 
 // Color codes for output
 const colors = {
@@ -1180,6 +1180,28 @@ async function runTests() {
     assert.strictEqual(safeJiraBaseUrl('file:///etc/passwd'), null);
     assert.strictEqual(safeJiraBaseUrl('not a url'), null);
     assert.strictEqual(safeJiraBaseUrl(''), null);
+  });
+
+  await testAsync('a Jira base URL cannot point at the local network', async () => {
+    // Jira Cloud is always public, so a private target means this route is
+    // being used to probe somewhere it should not reach.
+    assert.strictEqual(safeJiraBaseUrl('https://localhost'), null);
+    assert.strictEqual(safeJiraBaseUrl('https://127.0.0.1'), null);
+    assert.strictEqual(safeJiraBaseUrl('https://10.1.2.3'), null);
+    assert.strictEqual(safeJiraBaseUrl('https://192.168.0.5'), null);
+    assert.strictEqual(safeJiraBaseUrl('https://172.16.4.4'), null);
+    // Cloud instance metadata is the classic SSRF target.
+    assert.strictEqual(safeJiraBaseUrl('https://169.254.169.254'), null);
+    assert.strictEqual(safeJiraBaseUrl('https://jira.internal'), null);
+  });
+
+  await testAsync('a Microsoft authority URL is always on the login host', async () => {
+    assert.strictEqual(
+      microsoftAuthorityUrl('contoso.com', 'oauth2/v2.0/token'),
+      'https://login.microsoftonline.com/contoso.com/oauth2/v2.0/token'
+    );
+    // A traversal cannot move the request off the fixed host.
+    assert.strictEqual(microsoftAuthorityUrl('../../evil.example', 'oauth2/v2.0/token'), null);
   });
 
   await testAsync('an Ollama host allows http but still only an origin', async () => {
