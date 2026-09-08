@@ -98,6 +98,24 @@ test.describe('Settings tabs', () => {
   }
 });
 
+test.describe('Document structure', () => {
+  /* The sidebar used to render its own <h1> for the app name, so every page
+     exposed two top-level headings and screen reader users got the app name
+     announced as a peer of the page title. */
+  for (const page_ of PAGES) {
+    test(`${page_.name} has exactly one h1 and one main landmark`, async ({ page }) => {
+      await page.goto(page_.route);
+      await expect(pageHeading(page)).toHaveText(page_.heading);
+
+      await expect(page.locator('h1')).toHaveCount(1);
+      await expect(page.locator('main')).toHaveCount(1);
+      /* The nav is a sibling of main, not a descendant - nested landmarks are
+         not exposed as separate regions. */
+      await expect(page.locator('main nav')).toHaveCount(0);
+    });
+  }
+});
+
 test.describe('Page health', () => {
   test('no unexpected console errors while visiting every page', async ({ page }) => {
     const errors = collectRealConsoleErrors(page);

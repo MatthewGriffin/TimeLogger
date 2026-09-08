@@ -132,17 +132,20 @@ declare global {
 </script>
 
 <template>
-  <main class="app-shell">
+  <div class="app-shell">
     <div class="app-layout">
       <Navigation />
-      <div class="app-content">
+      <!-- The content column is the main landmark. The shell cannot be, since
+           it also contains the nav, and a navigation landmark nested inside
+           main is not exposed as a sibling of it. -->
+      <main class="app-content">
         <router-view />
-      </div>
+      </main>
       <NotificationCenter />
       <AiModelPrompt ref="aiModelPrompt" />
       <UpdateDialog />
     </div>
-  </main>
+  </div>
 </template>
 
 <style>

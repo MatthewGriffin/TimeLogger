@@ -40,9 +40,11 @@ page - it silently lands on the dashboard and the test passes having tested
 nothing. This is what the whole suite used to do. Navigate with the constants in
 `helpers.ts` (`ROUTES.entries` is `#/entries`).
 
-**There are two `<h1>` elements.** The sidebar renders one for the app name and
-the view renders another, so a bare `h1` locator matches both and fails Playwright's
-strict mode. Use `pageHeading(page)`, which scopes to `.app-content h1`.
+**Each page has exactly one `<h1>`, and it belongs to the view.** The sidebar's
+app name is a `<span>`, not a heading. `Document structure` in `navigation.spec.ts`
+asserts this, so if you add a heading to a shared component those tests are what
+will fail. Locate the page title with `pageHeading(page)`, which scopes to
+`main h1` so a heading inside a dialog cannot be mistaken for it.
 
 **Chromium only.** The app ships on WebView2, so Firefox and WebKit results would
 say nothing about what users actually run.

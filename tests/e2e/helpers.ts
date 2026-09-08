@@ -23,11 +23,11 @@ export const BACKEND_URL = 'http://localhost:3001';
 /**
  * The heading of the current page.
  *
- * Scoped to `.app-content` because the sidebar renders its own `<h1>` with the
- * app name, so a bare `h1` locator matches two elements.
+ * Scoped to the main landmark rather than the whole document so a heading
+ * inside a dialog or notification cannot be mistaken for the page's own.
  */
 export function pageHeading(page: Page) {
-  return page.locator('.app-content h1');
+  return page.locator('main h1');
 }
 
 /** Navigate to a hash route and wait for the lazy-loaded view to render. */
