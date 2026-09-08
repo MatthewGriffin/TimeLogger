@@ -9,6 +9,7 @@
 
 import axios from 'axios';
 import { db } from '../index.js';
+import { safeTenantId } from '../utils/safe-url.js';
 
 const GRAPH_BASE_URL = 'https://graph.microsoft.com/v1.0';
 
@@ -24,8 +25,19 @@ export const GRAPH_SCOPES = [
 
 export const GRAPH_SCOPE_STRING = GRAPH_SCOPES.join(' ');
 
+/**
+ * Build the Microsoft token endpoint for a tenant.
+ *
+ * The tenant is a path segment, so it is validated rather than interpolated
+ * raw: an unchecked value could otherwise traverse out of the path and point
+ * the token request - which carries the client secret - somewhere else.
+ */
 export function buildTokenEndpoint(tenantId) {
-  return `https://login.microsoftonline.com/${tenantId || 'common'}/oauth2/v2.0/token`;
+  const tenant = safeTenantId(tenantId, 'common');
+  if (!tenant) {
+    throw new Error('Invalid Microsoft tenant ID. Re-enter it in Settings.');
+  }
+  return `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`;
 }
 
 /**

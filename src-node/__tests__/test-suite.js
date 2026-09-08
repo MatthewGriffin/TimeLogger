@@ -12,6 +12,7 @@ import {
   isoDaysFromToday,
 } from '../tools/jira-tempo.js';
 import { ukBankHolidays, isUkBankHoliday } from '../utils/uk-holidays.js';
+import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, escapeHtml } from '../utils/safe-url.js';
 
 // Color codes for output
 const colors = {
@@ -368,20 +369,6 @@ async function runTests() {
       date: 'invalid-date',
     });
     assert(result.success === false || result.textResultForLlm, 'Should validate date format');
-  });
-
-  await testAsync('llm_enhance_note tool exists', async () => {
-    const tool = tools.find(t => t.name === 'llm_enhance_note');
-    assert(tool, 'llm_enhance_note tool should exist');
-    assert(tool.parameters.required.includes('note'), 'Should require note');
-  });
-
-  await testAsync('llm_enhance_note executes gracefully', async () => {
-    const result = await executeTool('llm_enhance_note', {
-      note: 'Worked on bug fixing today',
-    });
-    assert(result, 'Should return a result');
-    assert(result.success === false || result.success === true, 'Should indicate success or failure');
   });
 
   // ============================================================
@@ -1172,6 +1159,56 @@ async function runTests() {
     const row = db.prepare('SELECT submitted FROM daily_summary WHERE id = ?').get(inserted.lastInsertRowid);
     assert.strictEqual(row.submitted, 0);
     cleanTestFixtures();
+  });
+
+  // ============================================================
+  // SECTION 18: URL Validation
+  // ============================================================
+  log(colors.yellow, '\n🔒 SECTION 18: URL Validation\n');
+
+  await testAsync('a Jira base URL keeps only a plain https origin', async () => {
+    assert.strictEqual(safeJiraBaseUrl('https://acme.atlassian.net'), 'https://acme.atlassian.net');
+    // Path, query and fragment are dropped so they cannot redirect the request.
+    assert.strictEqual(safeJiraBaseUrl('https://acme.atlassian.net/a/b?c=1#d'), 'https://acme.atlassian.net');
+  });
+
+  await testAsync('a Jira base URL rejects anything that could leak the API token', async () => {
+    // Plaintext would expose the Basic auth header.
+    assert.strictEqual(safeJiraBaseUrl('http://acme.atlassian.net'), null);
+    // Embedded credentials would be sent on every request.
+    assert.strictEqual(safeJiraBaseUrl('https://user:pass@acme.atlassian.net'), null);
+    assert.strictEqual(safeJiraBaseUrl('file:///etc/passwd'), null);
+    assert.strictEqual(safeJiraBaseUrl('not a url'), null);
+    assert.strictEqual(safeJiraBaseUrl(''), null);
+  });
+
+  await testAsync('an Ollama host allows http but still only an origin', async () => {
+    // Ollama is normally plaintext on loopback, so http has to stay allowed.
+    assert.strictEqual(safeOllamaHost('http://localhost:11434'), 'http://localhost:11434');
+    assert.strictEqual(safeOllamaHost('http://localhost:11434/api/tags'), 'http://localhost:11434');
+    assert.strictEqual(safeOllamaHost('gopher://localhost'), null);
+  });
+
+  await testAsync('a tenant ID accepts only a GUID, domain or known alias', async () => {
+    assert.strictEqual(safeTenantId('72f988bf-86f1-41af-91ab-2d7cd011db47'), '72f988bf-86f1-41af-91ab-2d7cd011db47');
+    assert.strictEqual(safeTenantId('COMMON'), 'common');
+    assert.strictEqual(safeTenantId('contoso.com'), 'contoso.com');
+    assert.strictEqual(safeTenantId('', 'common'), 'common', 'A blank tenant falls back rather than failing');
+  });
+
+  await testAsync('a tenant ID cannot escape its path segment', async () => {
+    // The tenant is interpolated into a login.microsoftonline.com path, so a
+    // traversal would retarget the request that carries the client secret.
+    assert.strictEqual(safeTenantId('../../evil.com/x'), null);
+    assert.strictEqual(safeTenantId('common/../../evil.com'), null);
+  });
+
+  await testAsync('HTML escaping neutralises values rendered on the OAuth page', async () => {
+    assert.strictEqual(
+      escapeHtml('<img src=x onerror="alert(1)">'),
+      '&lt;img src=x onerror=&quot;alert(1)&quot;&gt;'
+    );
+    assert.strictEqual(escapeHtml(null), '');
   });
 
   // ============================================================

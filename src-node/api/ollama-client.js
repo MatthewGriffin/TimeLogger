@@ -310,47 +310,6 @@ Provide a concise summary.`;
   }
 
   /**
-   * Enhance or improve text
-   */
-  async enhanceText(text, style = 'professional') {
-    if (!this.available) {
-      return { error: 'Ollama not available' };
-    }
-
-    const styleGuide = {
-      professional: 'Make it professional and clear for business communication.',
-      friendly: 'Make it friendly and conversational.',
-      technical: 'Make it technical and precise.',
-      concise: 'Make it as concise as possible while keeping meaning.'
-    };
-
-    const prompt = `Rewrite the note below. ${styleGuide[style] || styleGuide.professional}
-
-Rules:
-- Output ONLY the rewritten note.
-- Do not add commentary, preamble, explanations or quotation marks.
-- Keep it to the same length or shorter than the original.
-
-Note: ${text}`;
-
-    try {
-      const result = await this.generate(prompt);
-      return {
-        success: true,
-        enhanced: result.response.trim(),
-        model: result.model,
-        style: style
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.message,
-        original: text
-      };
-    }
-  }
-
-  /**
    * Test LLM functionality
    */
   async testLLM() {
