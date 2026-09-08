@@ -134,7 +134,7 @@ const save = async (_conflict: MeetingConflict, resolutions: MeetingConflictReso
   align-items: center;
   background: none;
   border: none;
-  color: #e2e8f0;
+  color: var(--color-text);
   font-weight: 600;
   font-size: 0.9rem;
   padding: 0.75rem 1rem;
@@ -143,7 +143,7 @@ const save = async (_conflict: MeetingConflict, resolutions: MeetingConflictReso
 
 .chevron {
   transition: transform 0.15s ease;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
 }
 
 .chevron.open {
@@ -155,7 +155,7 @@ const save = async (_conflict: MeetingConflict, resolutions: MeetingConflictReso
 }
 
 .review-status {
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   font-size: 0.85rem;
   margin: 0;
 }
@@ -178,21 +178,21 @@ const save = async (_conflict: MeetingConflict, resolutions: MeetingConflictReso
   justify-content: space-between;
   align-items: center;
   gap: 0.75rem;
-  color: #e2e8f0;
+  color: var(--color-text);
   font-weight: 600;
   font-size: 0.85rem;
 }
 
 .review-current {
   margin: 0.4rem 0 0;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   font-size: 0.8rem;
 }
 
 .btn-link {
   background: none;
   border: none;
-  color: #06b6d4;
+  color: var(--color-accent);
   font-weight: 600;
   font-size: 0.8rem;
   cursor: pointer;

@@ -1,6 +1,6 @@
 <template>
   <div class="tempo-page">
-    <div class="page-header">
+    <div class="tempo-header">
       <div>
         <h1>Tempo Status</h1>
         <p class="page-sub">What is actually recorded in Tempo, not what this app believes it submitted.</p>
@@ -417,19 +417,13 @@ const importWorklogs = async (worklogIds?: number[]) => {
 </script>
 
 <style scoped>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
 .tempo-page {
   min-height: 100vh;
-  color: #e2e8f0;
+  color: var(--color-text);
   padding: 24px;
 }
 
-.page-header {
+.tempo-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -438,7 +432,7 @@ const importWorklogs = async (worklogIds?: number[]) => {
   flex-wrap: wrap;
 }
 
-.page-header h1 {
+.tempo-header h1 {
   font-size: 26px;
   font-weight: 700;
 }
@@ -446,7 +440,7 @@ const importWorklogs = async (worklogIds?: number[]) => {
 .page-sub {
   margin-top: 4px;
   font-size: 13px;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
 }
 
 .header-actions {
@@ -460,9 +454,9 @@ const importWorklogs = async (worklogIds?: number[]) => {
 .btn-filter {
   padding: 8px 14px;
   border-radius: 8px;
-  border: 1px solid #334155;
+  border: 1px solid var(--color-control-solid);
   background: #1e293b;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -471,14 +465,14 @@ const importWorklogs = async (worklogIds?: number[]) => {
 .btn-range:hover,
 .btn-refresh:hover,
 .btn-filter:hover {
-  background: #334155;
+  background: var(--color-control-solid);
   color: #f1f5f9;
 }
 
 .btn-range.active,
 .btn-filter.active {
-  background: #3b82f6;
-  border-color: #3b82f6;
+  background: var(--color-info);
+  border-color: var(--color-info);
   color: #fff;
 }
 
@@ -493,7 +487,7 @@ const importWorklogs = async (worklogIds?: number[]) => {
   gap: 10px;
   flex-wrap: wrap;
   background: #1e293b;
-  border: 1px solid #334155;
+  border: 1px solid var(--color-control-solid);
   border-radius: 10px;
   padding: 12px 16px;
   margin-bottom: 20px;
@@ -501,14 +495,14 @@ const importWorklogs = async (worklogIds?: number[]) => {
 
 .date-bar label {
   font-size: 13px;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
 }
 
 .date-input {
-  background: #0f172a;
-  border: 1px solid #334155;
+  background: var(--color-surface);
+  border: 1px solid var(--color-control-solid);
   border-radius: 6px;
-  color: #e2e8f0;
+  color: var(--color-text);
   padding: 6px 10px;
   font-size: 13px;
 }
@@ -529,7 +523,7 @@ const importWorklogs = async (worklogIds?: number[]) => {
 .alert.error {
   background: rgba(239, 68, 68, 0.12);
   border: 1px solid rgba(239, 68, 68, 0.4);
-  color: #fca5a5;
+  color: var(--color-danger-soft);
 }
 
 .summary-cards {
@@ -541,7 +535,7 @@ const importWorklogs = async (worklogIds?: number[]) => {
 
 .card {
   background: #1e293b;
-  border: 1px solid #334155;
+  border: 1px solid var(--color-control-solid);
   border-radius: 10px;
   padding: 16px;
 }
@@ -559,13 +553,13 @@ const importWorklogs = async (worklogIds?: number[]) => {
 
 .card-label {
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   margin-top: 4px;
 }
 
 .section {
   background: #1e293b;
-  border: 1px solid #334155;
+  border: 1px solid var(--color-control-solid);
   border-radius: 12px;
   padding: 20px;
   margin-bottom: 20px;
@@ -584,8 +578,8 @@ const importWorklogs = async (worklogIds?: number[]) => {
 }
 
 .count {
-  background: #334155;
-  color: #cbd5e1;
+  background: var(--color-control-solid);
+  color: var(--color-text-muted);
   border-radius: 20px;
   padding: 2px 10px;
   font-size: 12px;
@@ -593,7 +587,7 @@ const importWorklogs = async (worklogIds?: number[]) => {
 
 .section-note {
   font-size: 13px;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   margin-bottom: 12px;
 }
 
@@ -605,7 +599,7 @@ const importWorklogs = async (worklogIds?: number[]) => {
 }
 
 .table {
-  border: 1px solid #334155;
+  border: 1px solid var(--color-control-solid);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -621,8 +615,8 @@ const importWorklogs = async (worklogIds?: number[]) => {
 }
 
 .table-header {
-  background: #0f172a;
-  color: #94a3b8;
+  background: var(--color-surface);
+  color: var(--color-text-subtle);
   font-weight: 600;
   font-size: 12px;
   text-transform: uppercase;
@@ -630,7 +624,7 @@ const importWorklogs = async (worklogIds?: number[]) => {
 }
 
 .table-row {
-  border-top: 1px solid #334155;
+  border-top: 1px solid var(--color-control-solid);
 }
 
 /* The reconcile and Tempo-only tables have different column counts, so the
@@ -652,7 +646,7 @@ const importWorklogs = async (worklogIds?: number[]) => {
 
 .import-btn {
   padding: 5px 10px;
-  border: 1px solid #3b82f6;
+  border: 1px solid var(--color-info);
   border-radius: 6px;
   background: rgba(59, 130, 246, 0.12);
   color: #93c5fd;
@@ -674,7 +668,7 @@ const importWorklogs = async (worklogIds?: number[]) => {
 .import-all-btn {
   margin-left: auto;
   padding: 6px 12px;
-  border: 1px solid #3b82f6;
+  border: 1px solid var(--color-info);
   border-radius: 6px;
   background: rgba(59, 130, 246, 0.12);
   color: #93c5fd;
@@ -725,7 +719,7 @@ const importWorklogs = async (worklogIds?: number[]) => {
 }
 
 .ticket-chip {
-  background: #334155;
+  background: var(--color-control-solid);
   color: #93c5fd;
   border-radius: 5px;
   padding: 2px 8px;
@@ -735,7 +729,7 @@ const importWorklogs = async (worklogIds?: number[]) => {
 
 .ticket-chip.missing {
   background: rgba(239, 68, 68, 0.18);
-  color: #fca5a5;
+  color: var(--color-danger-soft);
   font-family: inherit;
 }
 
@@ -762,7 +756,7 @@ const importWorklogs = async (worklogIds?: number[]) => {
 
 .status-chip.bad {
   background: rgba(239, 68, 68, 0.18);
-  color: #fca5a5;
+  color: var(--color-danger-soft);
 }
 
 .status-chip.warn {
@@ -772,7 +766,7 @@ const importWorklogs = async (worklogIds?: number[]) => {
 
 .status-chip.pending {
   background: rgba(148, 163, 184, 0.15);
-  color: #cbd5e1;
+  color: var(--color-text-muted);
 }
 
 .differs {
@@ -786,8 +780,7 @@ const importWorklogs = async (worklogIds?: number[]) => {
 
 .empty-state {
   padding: 32px;
-  text-align: center;
-  color: #94a3b8;
   font-size: 14px;
 }
+
 </style>

@@ -492,15 +492,9 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 </script>
 
 <style scoped>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
 .notes-page {
   min-height: 100vh;
-  color: #e2e8f0;
+  color: var(--color-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   overflow-y: auto;
   display: flex;
@@ -508,19 +502,6 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 }
 
 /* Page Header */
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 2rem 3rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
-  background: rgba(15, 23, 42, 0.5);
-  backdrop-filter: blur(10px);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-
 .page-header h1 {
   font-size: 1.8rem;
   font-weight: 700;
@@ -535,8 +516,8 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 .btn-sync {
   padding: 0.75rem 1.25rem;
   background: rgba(148, 163, 184, 0.12);
-  color: #e2e8f0;
-  border: 1px solid rgba(148, 163, 184, 0.3);
+  color: var(--color-text);
+  border: 1px solid var(--color-border-stronger);
   border-radius: 0.5rem;
   cursor: pointer;
   font-weight: 600;
@@ -544,7 +525,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 }
 
 .btn-sync:hover:not(:disabled) {
-  background: rgba(148, 163, 184, 0.2);
+  background: var(--color-border-strong);
   border-color: rgba(148, 163, 184, 0.5);
 }
 
@@ -571,8 +552,8 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 
 .btn-new-note {
   padding: 0.75rem 1.5rem;
-  background: linear-gradient(135deg, #06b6d4, #0891b2);
-  color: #0f172a;
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-strong));
+  color: var(--color-on-accent);
   border: none;
   border-radius: 0.5rem;
   cursor: pointer;
@@ -583,7 +564,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 
 .btn-new-note:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 16px rgba(6, 182, 212, 0.3);
+  box-shadow: 0 8px 16px var(--color-accent-ring);
 }
 
 /* Layout */
@@ -597,7 +578,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 .notes-sidebar {
   width: 250px;
   background: rgba(20, 30, 50, 0.8);
-  border-right: 1px solid rgba(148, 163, 184, 0.1);
+  border-right: 1px solid var(--color-border);
   padding: 1.5rem 0;
   display: flex;
   flex-direction: column;
@@ -611,18 +592,18 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 .search-input {
   width: 100%;
   padding: 0.75rem;
-  background: rgba(51, 65, 85, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: var(--color-control);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.5rem;
-  color: #e2e8f0;
+  color: var(--color-text);
   font-size: 0.9rem;
   transition: all 0.3s ease;
 }
 
 .search-input:focus {
   outline: none;
-  border-color: #06b6d4;
-  background: rgba(51, 65, 85, 0.8);
+  border-color: var(--color-accent);
+  background: var(--color-control-hover);
 }
 
 .topics-list {
@@ -639,7 +620,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   padding: 0.75rem 1rem;
   background: transparent;
   border: none;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   cursor: pointer;
   border-radius: 0.5rem;
   transition: all 0.3s ease;
@@ -647,23 +628,23 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 }
 
 .topic-item:hover {
-  background: rgba(51, 65, 85, 0.5);
-  color: #e2e8f0;
+  background: var(--color-control);
+  color: var(--color-text);
 }
 
 .topic-item.active {
-  background: rgba(6, 182, 212, 0.2);
-  color: #06b6d4;
-  border-bottom: 2px solid #06b6d4;
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+  border-bottom: 2px solid var(--color-accent);
   padding-bottom: calc(0.75rem - 2px);
 }
 
 .topic-count {
   font-size: 0.85rem;
-  background: rgba(51, 65, 85, 0.5);
+  background: var(--color-control);
   padding: 0.25rem 0.5rem;
   border-radius: 0.25rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
 }
 
 /* Main Content */
@@ -681,7 +662,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   align-items: center;
   margin-bottom: 2rem;
   padding-bottom: 1rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .notes-header h2 {
@@ -691,7 +672,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 
 .notes-count {
   font-size: 0.9rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
 }
 
 /* Notes List */
@@ -704,14 +685,14 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 .note-item {
   padding: 1.5rem;
   background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.6));
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border: 1px solid var(--color-border);
   border-radius: 0.75rem;
   cursor: pointer;
   transition: all 0.3s ease;
 }
 
 .note-item:hover {
-  border-color: rgba(148, 163, 184, 0.3);
+  border-color: var(--color-border-stronger);
   background: linear-gradient(135deg, rgba(30, 41, 59, 0.95), rgba(20, 30, 50, 0.8));
   transform: translateX(4px);
 }
@@ -732,7 +713,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 .note-header h3 {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--color-text);
   flex: 1;
 }
 
@@ -741,7 +722,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 }
 
 .note-preview {
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   font-size: 0.95rem;
   line-height: 1.5;
   margin-bottom: 1rem;
@@ -751,7 +732,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   display: inline-block;
   font-size: 0.75rem;
   font-weight: 600;
-  color: #06b6d4;
+  color: var(--color-accent);
   background: rgba(6, 182, 212, 0.12);
   padding: 0.15rem 0.5rem;
   border-radius: 0.25rem;
@@ -771,13 +752,13 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 
 .note-time {
   font-size: 0.85rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
 }
 
 .btn-icon {
   background: none;
   border: none;
-  color: #06b6d4;
+  color: var(--color-accent);
   font-size: 1.2rem;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -786,7 +767,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 
 .btn-icon:hover:not(:disabled) {
   transform: scale(1.2);
-  color: #0891b2;
+  color: var(--color-accent-strong);
 }
 
 .btn-icon:disabled {
@@ -795,16 +776,10 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 }
 
 .btn-icon.delete:hover:not(:disabled) {
-  color: #ef4444;
+  color: var(--color-danger);
 }
 
 /* Empty State */
-.empty-state {
-  text-align: center;
-  padding: 3rem;
-  color: #94a3b8;
-}
-
 .empty-icon {
   font-size: 3rem;
   margin-bottom: 1rem;
@@ -817,23 +792,8 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 }
 
 /* Modal */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
 .modal {
-  background: linear-gradient(135deg, #0f172a, #1a1f3a);
-  border: 1px solid rgba(148, 163, 184, 0.1);
-  border-radius: 1rem;
-  padding: 2rem;
   max-width: 600px;
-  width: 90%;
   max-height: 90vh;
   overflow-y: auto;
 }
@@ -843,18 +803,9 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 }
 
 .new-topic-copy {
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   line-height: 1.6;
   margin: 0;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.5rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
 }
 
 .modal-header h2 {
@@ -862,17 +813,8 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   font-weight: 700;
 }
 
-.modal-close {
-  background: none;
-  border: none;
-  color: #cbd5e1;
-  font-size: 1.5rem;
-  cursor: pointer;
-  transition: color 0.3s ease;
-}
-
 .modal-close:hover {
-  color: #e2e8f0;
+  color: var(--color-text);
 }
 
 /* Form */
@@ -891,17 +833,17 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 .form-group label {
   font-weight: 600;
   font-size: 0.9rem;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
 }
 
 .form-group input,
 .form-group select,
 .form-group textarea {
   padding: 0.75rem;
-  background: rgba(51, 65, 85, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: var(--color-control);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.5rem;
-  color: #e2e8f0;
+  color: var(--color-text);
   font-size: 0.95rem;
   font-family: inherit;
   transition: all 0.3s ease;
@@ -911,8 +853,8 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 .form-group select:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: #06b6d4;
-  background: rgba(51, 65, 85, 0.8);
+  border-color: var(--color-accent);
+  background: var(--color-control-hover);
 }
 
 .form-group textarea {
@@ -923,7 +865,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 .field-hint {
   margin: -0.5rem 0 0;
   font-size: 0.85rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   font-style: italic;
 }
 
@@ -938,14 +880,14 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   background: rgba(6, 182, 212, 0.15);
   border: 1px solid rgba(6, 182, 212, 0.4);
   border-radius: 0.375rem;
-  color: #06b6d4;
+  color: var(--color-accent);
   font-size: 0.85rem;
   cursor: pointer;
   transition: background 0.2s ease;
 }
 
 .btn-ai:hover:not(:disabled) {
-  background: rgba(6, 182, 212, 0.3);
+  background: var(--color-accent-ring);
 }
 
 .btn-ai:disabled {
@@ -966,66 +908,35 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   align-items: center;
   gap: 0.6rem;
   padding: 0.5rem 0.75rem;
-  background: rgba(51, 65, 85, 0.5);
+  background: var(--color-control);
   border-radius: 0.375rem;
   cursor: pointer;
   transition: background 0.2s ease;
 }
 
 .ticket-match:hover {
-  background: rgba(51, 65, 85, 0.8);
+  background: var(--color-control-hover);
 }
 
 .ticket-match-key {
   font-weight: 600;
-  color: #06b6d4;
+  color: var(--color-accent);
 }
 
 .ticket-match-summary {
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   font-size: 0.85rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.modal-footer {
-  display: flex;
-  gap: 1rem;
-  justify-content: flex-end;
-  margin-top: 2rem;
-  padding-top: 1rem;
-  border-top: 1px solid rgba(148, 163, 184, 0.1);
-}
-
-.btn-primary {
-  padding: 0.75rem 1.5rem;
-  background: linear-gradient(135deg, #06b6d4, #0891b2);
-  color: #0f172a;
-  border: none;
-  border-radius: 0.5rem;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.3s ease;
-}
-
 .btn-primary:hover {
   transform: translateY(-2px);
 }
 
-.btn-secondary {
-  padding: 0.75rem 1.5rem;
-  background: rgba(51, 65, 85, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  color: #cbd5e1;
-  border-radius: 0.5rem;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.3s ease;
-}
-
 .btn-secondary:hover {
-  background: rgba(51, 65, 85, 0.8);
+  background: var(--color-control-hover);
 }
 
 /* Scrollbar */
@@ -1044,7 +955,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 .notes-sidebar::-webkit-scrollbar-thumb,
 .notes-main::-webkit-scrollbar-thumb,
 .modal::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.2);
+  background: var(--color-border-strong);
   border-radius: 3px;
 }
 
@@ -1073,7 +984,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   .notes-sidebar {
     width: 100%;
     border-right: none;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+    border-bottom: 1px solid var(--color-border);
     height: auto;
     padding: 1rem 0;
   }

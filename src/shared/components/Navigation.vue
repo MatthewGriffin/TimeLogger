@@ -73,19 +73,13 @@ const isActive = (path: string) => {
 </script>
 
 <style scoped>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
 .navigation {
   display: flex;
   flex-direction: column;
   width: 280px;
   flex-shrink: 0;
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(10, 15, 30, 0.95));
-  border-right: 1px solid rgba(148, 163, 184, 0.1);
+  border-right: 1px solid var(--color-border);
   min-height: 100vh;
   backdrop-filter: blur(10px);
   position: relative;
@@ -131,7 +125,7 @@ const isActive = (path: string) => {
   justify-content: space-between;
   align-items: center;
   padding: 1.5rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid var(--color-border);
   gap: 1rem;
 }
 
@@ -151,16 +145,16 @@ const isActive = (path: string) => {
 .nav-title {
   font-size: 1.2rem;
   font-weight: 700;
-  color: #06b6d4;
+  color: var(--color-accent);
   letter-spacing: -0.3px;
   white-space: nowrap;
   overflow: hidden;
 }
 
 .nav-toggle {
-  background: rgba(51, 65, 85, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.1);
-  color: #cbd5e1;
+  background: var(--color-control);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
   width: 36px;
   height: 36px;
   border-radius: 0.5rem;
@@ -173,8 +167,8 @@ const isActive = (path: string) => {
 }
 
 .nav-toggle:hover {
-  background: rgba(51, 65, 85, 0.8);
-  color: #e2e8f0;
+  background: var(--color-control-hover);
+  color: var(--color-text);
 }
 
 .nav-links {
@@ -191,7 +185,7 @@ const isActive = (path: string) => {
   flex-direction: column;
   gap: 0.5rem;
   padding: 1rem;
-  border-top: 1px solid rgba(148, 163, 184, 0.1);
+  border-top: 1px solid var(--color-border);
 }
 
 .nav-link {
@@ -199,7 +193,7 @@ const isActive = (path: string) => {
   align-items: center;
   gap: 0.75rem;
   padding: 0.75rem 1rem;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   text-decoration: none;
   border-radius: 0.5rem;
   transition: all 0.3s ease;
@@ -210,14 +204,14 @@ const isActive = (path: string) => {
 }
 
 .nav-link:hover {
-  background: rgba(51, 65, 85, 0.5);
-  color: #e2e8f0;
+  background: var(--color-control);
+  color: var(--color-text);
 }
 
 .nav-link.active {
-  background: rgba(6, 182, 212, 0.2);
-  color: #06b6d4;
-  border-bottom: 2px solid #06b6d4;
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+  border-bottom: 2px solid var(--color-accent);
   padding-bottom: calc(0.75rem - 2px);
 }
 
@@ -247,7 +241,7 @@ const isActive = (path: string) => {
 }
 
 .nav-links::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.2);
+  background: var(--color-border-strong);
   border-radius: 3px;
 }
 
@@ -280,7 +274,7 @@ const isActive = (path: string) => {
 
   .nav-link.active {
     border-left: none;
-    border-bottom: 3px solid #06b6d4;
+    border-bottom: 3px solid var(--color-accent);
     padding-bottom: calc(0.75rem - 3px);
   }
 }

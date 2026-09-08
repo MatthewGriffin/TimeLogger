@@ -864,15 +864,9 @@ onMounted(async () => {
 </script>
 
 <style>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
 .settings-page {
   min-height: 100vh;
-  color: #e2e8f0;
+  color: var(--color-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   overflow-y: auto;
   display: flex;
@@ -880,19 +874,6 @@ onMounted(async () => {
 }
 
 /* Page Header */
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 2rem 3rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
-  background: rgba(15, 23, 42, 0.5);
-  backdrop-filter: blur(10px);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-
 .page-header h1 {
   font-size: 1.8rem;
   font-weight: 700;
@@ -900,8 +881,8 @@ onMounted(async () => {
 
 .btn-save {
   padding: 0.75rem 1.5rem;
-  background: linear-gradient(135deg, #06b6d4, #0891b2);
-  color: #0f172a;
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-strong));
+  color: var(--color-on-accent);
   border: none;
   border-radius: 0.5rem;
   cursor: pointer;
@@ -912,7 +893,7 @@ onMounted(async () => {
 
 .btn-save:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 8px 16px rgba(6, 182, 212, 0.3);
+  box-shadow: 0 8px 16px var(--color-accent-ring);
 }
 
 .btn-save:disabled {
@@ -931,7 +912,7 @@ onMounted(async () => {
 .settings-tabs {
   width: 200px;
   background: rgba(20, 30, 50, 0.8);
-  border-right: 1px solid rgba(148, 163, 184, 0.1);
+  border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
   padding: 1rem 0;
@@ -942,7 +923,7 @@ onMounted(async () => {
   padding: 1rem;
   background: transparent;
   border: none;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   cursor: pointer;
   text-align: left;
   font-weight: 500;
@@ -955,14 +936,14 @@ onMounted(async () => {
 }
 
 .tab-button:hover {
-  background: rgba(51, 65, 85, 0.5);
-  color: #e2e8f0;
+  background: var(--color-control);
+  color: var(--color-text);
 }
 
 .tab-button.active {
-  background: rgba(6, 182, 212, 0.2);
-  color: #06b6d4;
-  border-bottom: 2px solid #06b6d4;
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+  border-bottom: 2px solid var(--color-accent);
   padding-bottom: calc(1rem - 2px);
 }
 
@@ -985,7 +966,7 @@ onMounted(async () => {
   font-weight: 700;
   margin-bottom: 1rem;
   padding-bottom: 1rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid var(--color-border);
 }
 
 /* Form */
@@ -998,7 +979,7 @@ onMounted(async () => {
 /* Current Sprint */
 .section-intro {
   font-size: 0.875rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   line-height: 1.5;
   margin: 0 0 1rem;
 }
@@ -1007,7 +988,7 @@ onMounted(async () => {
   font-size: 1.05rem;
   font-weight: 700;
   margin: 0.5rem 0 0.25rem;
-  color: #e2e8f0;
+  color: var(--color-text);
 }
 
 .form-row {
@@ -1070,12 +1051,12 @@ onMounted(async () => {
 }
 
 .mapping-header {
-  background: rgba(51, 65, 85, 0.5);
+  background: var(--color-control);
   font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
 }
 
 .mapping-row + .mapping-row {
@@ -1085,23 +1066,23 @@ onMounted(async () => {
 .mapping-label {
   font-weight: 600;
   font-size: 0.9rem;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
 }
 
 .mapping-table input {
   width: 100%;
   padding: 0.45rem 0.6rem;
-  background: rgba(51, 65, 85, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: var(--color-control);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.35rem;
-  color: #e2e8f0;
+  color: var(--color-text);
   font-size: 0.875rem;
   font-family: inherit;
 }
 
 .mapping-table input:focus {
   outline: none;
-  border-color: #06b6d4;
+  border-color: var(--color-accent);
 }
 
 .mapping-ticket {
@@ -1127,7 +1108,7 @@ onMounted(async () => {
 .test-result.bad {
   background: rgba(248, 113, 113, 0.12);
   border: 1px solid rgba(248, 113, 113, 0.3);
-  color: #fca5a5;
+  color: var(--color-danger-soft);
 }
 
 .form-group {
@@ -1139,16 +1120,16 @@ onMounted(async () => {
 .form-group label {
   font-weight: 600;
   font-size: 0.9rem;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
 }
 
 .form-group input,
 .form-group select {
   padding: 0.75rem;
-  background: rgba(51, 65, 85, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: var(--color-control);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.5rem;
-  color: #e2e8f0;
+  color: var(--color-text);
   font-size: 0.95rem;
   font-family: inherit;
   transition: all 0.3s ease;
@@ -1157,8 +1138,8 @@ onMounted(async () => {
 .form-group input:focus,
 .form-group select:focus {
   outline: none;
-  border-color: #06b6d4;
-  background: rgba(51, 65, 85, 0.8);
+  border-color: var(--color-accent);
+  background: var(--color-control-hover);
 }
 
 .form-group.checkbox {
@@ -1171,7 +1152,7 @@ onMounted(async () => {
   width: 18px;
   height: 18px;
   cursor: pointer;
-  accent-color: #06b6d4;
+  accent-color: var(--color-accent);
   margin: 0;
   flex-shrink: 0;
 }
@@ -1184,12 +1165,12 @@ onMounted(async () => {
 
 .form-hint {
   font-size: 0.85rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   line-height: 1.5;
-  background: rgba(6, 182, 212, 0.1);
+  background: var(--color-accent-soft);
   padding: 0.75rem 1rem;
   border-radius: 0.5rem;
-  border-bottom: 2px solid #06b6d4;
+  border-bottom: 2px solid var(--color-accent);
   padding-bottom: calc(0.75rem - 2px);
 }
 
@@ -1211,8 +1192,8 @@ onMounted(async () => {
 
 .error-hint {
   background: rgba(239, 68, 68, 0.1);
-  border-bottom-color: #ef4444;
-  color: #fca5a5;
+  border-bottom-color: var(--color-danger);
+  color: var(--color-danger-soft);
 }
 
 .account-connection {
@@ -1234,7 +1215,7 @@ onMounted(async () => {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #ef4444;
+  background: var(--color-danger);
   flex-shrink: 0;
 }
 
@@ -1286,11 +1267,11 @@ onMounted(async () => {
 }
 
 .account-message.error {
-  color: #fca5a5;
+  color: var(--color-danger-soft);
 }
 
 .form-hint a {
-  color: #06b6d4;
+  color: var(--color-accent);
   text-decoration: none;
   font-weight: 600;
   transition: color 0.3s ease;
@@ -1298,7 +1279,7 @@ onMounted(async () => {
 
 .form-hint a:hover {
   text-decoration: underline;
-  color: #0891b2;
+  color: var(--color-accent-strong);
 }
 
 /* Info Box */
@@ -1306,10 +1287,10 @@ onMounted(async () => {
   display: flex;
   gap: 1rem;
   padding: 1rem;
-  background: rgba(6, 182, 212, 0.1);
-  border: 1px solid rgba(6, 182, 212, 0.2);
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent-muted);
   border-radius: 0.5rem;
-  border-bottom: 2px solid #06b6d4;
+  border-bottom: 2px solid var(--color-accent);
   padding-bottom: calc(1rem - 2px);
 }
 
@@ -1321,7 +1302,7 @@ onMounted(async () => {
 .info-box p {
   margin: 0;
   font-size: 0.9rem;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   line-height: 1.5;
 }
 
@@ -1332,7 +1313,7 @@ onMounted(async () => {
 /* Status Group */
 .status-group {
   background: rgba(30, 41, 59, 0.8);
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border: 1px solid var(--color-border);
   border-radius: 0.5rem;
   padding: 1rem;
 }
@@ -1341,7 +1322,7 @@ onMounted(async () => {
   font-size: 1rem;
   font-weight: 700;
   margin-bottom: 1rem;
-  color: #e2e8f0;
+  color: var(--color-text);
 }
 
 .status-item {
@@ -1349,7 +1330,7 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   padding: 0.75rem 0;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .status-item:last-child {
@@ -1358,7 +1339,7 @@ onMounted(async () => {
 
 .status-label {
   font-weight: 500;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
 }
 
 .status-badge {
@@ -1370,38 +1351,30 @@ onMounted(async () => {
 
 .status-badge.connected {
   background: rgba(16, 185, 129, 0.2);
-  color: #10b981;
+  color: var(--color-success);
 }
 
 .status-badge.disconnected {
   background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
+  color: var(--color-danger);
 }
 
 .status-value {
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   font-family: 'Space Mono', monospace;
   font-size: 0.85rem;
 }
 
 /* Buttons */
 .btn-secondary {
-  padding: 0.75rem 1.5rem;
-  background: rgba(51, 65, 85, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  color: #cbd5e1;
-  border-radius: 0.5rem;
-  cursor: pointer;
-  font-weight: 600;
-  transition: all 0.3s ease;
   font-size: 0.95rem;
   align-self: flex-start;
 }
 
 .btn-secondary:hover {
-  background: rgba(51, 65, 85, 0.8);
+  background: var(--color-control-hover);
   border-color: rgba(148, 163, 184, 0.4);
-  color: #e2e8f0;
+  color: var(--color-text);
 }
 
 .button-group {
@@ -1414,7 +1387,7 @@ onMounted(async () => {
   width: 100%;
   height: 6px;
   border-radius: 3px;
-  background: rgba(51, 65, 85, 0.5);
+  background: var(--color-control);
   outline: none;
   -webkit-appearance: none;
   appearance: none;
@@ -1427,14 +1400,14 @@ onMounted(async () => {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #06b6d4;
+  background: var(--color-accent);
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(6, 182, 212, 0.3);
+  box-shadow: 0 2px 4px var(--color-accent-ring);
 }
 
 .slider::-webkit-slider-thumb:hover {
-  background: #0891b2;
+  background: var(--color-accent-strong);
   box-shadow: 0 4px 8px rgba(6, 182, 212, 0.5);
   transform: scale(1.1);
 }
@@ -1443,15 +1416,15 @@ onMounted(async () => {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #06b6d4;
+  background: var(--color-accent);
   cursor: pointer;
   border: none;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 4px rgba(6, 182, 212, 0.3);
+  box-shadow: 0 2px 4px var(--color-accent-ring);
 }
 
 .slider::-moz-range-thumb:hover {
-  background: #0891b2;
+  background: var(--color-accent-strong);
   box-shadow: 0 4px 8px rgba(6, 182, 212, 0.5);
   transform: scale(1.1);
 }
@@ -1462,7 +1435,7 @@ onMounted(async () => {
 }
 
 .slider::-moz-range-progress {
-  background: rgba(6, 182, 212, 0.3);
+  background: var(--color-accent-ring);
   height: 6px;
   border-radius: 3px;
 }
@@ -1471,14 +1444,14 @@ onMounted(async () => {
   display: flex;
   justify-content: space-between;
   font-size: 0.8rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   margin-top: 0.25rem;
 }
 
 /* Status Display */
 .status-display {
   background: rgba(30, 41, 59, 0.8);
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border: 1px solid var(--color-border);
   border-radius: 0.5rem;
   padding: 1rem;
   margin-bottom: 1rem;
@@ -1493,7 +1466,7 @@ onMounted(async () => {
 
 .status-label {
   font-weight: 500;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
 }
 
 .status-badge {
@@ -1505,24 +1478,24 @@ onMounted(async () => {
 
 .status-badge.connected {
   background: rgba(16, 185, 129, 0.2);
-  color: #10b981;
+  color: var(--color-success);
 }
 
 .status-badge.disconnected {
   background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
+  color: var(--color-danger);
 }
 
 /* Form Hint Small */
 .form-hint-small {
   font-size: 0.8rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   display: block;
   margin-top: 0.25rem;
 }
 
 .form-hint-small.error-text {
-  color: #ef4444;
+  color: var(--color-danger);
 }
 
 .model-row {
@@ -1544,23 +1517,23 @@ onMounted(async () => {
   display: flex;
   gap: 1rem;
   padding: 1rem;
-  background: rgba(6, 182, 212, 0.1);
-  border: 1px solid rgba(6, 182, 212, 0.2);
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-accent-muted);
   border-radius: 0.5rem;
-  border-bottom: 2px solid #06b6d4;
+  border-bottom: 2px solid var(--color-accent);
   padding-bottom: calc(1rem - 2px);
 }
 
 .info-box.warning {
   background: rgba(239, 68, 68, 0.1);
   border-color: rgba(239, 68, 68, 0.2);
-  border-bottom-color: #ef4444;
+  border-bottom-color: var(--color-danger);
 }
 
 .info-box.success {
   background: rgba(16, 185, 129, 0.1);
   border-color: rgba(16, 185, 129, 0.2);
-  border-bottom-color: #10b981;
+  border-bottom-color: var(--color-success);
 }
 
 .info-box ol {
@@ -1570,7 +1543,7 @@ onMounted(async () => {
 
 .info-box li {
   margin: 0.25rem 0;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
 }
 
 .info-box code {
@@ -1585,9 +1558,9 @@ onMounted(async () => {
 .readonly-field {
   padding: 0.75rem;
   background: rgba(30, 41, 59, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.5rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   font-family: 'Space Mono', monospace;
   font-size: 0.9rem;
 }
@@ -1595,7 +1568,7 @@ onMounted(async () => {
 /* About Card */
 .about-card {
   background: rgba(30, 41, 59, 0.8);
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border: 1px solid var(--color-border);
   border-radius: 0.5rem;
   padding: 1.5rem;
   margin-bottom: 1rem;
@@ -1606,7 +1579,7 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   padding: 0.75rem 0;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .about-item:last-child {
@@ -1615,11 +1588,11 @@ onMounted(async () => {
 
 .about-label {
   font-weight: 600;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
 }
 
 .about-value {
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   font-family: 'Space Mono', monospace;
   font-size: 0.9rem;
 }
@@ -1629,7 +1602,7 @@ onMounted(async () => {
   padding: 0.75rem 1.5rem;
   background: rgba(239, 68, 68, 0.15);
   border: 1px solid rgba(239, 68, 68, 0.5);
-  color: #fca5a5;
+  color: var(--color-danger-soft);
   border-radius: 0.5rem;
   cursor: pointer;
   font-weight: 600;
@@ -1641,7 +1614,7 @@ onMounted(async () => {
 .btn-danger:hover {
   background: rgba(239, 68, 68, 0.25);
   border-color: rgba(239, 68, 68, 0.7);
-  color: #ef4444;
+  color: var(--color-danger);
 }
 
 .btn-danger:disabled {
@@ -1662,7 +1635,7 @@ onMounted(async () => {
 
 .settings-tabs::-webkit-scrollbar-thumb,
 .tab-content::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.2);
+  background: var(--color-border-strong);
   border-radius: 3px;
 }
 
@@ -1695,7 +1668,7 @@ onMounted(async () => {
   .settings-tabs {
     width: 100%;
     border-right: none;
-    border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+    border-bottom: 1px solid var(--color-border);
     height: auto;
     flex-direction: row;
     overflow-x: auto;
@@ -1709,7 +1682,7 @@ onMounted(async () => {
 
   .tab-button.active {
     border-right: none;
-    border-bottom: 3px solid #06b6d4;
+    border-bottom: 3px solid var(--color-accent);
     padding-right: 1rem;
     padding-bottom: calc(0.5rem - 3px);
   }

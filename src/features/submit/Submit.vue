@@ -655,15 +655,9 @@ const submitSelected = async () => {
 </script>
 
 <style scoped>
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
 .submit-page {
   min-height: 100vh;
-  color: #e2e8f0;
+  color: var(--color-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   overflow-y: auto;
   display: flex;
@@ -671,20 +665,9 @@ const submitSelected = async () => {
 }
 
 /* Page Header */
-.page-header {
-  padding: 2rem 3rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
-  background: rgba(15, 23, 42, 0.5);
-  backdrop-filter: blur(10px);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-
 .page-header h1 {
   font-size: 1.8rem;
   font-weight: 700;
-  margin-bottom: 1rem;
 }
 
 .header-actions {
@@ -695,9 +678,9 @@ const submitSelected = async () => {
 
 .btn-range {
   padding: 0.5rem 1rem;
-  background: rgba(51, 65, 85, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  color: #cbd5e1;
+  background: var(--color-control);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text-muted);
   border-radius: 0.5rem;
   cursor: pointer;
   font-weight: 500;
@@ -706,14 +689,14 @@ const submitSelected = async () => {
 }
 
 .btn-range:hover {
-  background: rgba(51, 65, 85, 0.8);
+  background: var(--color-control-hover);
   border-color: rgba(148, 163, 184, 0.4);
 }
 
 .btn-range.active {
-  background: rgba(6, 182, 212, 0.2);
-  border-color: #06b6d4;
-  color: #06b6d4;
+  background: var(--color-accent-muted);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 
 /* Date range bar */
@@ -737,28 +720,28 @@ const submitSelected = async () => {
   flex-direction: column;
   gap: 0.35rem;
   font-size: 0.8rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
 }
 
 .date-input {
   padding: 0.5rem 0.75rem;
-  background: rgba(51, 65, 85, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: var(--color-control);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.5rem;
-  color: #e2e8f0;
+  color: var(--color-text);
   font-size: 0.9rem;
   font-family: inherit;
   color-scheme: dark;
 }
 
 .date-input:focus-visible {
-  outline: 2px solid #06b6d4;
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
 .range-summary {
   font-size: 0.85rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
 }
 
 .range-error {
@@ -786,7 +769,7 @@ const submitSelected = async () => {
 /* Controls */
 .controls-section {
   background: rgba(30, 41, 59, 0.8);
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border: 1px solid var(--color-border);
   border-radius: 0.75rem;
   padding: 1.5rem;
   backdrop-filter: blur(10px);
@@ -806,15 +789,15 @@ const submitSelected = async () => {
 .control-group label {
   font-weight: 600;
   font-size: 0.9rem;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
 }
 
 .select-control {
   padding: 0.75rem;
-  background: rgba(51, 65, 85, 0.5);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: var(--color-control);
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.5rem;
-  color: #e2e8f0;
+  color: var(--color-text);
   font-size: 0.95rem;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -822,15 +805,15 @@ const submitSelected = async () => {
 
 .select-control:focus {
   outline: none;
-  border-color: #06b6d4;
-  background: rgba(51, 65, 85, 0.8);
+  border-color: var(--color-accent);
+  background: var(--color-control-hover);
 }
 
 .btn-submit-all {
   width: 100%;
   padding: 0.75rem 1.5rem;
-  background: linear-gradient(135deg, #06b6d4, #0891b2);
-  color: #0f172a;
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-strong));
+  color: var(--color-on-accent);
   border: none;
   border-radius: 0.5rem;
   cursor: pointer;
@@ -841,7 +824,7 @@ const submitSelected = async () => {
 
 .btn-submit-all:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 8px 16px rgba(6, 182, 212, 0.3);
+  box-shadow: 0 8px 16px var(--color-accent-ring);
 }
 
 .btn-submit-all:disabled {
@@ -861,7 +844,7 @@ const submitSelected = async () => {
   justify-content: space-between;
   align-items: center;
   padding-bottom: 1rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .section-header h2 {
@@ -871,13 +854,13 @@ const submitSelected = async () => {
 
 .entry-count {
   font-size: 0.9rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
 }
 
 /* Table */
 .entries-table {
   background: rgba(30, 41, 59, 0.8);
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border: 1px solid var(--color-border);
   border-radius: 0.75rem;
   overflow: hidden;
   backdrop-filter: blur(10px);
@@ -888,10 +871,10 @@ const submitSelected = async () => {
   grid-template-columns: 40px 110px 1fr 110px 190px 90px;
   gap: 1rem;
   padding: 1rem 1.5rem;
-  background: rgba(51, 65, 85, 0.5);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  background: var(--color-control);
+  border-bottom: 1px solid var(--color-border);
   font-weight: 600;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   text-transform: uppercase;
   font-size: 0.85rem;
   letter-spacing: 0.05em;
@@ -908,7 +891,7 @@ const submitSelected = async () => {
   gap: 1rem;
   padding: 1rem 1.5rem;
   align-items: center;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid var(--color-border);
   transition: background 0.3s ease;
 }
 
@@ -917,7 +900,7 @@ const submitSelected = async () => {
 }
 
 .table-row.selected {
-  background: rgba(6, 182, 212, 0.1);
+  background: var(--color-accent-soft);
 }
 
 .col-checkbox {
@@ -930,22 +913,22 @@ const submitSelected = async () => {
   width: 18px;
   height: 18px;
   cursor: pointer;
-  accent-color: #06b6d4;
+  accent-color: var(--color-accent);
 }
 
 .col-date {
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   font-family: 'Space Mono', monospace;
   font-size: 0.9rem;
 }
 
 .col-task {
-  color: #e2e8f0;
+  color: var(--color-text);
   font-weight: 500;
 }
 
 .col-ticket {
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   font-family: 'Space Mono', monospace;
   font-size: 0.9rem;
 }
@@ -962,9 +945,9 @@ const submitSelected = async () => {
   min-width: 0;
   padding: 0.3rem 0.4rem;
   background: rgba(15, 23, 42, 0.8);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--color-border-strong);
   border-radius: 6px;
-  color: #e2e8f0;
+  color: var(--color-text);
   font-size: 0.8rem;
 }
 
@@ -976,7 +959,7 @@ const submitSelected = async () => {
   text-transform: uppercase;
   letter-spacing: 0.03em;
   background: rgba(148, 163, 184, 0.15);
-  color: #94a3b8;
+  color: var(--color-text-subtle);
 }
 
 .source-rule { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
@@ -1000,7 +983,7 @@ const submitSelected = async () => {
 .btn-suggest:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .col-hours {
-  color: #06b6d4;
+  color: var(--color-accent);
   font-weight: 600;
   text-align: right;
 }
@@ -1067,12 +1050,6 @@ const submitSelected = async () => {
   opacity: 0.7;
 }
 
-.empty-state {
-  text-align: center;
-  padding: 3rem;
-  color: #94a3b8;
-}
-
 .empty-icon {
   font-size: 3rem;
   margin-bottom: 1rem;
@@ -1096,7 +1073,7 @@ const submitSelected = async () => {
 .history-section,
 .summary-section {
   background: rgba(30, 41, 59, 0.8);
-  border: 1px solid rgba(148, 163, 184, 0.1);
+  border: 1px solid var(--color-border);
   border-radius: 0.75rem;
   padding: 1.5rem;
   backdrop-filter: blur(10px);
@@ -1108,7 +1085,7 @@ const submitSelected = async () => {
   font-weight: 700;
   margin-bottom: 1.5rem;
   padding-bottom: 1rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .history-list {
@@ -1128,16 +1105,16 @@ const submitSelected = async () => {
 }
 
 .history-item:hover {
-  background: rgba(51, 65, 85, 0.5);
+  background: var(--color-control);
 }
 
 .history-item.status-success {
-  border-bottom: 2px solid #10b981;
+  border-bottom: 2px solid var(--color-success);
   padding-bottom: calc(0.75rem - 2px);
 }
 
 .history-item.status-failed {
-  border-bottom: 2px solid #ef4444;
+  border-bottom: 2px solid var(--color-danger);
   padding-bottom: calc(0.75rem - 2px);
 }
 
@@ -1154,11 +1131,11 @@ const submitSelected = async () => {
 }
 
 .history-item.status-success .history-icon {
-  color: #10b981;
+  color: var(--color-success);
 }
 
 .history-item.status-failed .history-icon {
-  color: #ef4444;
+  color: var(--color-danger);
 }
 
 .history-item.status-partial .history-icon {
@@ -1172,13 +1149,13 @@ const submitSelected = async () => {
 
 .history-date {
   font-size: 0.85rem;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   font-weight: 500;
 }
 
 .history-count {
   font-size: 0.75rem;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
 }
 
 .history-time {
@@ -1191,9 +1168,9 @@ const submitSelected = async () => {
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: capitalize;
-  color: #94a3b8;
+  color: var(--color-text-subtle);
   padding: 0.25rem 0.5rem;
-  background: rgba(51, 65, 85, 0.5);
+  background: var(--color-control);
   border-radius: 0.25rem;
 }
 
@@ -1215,14 +1192,14 @@ const submitSelected = async () => {
 
 .stat-label {
   font-size: 0.9rem;
-  color: #cbd5e1;
+  color: var(--color-text-muted);
   font-weight: 500;
 }
 
 .stat-value {
   font-size: 1.2rem;
   font-weight: 700;
-  color: #06b6d4;
+  color: var(--color-accent);
   font-family: 'Space Mono', monospace;
 }
 
@@ -1236,7 +1213,7 @@ const submitSelected = async () => {
 }
 
 .table-body::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.2);
+  background: var(--color-border-strong);
   border-radius: 3px;
 }
 
