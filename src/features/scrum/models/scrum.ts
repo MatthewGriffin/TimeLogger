@@ -38,6 +38,4 @@ export interface ScrumReport {
   today: ScrumDay
   blockers: ScrumBlocker[]
   summary: string
-  /** Whether the paragraph came from the local model or the built-in composer. */
-  summarySource: 'ai' | 'fallback'
 }

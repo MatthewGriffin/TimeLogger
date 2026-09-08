@@ -1333,15 +1333,12 @@ async function runTests() {
   });
 
   await testAsync('the scrum summary reports both days and always produces a paragraph', async () => {
-    // Built without the model so the deterministic path is what is asserted;
-    // the tab has to be useful with Ollama switched off.
-    const result = await executeTool('generate_scrum_summary', { date: '2026-09-08', use_ai: false });
+    const result = await executeTool('generate_scrum_summary', { date: '2026-09-08' });
     assert.strictEqual(result.success, true);
     assert.strictEqual(result.today.date, '2026-09-08');
     assert.strictEqual(result.yesterday.date, previousWorkingDay('2026-09-08'));
     assert(Array.isArray(result.today.entries) && Array.isArray(result.yesterday.entries));
     assert(Array.isArray(result.blockers), 'Blockers should always be a list');
-    assert.strictEqual(result.summarySource, 'fallback');
     assert(typeof result.summary === 'string' && result.summary.length > 0, 'A paragraph is always produced');
   });
 
@@ -1356,7 +1353,7 @@ async function runTests() {
     const noteId = created.noteId;
 
     try {
-      const result = await executeTool('generate_scrum_summary', { date: '2026-09-08', use_ai: false });
+      const result = await executeTool('generate_scrum_summary', { date: '2026-09-08' });
       assert.strictEqual(result.success, true);
       assert(result.blockers.some(b => b.id === noteId), 'The open blocker should be listed');
       assert(
@@ -1371,7 +1368,7 @@ async function runTests() {
   await testAsync('with no open blockers the summary says so', async () => {
     const before = await executeTool('get_notes', { open_blockers_only: true });
     if (before.notes.length === 0) {
-      const result = await executeTool('generate_scrum_summary', { date: '2026-09-08', use_ai: false });
+      const result = await executeTool('generate_scrum_summary', { date: '2026-09-08' });
       assert(
         result.summary.toLowerCase().includes('no blockers'),
         'An empty blocker list should be stated, not omitted'
@@ -1479,7 +1476,7 @@ async function runTests() {
       summary: 'Pick up the parser bug'
     });
 
-    const result = await executeTool('generate_scrum_summary', { date: TEST_DATE, use_ai: false });
+    const result = await executeTool('generate_scrum_summary', { date: TEST_DATE });
     assert.strictEqual(result.success, true);
     assert(result.summary.includes('TEST-904'), 'Planned tickets belong in the paragraph');
     assert(
@@ -1506,7 +1503,7 @@ async function runTests() {
       summary: 'Then review the API'
     });
 
-    const result = await executeTool('generate_scrum_summary', { date: TEST_DATE, use_ai: false });
+    const result = await executeTool('generate_scrum_summary', { date: TEST_DATE });
     assert(/am working on/i.test(result.summary), 'Logged time is what is actually happening');
     assert(/plan to pick up/i.test(result.summary), 'Planned work is what is still to come');
     assert(result.summary.includes('TEST-905'), 'The logged ticket should be reported');

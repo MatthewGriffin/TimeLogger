@@ -13,12 +13,7 @@
       <div v-if="isLoading" class="loading-state">Building your update...</div>
 
       <template v-else-if="report">
-        <ScrumSummaryCard
-          :summary="report.summary"
-          :source="report.summarySource"
-          :regenerating="isRegenerating"
-          @regenerate="regenerate(true)"
-        />
+        <ScrumSummaryCard :summary="report.summary" />
 
         <div class="scrum-days">
           <ScrumDayPanel :day="report.yesterday" label="Yesterday" />
@@ -61,7 +56,7 @@ import { useScrum } from '@/features/scrum/composables/useScrum'
 import { usePlannedWork } from '@/features/scrum/composables/usePlannedWork'
 import type { JiraIssueResult } from '@/features/scrum/models/jiraIssueResult'
 
-const { report, isLoading, isRegenerating, error, load, regenerate, resolveBlocker, refresh } = useScrum()
+const { report, isLoading, error, load, resolveBlocker, refresh } = useScrum()
 const { results, isSearching, isSaving, searchError, hasSearched, search, add, remove, reset } = usePlannedWork()
 
 const isSearchOpen = ref(false)
@@ -85,9 +80,7 @@ const removePlanned = async (id: number) => {
   if (await remove(id)) await refresh()
 }
 
-// The first load skips the model so the page paints immediately; the AI
-// paragraph is a deliberate click, since generation can take a few seconds.
-onMounted(() => load(false))
+onMounted(load)
 </script>
 
 <style scoped>
