@@ -13,8 +13,9 @@ import { microsoftAuthorityUrl } from '../utils/safe-url.js';
 
 const GRAPH_BASE_URL = 'https://graph.microsoft.com/v1.0';
 
-// Delegated scopes. These must match the scopes requested by the sign-in URL in
-// SetupWizard.vue, otherwise the refresh token is rejected by Microsoft.
+// Delegated scopes. The sign-in URL in api/setup-routes.js is built from
+// GRAPH_SCOPE_STRING below, so the authorize and refresh requests stay in step;
+// Microsoft rejects the refresh token if they ever diverge.
 export const GRAPH_SCOPES = [
   'openid',
   'profile',
