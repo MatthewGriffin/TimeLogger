@@ -12,6 +12,7 @@ const PAGES = [
   { name: 'Daily Entries', route: ROUTES.entries, heading: 'Daily Entries' },
   { name: 'Notes', route: ROUTES.notes, heading: 'Notes' },
   { name: 'Calendar', route: ROUTES.calendar, heading: 'Calendar' },
+  { name: 'Daily Scrum', route: ROUTES.scrum, heading: 'Daily Scrum' },
   { name: 'Submit Time', route: ROUTES.submit, heading: 'Submit Time' },
   { name: 'Tempo Status', route: ROUTES.tempo, heading: 'Tempo Status' },
   { name: 'Settings', route: ROUTES.settings, heading: 'Settings' },

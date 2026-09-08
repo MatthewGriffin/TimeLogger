@@ -61,6 +61,11 @@
           >
             <div class="note-header">
               <h3>{{ note.title }}</h3>
+              <span
+                v-if="note.isBlocker && !note.blockerResolvedAt"
+                class="blocker-badge"
+                title="Open blocker, shown on the Daily Scrum page"
+              >🚧</span>
               <span v-if="note.oneNoteSynced" class="sync-badge">📤</span>
             </div>
             <span v-if="note.ticketId" class="note-ticket">{{ note.ticketId }}</span>
@@ -172,6 +177,18 @@
               rows="10"
               ref="noteContentInput"
             />
+          </div>
+
+          <div class="form-group checkbox blocker-toggle">
+            <input
+              id="note-is-blocker"
+              v-model="notesStore.editingNote!.isBlocker"
+              type="checkbox"
+            />
+            <label for="note-is-blocker">🚧 This is a blocker</label>
+            <span class="field-hint">
+              Blockers stay on the Daily Scrum page until you resolve them.
+            </span>
           </div>
 
           <div class="modal-footer">
@@ -336,7 +353,8 @@ const openNewNote = () => {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     oneNoteSynced: false,
-    ticketId: ''
+    ticketId: '',
+    isBlocker: false
   })
   notesStore.showNoteEditor = true
 }
@@ -377,7 +395,8 @@ const saveNote = async () => {
         note.title,
         note.content,
         note.topic,
-        note.ticketId
+        note.ticketId,
+        note.isBlocker
       )
       uiStore.showSuccess('Note updated')
       closeEditor()
@@ -389,7 +408,9 @@ const saveNote = async () => {
         note.title,
         note.content,
         note.ticketId ? undefined : DEFAULT_TOPIC,
-        note.ticketId
+        note.ticketId,
+        undefined,
+        note.isBlocker
       )
       uiStore.showSuccess('Note created')
       closeEditor()
@@ -719,6 +740,31 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 
 .sync-badge {
   font-size: 1rem;
+}
+
+.blocker-badge {
+  font-size: 1rem;
+}
+
+.blocker-toggle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.blocker-toggle input {
+  width: auto;
+  margin: 0;
+}
+
+.blocker-toggle label {
+  margin: 0;
+  cursor: pointer;
+}
+
+.blocker-toggle .field-hint {
+  flex-basis: 100%;
 }
 
 .note-preview {

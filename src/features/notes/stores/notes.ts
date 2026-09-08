@@ -91,18 +91,18 @@ export const useNotesStore = defineStore('notes', () => {
   // local AI pick one, so the user is not forced to choose. A ticket-linked
   // note always uses its ticket number as the topic (enforced server-side
   // too) so it groups onto that ticket's OneNote page.
-  const createNote = async (title: string, content: string, topic: NoteTopic | undefined, ticketId?: string, date = localDate()) => {
+  const createNote = async (title: string, content: string, topic: NoteTopic | undefined, ticketId?: string, date = localDate(), isBlocker = false) => {
     isLoading.value = true; error.value = ''
     try {
       const ticket = (ticketId || '').trim()
       const requestedTopic = ticket || topic
-      const result = await executeApi('create_note', { date, note: content, title: title || undefined, ...(requestedTopic ? { topic: requestedTopic } : {}), ticket_id: ticket || undefined })
+      const result = await executeApi('create_note', { date, note: content, title: title || undefined, ...(requestedTopic ? { topic: requestedTopic } : {}), ticket_id: ticket || undefined, is_blocker: isBlocker })
       const raw = result as Record<string, unknown>
       const id = raw.noteId ?? raw.id
       if (id == null) throw new Error('Backend did not return a note ID')
       const assignedTopic = (typeof raw.topic === 'string' ? raw.topic as NoteTopic : undefined) || requestedTopic || 'General'
       const now = new Date().toISOString()
-      const created: Note = { id: String(id), title, content, topic: assignedTopic, createdAt: now, updatedAt: now, oneNoteSynced: false, date, ticketId: ticket || undefined }
+      const created: Note = { id: String(id), title, content, topic: assignedTopic, createdAt: now, updatedAt: now, oneNoteSynced: false, date, ticketId: ticket || undefined, isBlocker }
       notes.value.unshift(created); syncNotesPersist()
       return created
     } catch (err) {
@@ -110,7 +110,7 @@ export const useNotesStore = defineStore('notes', () => {
     } finally { isLoading.value = false }
   }
 
-  const updateNote = async (id: string, title: string, content: string, topic?: NoteTopic, ticketId?: string) => {
+  const updateNote = async (id: string, title: string, content: string, topic?: NoteTopic, ticketId?: string, isBlocker?: boolean) => {
     isLoading.value = true; error.value = ''
     try {
       const existing = notes.value.find(note => note.id === id)
@@ -118,8 +118,9 @@ export const useNotesStore = defineStore('notes', () => {
       const resolvedTicketId = (ticketId !== undefined ? ticketId : existing.ticketId) || ''
       // Linking to a ticket overrides any topic the user picked.
       const resolvedTopic = resolvedTicketId.trim() || topic || existing.topic
-      await executeApi('update_note', { id: Number(id), note: content, topic: resolvedTopic, title: title || undefined, ticket_id: resolvedTicketId || undefined })
-      const updated = { ...existing, title, content, topic: resolvedTopic, ticketId: resolvedTicketId || undefined, updatedAt: new Date().toISOString() }
+      const resolvedBlocker = isBlocker !== undefined ? isBlocker : existing.isBlocker
+      await executeApi('update_note', { id: Number(id), note: content, topic: resolvedTopic, title: title || undefined, ticket_id: resolvedTicketId || undefined, ...(isBlocker !== undefined ? { is_blocker: isBlocker } : {}) })
+      const updated = { ...existing, title, content, topic: resolvedTopic, ticketId: resolvedTicketId || undefined, isBlocker: resolvedBlocker, updatedAt: new Date().toISOString() }
       const index = notes.value.findIndex(note => note.id === id)
       notes.value[index] = updated; syncNotesPersist()
       return updated

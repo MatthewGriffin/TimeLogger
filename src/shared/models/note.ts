@@ -11,4 +11,6 @@ export interface Note {
   oneNoteId?: string
   date?: string
   ticketId?: string
+  isBlocker: boolean
+  blockerResolvedAt?: string
 }

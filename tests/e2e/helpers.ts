@@ -13,6 +13,7 @@ export const ROUTES = {
   entries: '#/entries',
   notes: '#/notes',
   calendar: '#/calendar',
+  scrum: '#/scrum',
   submit: '#/submit',
   tempo: '#/tempo',
   settings: '#/settings',
