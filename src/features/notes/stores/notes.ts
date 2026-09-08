@@ -6,7 +6,7 @@ import { localDate } from '@/shared/utils/dates'
 import type { TopicSuggestion } from '@/features/notes/models/notes'
 
 export type { Note, NoteTopic }
-export type { BackendNote, TopicSuggestion } from '@/features/notes/models/notes'
+export type { TopicSuggestion } from '@/features/notes/models/notes'
 
 // General is the only built-in topic. Every other topic exists purely
 // because a note uses it, so a category disappears once its last note does.

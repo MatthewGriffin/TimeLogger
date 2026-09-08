@@ -18,7 +18,6 @@ import * as Outlook from './tools/outlook.js';
 import * as Config from './tools/config.js';
 import * as Sprint from './tools/sprint.js';
 import * as Setup from './tools/setup.js';
-import * as LLM from './tools/llm.js';
 import * as AiModel from './tools/ai-model.js';
 import * as Reminders from './tools/reminders.js';
 import * as DataManagement from './tools/data-management.js';
@@ -49,9 +48,6 @@ export const tools = [
   // Config
   ...Config.tools,
   
-  // LLM
-  ...LLM.tools,
-
   // Local AI model setup
   ...AiModel.tools,
 

@@ -96,37 +96,6 @@ function unsubmittedForDate(date) {
 
 export const tools = [
   {
-    name: 'get_notifications_config',
-    description: 'Read notification settings including the Tempo submission reminder',
-    parameters: { type: 'object', properties: {} },
-    handler: async () => ({ success: true, notifications: readNotificationsConfig() })
-  },
-  {
-    name: 'update_notifications_config',
-    description: 'Save notification settings including when the Tempo submission reminder fires',
-    parameters: {
-      type: 'object',
-      properties: {
-        enabled: { type: 'boolean', description: 'Master switch for system notifications' },
-        submissionAlerts: { type: 'boolean', description: 'Show success/failure alerts after submitting' },
-        tempoReminder: {
-          type: 'object',
-          description: 'Tempo submission reminder: { enabled, time (HH:MM), days (weekdays|everyday) }'
-        }
-      }
-    },
-    handler: async (args) => {
-      const reminder = args.tempoReminder;
-      if (reminder?.time !== undefined && parseTime(reminder.time) === null) {
-        return { success: false, message: 'Reminder time must be in HH:MM format.' };
-      }
-      if (reminder?.days !== undefined && !['weekdays', 'everyday'].includes(reminder.days)) {
-        return { success: false, message: 'Reminder days must be "weekdays" or "everyday".' };
-      }
-      return { success: true, notifications: writeNotificationsConfig(args) };
-    }
-  },
-  {
     name: 'check_tempo_reminder',
     description: 'Decide whether the Tempo submission reminder is due now, marking it shown so it fires only once per day',
     parameters: {

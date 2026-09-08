@@ -17,7 +17,6 @@
 
 import { makeHttpRequest } from '../api/http-client.js';
 import { db } from '../index.js';
-import { ollamaClient } from '../api/ollama-client.js';
 import { timeToMinutes, minutesToTime } from '../utils/time-ranges.js';
 import { takeDuplicateWorklog } from './tempo-duplicate-detection.js';
 import {

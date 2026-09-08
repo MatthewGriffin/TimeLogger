@@ -81,30 +81,6 @@ function migrateOllamaEnabled() {
 
 export const tools = [
   {
-    name: 'newPI',
-    description: 'Create or retrieve a PI issue mapping configuration',
-    parameters: {
-      type: 'object',
-      properties: {
-        piName: { type: 'string' },
-        mappings: { type: 'object' }
-      },
-      required: ['piName']
-    },
-    handler: async (args) => {
-      if (!args.piName) return { success: false, message: 'piName is required' }
-      const key = `pi_config_${args.piName}`
-      if (args.mappings !== undefined) {
-        const config = { piName: args.piName, mappings: args.mappings }
-        write(key, config)
-        return { success: true, piName: args.piName, config }
-      }
-      const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key)
-      if (!row) return { success: false, message: `PI configuration not found: ${args.piName}` }
-      return { success: true, piName: args.piName, config: JSON.parse(row.value) }
-    }
-  },
-  {
     name: 'get_config',
     description: 'Retrieve current application configuration',
     parameters: {

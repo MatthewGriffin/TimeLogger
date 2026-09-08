@@ -328,53 +328,6 @@ export const tools = [
     }
   },
   {
-    name: 'upsert_note',
-    description: 'Create or update a note using the legacy note tool contract',
-    parameters: {
-      type: 'object',
-      properties: {
-        id: { type: 'number' },
-        date: { type: 'string' },
-        note: { type: 'string' },
-        topic: { type: 'string' },
-        ticket_id: { type: 'string' }
-      },
-      required: ['date', 'note']
-    },
-    handler: async (args) => {
-      if (args.id != null) {
-        return tools.find(tool => tool.name === 'update_note').handler(args)
-      }
-      return tools.find(tool => tool.name === 'create_note').handler(args)
-    }
-  },
-  {
-    name: 'capture_prefixed_message',
-    description: 'Capture a prefixed task or note message',
-    parameters: {
-      type: 'object',
-      properties: {
-        message: { type: 'string' },
-        date: { type: 'string' },
-        topic: { type: 'string' },
-        ticket_id: { type: 'string' }
-      },
-      required: ['message']
-    },
-    handler: async (args) => {
-      const message = String(args.message || '').trim()
-      const match = message.match(/^(note|task)\s+([\s\S]+)$/i)
-      if (!match) return { success: false, message: 'Message must start with "note" or "task"' }
-      const topic = match[1].toLowerCase() === 'task' ? (args.topic || 'General') : (args.topic || 'General')
-      return tools.find(tool => tool.name === 'create_note').handler({
-        date: args.date || new Date().toISOString().slice(0, 10),
-        note: match[2].trim(),
-        topic,
-        ticket_id: args.ticket_id
-      })
-    }
-  },
-  {
     name: 'create_note',
     description: 'Create a new note',
     parameters: {
