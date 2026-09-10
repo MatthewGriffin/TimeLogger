@@ -50,14 +50,18 @@ async function resolveIssueKeys(credentials, issueIds) {
  * (e.g. a meeting whose split-attendance times changed) stays in step with
  * what is already logged, instead of being left stale or double-booked.
  */
-export async function updateTempoWorklogTimes(worklogId, tempoToken, { startDate, startTime, timeSpentSeconds }) {
+export async function updateTempoWorklogTimes(
+  worklogId,
+  tempoToken,
+  { authorAccountId, startDate, startTime, timeSpentSeconds }
+) {
   await makeHttpRequest(`https://api.tempo.io/4/worklogs/${worklogId}`, {
     method: 'PUT',
     headers: {
       'Authorization': `Bearer ${tempoToken}`,
       'Content-Type': 'application/json'
     },
-    body: { startDate, startTime, timeSpentSeconds }
+    body: { authorAccountId, startDate, startTime, timeSpentSeconds }
   });
 }
 
