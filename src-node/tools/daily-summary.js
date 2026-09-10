@@ -112,6 +112,8 @@ export const tools = [
                  SUM(CASE WHEN is_holiday = 1 THEN 1 ELSE 0 END) AS holidayCount
           FROM daily_summary
           WHERE date IN (${placeholders})
+            AND ticket_id IS NOT NULL
+            AND TRIM(ticket_id) <> ''
           GROUP BY date
         `).all(...days);
 

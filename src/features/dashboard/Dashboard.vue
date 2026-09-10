@@ -166,6 +166,9 @@ const unsubmitted = computed(() => {
   const start = startOfWeek()
   const pending = entriesStore.entries.filter(entry => {
     if (entry.submitted) return false
+    // Entries without a ticket (for example Lunch) cannot be submitted to
+    // Tempo and should not appear as outstanding work.
+    if (!entry.ticketId || !entry.ticketId.trim()) return false
     const date = parseDateKey(entry.date)
     return !!date && date >= start
   })
