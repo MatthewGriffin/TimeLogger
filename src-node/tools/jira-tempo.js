@@ -586,6 +586,7 @@ export const tools = [
     handler: async (args) => {
       try {
         const tempoToken = resolveTempoToken(args);
+        const credentials = resolveJiraCredentials(args);
         const entry = db.prepare(`
           SELECT id, date, start_time, duration_mins, tempo_worklog_id
           FROM daily_summary
@@ -595,11 +596,13 @@ export const tools = [
         if (!entry.tempo_worklog_id) {
           throw new Error('This entry is not linked to a Tempo worklog');
         }
+        const account = await getCurrentAccount(credentials);
 
         const startTime = entry.start_time
           ? (entry.start_time.length === 5 ? `${entry.start_time}:00` : entry.start_time)
           : '09:00:00';
         await updateTempoWorklogTimes(entry.tempo_worklog_id, tempoToken, {
+          authorAccountId: account.accountId,
           startDate: entry.date,
           startTime,
           timeSpentSeconds: entry.duration_mins * 60
@@ -677,6 +680,7 @@ export const tools = [
       try {
         const credentials = resolveJiraCredentials(args);
         const tempoToken = resolveTempoToken(args);
+        const account = await getCurrentAccount(credentials);
         const b64 = buildBasicAuth(credentials.email, credentials.apiToken);
 
         // Get account ID
@@ -863,6 +867,7 @@ export const tools = [
                     ? (entry.start_time.length === 5 ? `${entry.start_time}:00` : entry.start_time)
                     : '09:00:00';
                   await updateTempoWorklogTimes(duplicate.worklog.worklogId, tempoToken, {
+                    authorAccountId: account.accountId,
                     startDate: args.date,
                     startTime: updateStartTime,
                     timeSpentSeconds: entry.duration_mins * 60
