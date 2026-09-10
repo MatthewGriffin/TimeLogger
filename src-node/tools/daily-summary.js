@@ -303,6 +303,28 @@ export const tools = [
             const existing = db.prepare(
               'SELECT * FROM daily_summary WHERE date = ? AND id != ?'
             ).all(date, args.id);
+            const overlapping = existing.filter(entry => {
+              if (!entry.start_time || !entry.end_time) return false;
+              return timeToMinutes(entry.start_time) < timeToMinutes(endTime) &&
+                timeToMinutes(entry.end_time) > timeToMinutes(startTime);
+            });
+            if (overlapping.length > 0) {
+              return {
+                success: false,
+                code: 'entry_time_conflict',
+                message: `Time range ${startTime}-${endTime} overlaps existing entries`,
+                conflict: {
+                  requested: { startTime, endTime },
+                  entries: overlapping.map(entry => ({
+                    id: entry.id,
+                    name: entry.name,
+                    startTime: entry.start_time,
+                    endTime: entry.end_time,
+                    durationMins: entry.duration_mins
+                  }))
+                }
+              };
+            }
             const segments = splitTimeRange(startTime, endTime, existing);
 
             if (segments.length === 0) {

@@ -420,7 +420,11 @@ const unsubmittedEntries = computed(() => {
 })
 
 const blockedEntries = computed(() =>
-  entriesInRange.value.filter(e => !e.submitted && !hasTicket(e))
+  entriesInRange.value.filter(e =>
+    !e.submitted &&
+    !hasTicket(e) &&
+    e.taskName.trim().toLowerCase() !== 'lunch'
+  )
 )
 
 const totalHours = computed(() => {
