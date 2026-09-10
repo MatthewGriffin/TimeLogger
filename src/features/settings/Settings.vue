@@ -113,6 +113,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { invoke } from '@tauri-apps/api/core'
 import { executeApi, asList } from '@/shared/utils/api'
 import { asRecord, asString, asBoolean } from '@/shared/utils/schema'
@@ -145,6 +146,7 @@ import type {
   SprintTestResult,
 } from '@/features/settings/models/settings'
 
+const route = useRoute()
 const configStore = useConfigStore()
 const entriesStore = useEntriesStore()
 const uiStore = useUiStore()
@@ -152,7 +154,8 @@ const updater = useUpdater()
 const dataManagement = useDataManagement()
 
 const tabs: SettingsTabName[] = ['Jira & Tempo', 'Current Sprint', 'Microsoft', 'OneNote', 'Calendar', 'Ollama', 'App Settings', 'Database & Data', 'About']
-const activeTab = ref<SettingsTabName>('Jira & Tempo')
+const initialTab = tabs.find(tab => tab === route.query.tab)
+const activeTab = ref<SettingsTabName>(initialTab ?? 'Jira & Tempo')
 const isSaving = ref(false)
 const databasePath = ref('Loading…')
 const databaseSize = ref('Loading…')
@@ -449,6 +452,11 @@ const loadNotebooks = async () => {
 // moves notebookId ('' -> saved id), and treating that as a notebook change
 // wiped the saved section every time Settings opened. Clearing now happens in
 // onNotebookChanged, which only fires on real user input.
+watch(() => route.query.tab, (tab) => {
+  const match = tabs.find(item => item === tab)
+  if (match) activeTab.value = match
+})
+
 watch(() => formData.value.oneNote.notebookId, (notebookId) => {
   const selected = notebooks.value.find(notebook => notebook.id === notebookId)
   // Only overwrite the saved name once the list is loaded, otherwise the label

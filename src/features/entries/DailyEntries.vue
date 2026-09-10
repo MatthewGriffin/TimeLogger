@@ -265,6 +265,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
 import { useEntriesStore } from '@/shared/stores/entries'
 import type { TimeEntry } from '@/shared/stores/entries'
 import { useUiStore } from '@/shared/stores/ui'
@@ -284,6 +285,7 @@ const entriesStore = useEntriesStore()
 const uiStore = useUiStore()
 const configStore = useConfigStore()
 const jiraStore = useJiraStore()
+const route = useRoute()
 
 const selectedDate = computed({
   get: () => entriesStore.selectedDate,
@@ -605,6 +607,11 @@ const closeTicketLookup = () => {
 
 onMounted(async () => {
   try {
+    // A dashboard "Calendar conflicts" link may pass a specific date to jump to.
+    const dateQuery = route.query.date
+    if (typeof dateQuery === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateQuery)) {
+      selectedDate.value = dateQuery
+    }
     // Load entries for selected date
     await entriesStore.loadEntries(selectedDate.value)
     // Load recent issues for ticket dropdown
