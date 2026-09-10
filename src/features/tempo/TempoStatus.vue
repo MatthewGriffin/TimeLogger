@@ -96,6 +96,14 @@
         <div class="section-header">
           <h2>Local Entries vs Tempo</h2>
           <span class="count">{{ reconciled.length }}</span>
+          <button
+            v-if="counts.missingFromTempo > 0"
+            class="import-all-btn"
+            :disabled="isResubmitting"
+            @click="resubmitMissing()"
+          >
+            {{ isResubmitting ? 'Marking…' : `↺ Resubmit all missing (${counts.missingFromTempo})` }}
+          </button>
         </div>
 
         <div class="filter-row">
@@ -109,11 +117,16 @@
           </button>
         </div>
 
+        <p v-if="statusFilter === 'missing_from_tempo' && filteredReconciled.length > 0" class="section-note">
+          These are marked as submitted here but no longer exist in Tempo — most likely deleted directly there.
+          Resubmit to send them again.
+        </p>
+
         <div v-if="filteredReconciled.length === 0" class="empty-state">
           Nothing matches this filter.
         </div>
 
-        <div v-else class="table">
+        <div v-else class="table table-recon">
           <div class="table-header">
             <div class="col-date">Date</div>
             <div class="col-ticket">Ticket</div>
@@ -121,6 +134,7 @@
             <div class="col-dur">Local</div>
             <div class="col-dur">Tempo</div>
             <div class="col-status">Status</div>
+            <div class="col-action"></div>
           </div>
           <div
             v-for="row in filteredReconciled"
@@ -143,10 +157,22 @@
             <div class="col-status">
               <span :class="['status-chip', statusClass(row.status)]">{{ statusLabel(row.status) }}</span>
             </div>
+            <div class="col-action">
+              <button
+                v-if="row.status === 'missing_from_tempo'"
+                class="import-btn"
+                :disabled="isResubmitting"
+                title="Mark as not submitted so it can be sent to Tempo again"
+                @click="resubmitMissing([row.entryId])"
+              >
+                Resubmit
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
+      <p v-if="resubmitMessage" class="import-message">{{ resubmitMessage }}</p>
       <p v-if="importMessage" class="import-message">{{ importMessage }}</p>
 
       <div v-if="unmatchedWorklogs.length > 0" class="section">
@@ -226,7 +252,9 @@ interface ReconciledRow {
 
 const isLoading = ref(false)
 const isImporting = ref(false)
+const isResubmitting = ref(false)
 const importMessage = ref('')
+const resubmitMessage = ref('')
 const loaded = ref(false)
 const errorMessage = ref('')
 const worklogs = ref<TempoWorklog[]>([])
@@ -414,6 +442,40 @@ const importWorklogs = async (worklogIds?: number[]) => {
     importMessage.value = err instanceof ApiError ? err.message : 'Failed to import worklogs'
   } finally {
     isImporting.value = false
+  }
+}
+
+// Rows marked "missing_from_tempo" were submitted here but no longer exist in
+// Tempo (e.g. deleted directly there). There is no automatic way to detect
+// that a worklog vanished except by reconciling like this, so resubmitting
+// has to be an explicit action: clear the local submitted flag and let the
+// normal Submit flow send it again.
+const resubmitMissing = async (entryIds?: number[]) => {
+  const ids = entryIds ?? reconciled.value
+    .filter(row => row.status === 'missing_from_tempo')
+    .map(row => row.entryId)
+  if (ids.length === 0) return
+
+  isResubmitting.value = true
+  resubmitMessage.value = ''
+  try {
+    const result = await executeApi('mark_entries_for_resubmit', { ids })
+    const record = asRecord(result)
+
+    if (!asBoolean(record.success, false)) {
+      resubmitMessage.value = asString(record.message, 'Failed to mark entries for resubmit')
+      return
+    }
+
+    resubmitMessage.value = asString(record.message, 'Marked as not submitted') +
+      ' — go to Submit to send them to Tempo again.'
+
+    // Re-reconcile so resubmitted rows move to "Not submitted".
+    await load()
+  } catch (err) {
+    resubmitMessage.value = err instanceof ApiError ? err.message : 'Failed to mark entries for resubmit'
+  } finally {
+    isResubmitting.value = false
   }
 }
 </script>
@@ -630,6 +692,11 @@ const importWorklogs = async (worklogIds?: number[]) => {
 .table-5col .table-header,
 .table-5col .table-row {
   grid-template-columns: 110px 130px 1fr 90px 100px;
+}
+
+.table-recon .table-header,
+.table-recon .table-row {
+  grid-template-columns: 110px 70px 130px 1fr 130px 90px 90px;
 }
 
 .col-action {

@@ -574,6 +574,49 @@ export const tools = [
     }
   },
   {
+    name: 'mark_entries_for_resubmit',
+    description: 'Clear the submitted flag on entries the app believes were sent to Tempo but no longer exist there (e.g. deleted directly in Tempo), so they show up as unsubmitted and can be sent again',
+    parameters: {
+      type: 'object',
+      properties: {
+        ids: {
+          type: 'array',
+          description: 'Entry IDs to mark as not submitted',
+          items: { type: 'number' }
+        }
+      },
+      required: ['ids']
+    },
+    handler: async (args) => {
+      try {
+        const ids = Array.isArray(args.ids) ? args.ids.filter(id => Number.isSafeInteger(Number(id))) : [];
+        if (ids.length === 0) {
+          return { success: false, message: 'No entry IDs provided', updated: 0 };
+        }
+
+        const update = db.prepare(`
+          UPDATE daily_summary SET submitted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+        `);
+        let updated = 0;
+        for (const id of ids) {
+          updated += update.run(Number(id)).changes;
+        }
+
+        return {
+          success: true,
+          updated,
+          message: `${updated} entr${updated === 1 ? 'y' : 'ies'} marked as not submitted and ready to resubmit`
+        };
+      } catch (error) {
+        return {
+          success: false,
+          message: `Failed to mark entries for resubmit: ${error.message}`,
+          updated: 0
+        };
+      }
+    }
+  },
+  {
     name: 'get_daily_summary_totals',
     description: 'Get statistics and totals for daily summaries across a date range',
     parameters: {

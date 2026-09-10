@@ -187,6 +187,77 @@ function readConflictChoices(date) {
 }
 
 /**
+ * Persist the user's choices for a set of overlapping meetings.
+ *
+ * Split out from the resolve_meeting_conflict handler so the DB-only part
+ * (which is what a change of mind actually needs) can be unit tested without
+ * the network round trip to re-fetch and re-sync calendar events.
+ */
+export function applyConflictResolutions(date, resolutions) {
+  const upsert = db.prepare(`
+    INSERT INTO calendar_conflict_choices
+      (date, event_id, attended, start_time_override, end_time_override, updated_at)
+    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(date, event_id) DO UPDATE SET
+      attended = excluded.attended,
+      start_time_override = excluded.start_time_override,
+      end_time_override = excluded.end_time_override,
+      updated_at = CURRENT_TIMESTAMP
+  `);
+  // A changed mind must not leave the old entry behind alongside the new
+  // one, so any not-yet-submitted row already synced for this event is
+  // cleared first and left to sync fresh.
+  const clearPrior = db.prepare(`
+    DELETE FROM daily_summary WHERE date = ? AND calendar_event_id = ? AND submitted = 0
+  `);
+  // A row that was already submitted holds Tempo's worklog to the
+  // *original* meeting time. If the user now says they only attended part
+  // of it (e.g. left early to join another meeting), leaving that row
+  // untouched would keep the original, wider time booked in Tempo forever —
+  // overlapping whatever the other meeting logs. Correcting the row in
+  // place and flagging it for resubmission lets tempo_submit_day's
+  // duplicate check find the existing Tempo worklog (same issue, same start
+  // time) and fix its time in place instead of creating a second,
+  // overlapping one.
+  const findSubmitted = db.prepare(`
+    SELECT id, start_time, end_time FROM daily_summary
+    WHERE date = ? AND calendar_event_id = ? AND submitted = 1
+  `);
+  const correctSubmitted = db.prepare(`
+    UPDATE daily_summary
+    SET start_time = ?, end_time = ?, duration_mins = ?, submitted = 0, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `);
+  for (const resolution of resolutions) {
+    if (!resolution.eventId) continue;
+    const eventId = String(resolution.eventId);
+    const attended = resolution.attended ? 1 : 0;
+    upsert.run(
+      date,
+      eventId,
+      attended,
+      attended && resolution.startTimeOverride ? String(resolution.startTimeOverride) : null,
+      attended && resolution.endTimeOverride ? String(resolution.endTimeOverride) : null
+    );
+    clearPrior.run(date, eventId);
+
+    if (attended && (resolution.startTimeOverride || resolution.endTimeOverride)) {
+      const existing = findSubmitted.get(date, eventId);
+      if (existing) {
+        const newStart = resolution.startTimeOverride
+          ? String(resolution.startTimeOverride)
+          : existing.start_time;
+        const newEnd = resolution.endTimeOverride
+          ? String(resolution.endTimeOverride)
+          : existing.end_time;
+        const durationMins = Math.max(0, timeToMinutes(newEnd) - timeToMinutes(newStart));
+        correctSubmitted.run(newStart, newEnd, durationMins, existing.id);
+      }
+    }
+  }
+}
+
+/**
  * Sync one day's meetings into time entries from an already-fetched event list.
  *
  * Split out from the tool handler so a whole month can be synced from a single
@@ -633,36 +704,7 @@ export const tools = [
           throw new Error('At least one resolution is required');
         }
 
-        const upsert = db.prepare(`
-          INSERT INTO calendar_conflict_choices
-            (date, event_id, attended, start_time_override, end_time_override, updated_at)
-          VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-          ON CONFLICT(date, event_id) DO UPDATE SET
-            attended = excluded.attended,
-            start_time_override = excluded.start_time_override,
-            end_time_override = excluded.end_time_override,
-            updated_at = CURRENT_TIMESTAMP
-        `);
-        // A changed mind must not leave the old entry behind alongside the
-        // new one, so any not-yet-submitted row already synced for this
-        // event is cleared first and left to sync fresh. A submitted row is
-        // already reported externally and is never touched here.
-        const clearPrior = db.prepare(`
-          DELETE FROM daily_summary WHERE date = ? AND calendar_event_id = ? AND submitted = 0
-        `);
-        for (const resolution of resolutions) {
-          if (!resolution.eventId) continue;
-          const eventId = String(resolution.eventId);
-          const attended = resolution.attended ? 1 : 0;
-          upsert.run(
-            date,
-            eventId,
-            attended,
-            attended && resolution.startTimeOverride ? String(resolution.startTimeOverride) : null,
-            attended && resolution.endTimeOverride ? String(resolution.endTimeOverride) : null
-          );
-          clearPrior.run(date, eventId);
-        }
+        applyConflictResolutions(date, resolutions);
 
         // The choices are now persisted, so re-running the normal sync for
         // the day lets each event fall through its ordinary path: an
