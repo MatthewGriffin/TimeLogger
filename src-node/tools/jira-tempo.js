@@ -574,6 +574,50 @@ export const tools = [
     }
   },
   {
+    name: 'tempo_reconcile_worklog_duration',
+    description: 'Update a Tempo worklog duration to match the local entry',
+    parameters: {
+      type: 'object',
+      properties: {
+        entryId: { type: 'number', description: 'Local daily summary entry ID' }
+      },
+      required: ['entryId']
+    },
+    handler: async (args) => {
+      try {
+        const tempoToken = resolveTempoToken(args);
+        const entry = db.prepare(`
+          SELECT id, date, start_time, duration_mins, tempo_worklog_id
+          FROM daily_summary
+          WHERE id = ?
+        `).get(args.entryId);
+        if (!entry) throw new Error('Local entry not found');
+        if (!entry.tempo_worklog_id) {
+          throw new Error('This entry is not linked to a Tempo worklog');
+        }
+
+        const startTime = entry.start_time
+          ? (entry.start_time.length === 5 ? `${entry.start_time}:00` : entry.start_time)
+          : '09:00:00';
+        await updateTempoWorklogTimes(entry.tempo_worklog_id, tempoToken, {
+          startDate: entry.date,
+          startTime,
+          timeSpentSeconds: entry.duration_mins * 60
+        });
+
+        return {
+          success: true,
+          message: 'Tempo worklog updated to match the local entry'
+        };
+      } catch (error) {
+        return {
+          success: false,
+          message: `Failed to reconcile worklog: ${error.message}`
+        };
+      }
+    }
+  },
+  {
     name: 'tempo_delete_worklog',
     description: 'Remove a worklog from Tempo by ID',
     parameters: {

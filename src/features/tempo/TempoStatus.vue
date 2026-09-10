@@ -23,9 +23,9 @@
     <div class="page-body">
     <div class="date-bar">
       <label>From</label>
-      <input v-model="fromDate" type="date" class="date-input" @change="selectedRange = 'Custom'" />
+      <input v-model="fromDate" type="date" class="date-input" @change="applyDateRange" />
       <label>To</label>
-      <input v-model="toDate" type="date" class="date-input" @change="selectedRange = 'Custom'" />
+      <input v-model="toDate" type="date" class="date-input" @change="applyDateRange" />
       <span class="range-hint">{{ fromDate }} → {{ toDate }}</span>
     </div>
 
@@ -167,12 +167,22 @@
               >
                 Resubmit
               </button>
+              <button
+                v-else-if="row.durationDiffers && row.worklogId !== null"
+                class="import-btn"
+                :disabled="reconcilingEntryId !== null"
+                title="Update Tempo to match the local duration"
+                @click="reconcileDuration(row)"
+              >
+                {{ reconcilingEntryId === row.entryId ? 'Updating…' : 'Use local time' }}
+              </button>
             </div>
           </div>
         </div>
       </div>
 
       <p v-if="resubmitMessage" class="import-message">{{ resubmitMessage }}</p>
+      <p v-if="reconcileMessage" class="import-message">{{ reconcileMessage }}</p>
       <p v-if="importMessage" class="import-message">{{ importMessage }}</p>
 
       <div v-if="unmatchedWorklogs.length > 0" class="section">
@@ -238,6 +248,25 @@ interface TempoWorklog {
   activityTypeName: string | null
 }
 
+const reconcileDuration = async (row: ReconciledRow) => {
+  reconcilingEntryId.value = row.entryId
+  reconcileMessage.value = ''
+  try {
+    const result = await executeApi('tempo_reconcile_worklog_duration', { entryId: row.entryId })
+    const record = asRecord(result)
+    if (!asBoolean(record.success, false)) {
+      reconcileMessage.value = asString(record.message, 'Failed to reconcile worklog')
+      return
+    }
+    reconcileMessage.value = asString(record.message, 'Tempo worklog updated')
+    await load()
+  } catch (err) {
+    reconcileMessage.value = err instanceof ApiError ? err.message : 'Failed to reconcile worklog'
+  } finally {
+    reconcilingEntryId.value = null
+  }
+}
+
 interface ReconciledRow {
   entryId: number
   date: string
@@ -248,13 +277,16 @@ interface ReconciledRow {
   status: string
   tempoDurationMins: number | null
   durationDiffers: boolean
+  worklogId: number | null
 }
 
 const isLoading = ref(false)
 const isImporting = ref(false)
 const isResubmitting = ref(false)
+const reconcilingEntryId = ref<number | null>(null)
 const importMessage = ref('')
 const resubmitMessage = ref('')
+const reconcileMessage = ref('')
 const loaded = ref(false)
 const errorMessage = ref('')
 const worklogs = ref<TempoWorklog[]>([])
@@ -346,6 +378,11 @@ const selectRange = (label: string) => {
   load()
 }
 
+const applyDateRange = () => {
+  selectedRange.value = 'Custom'
+  load()
+}
+
 const parseWorklog = (item: Record<string, unknown>): TempoWorklog => ({
   worklogId: asNumber(item.worklogId),
   ticketId: item.ticketId ? asString(item.ticketId) : null,
@@ -382,7 +419,10 @@ const load = async () => {
       tempoDurationMins: item.tempoDurationMins === null || item.tempoDurationMins === undefined
         ? null
         : asNumber(item.tempoDurationMins),
-      durationDiffers: asBoolean(item.durationDiffers, false)
+      durationDiffers: asBoolean(item.durationDiffers, false),
+      worklogId: item.worklogId === null || item.worklogId === undefined
+        ? null
+        : asNumber(item.worklogId)
     }))
 
     const rawCounts = asRecord(record.counts)
