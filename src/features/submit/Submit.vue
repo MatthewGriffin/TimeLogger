@@ -1088,6 +1088,24 @@ const submitSelected = async () => {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  max-height: min(28rem, 60vh);
+  overflow-y: auto;
+  padding-right: 0.5rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+.history-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.history-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.history-list::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 3px;
 }
 
 .history-item {
