@@ -84,7 +84,8 @@ const isActive = (path: string) => {
   flex-shrink: 0;
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.95), rgba(10, 15, 30, 0.95));
   border-right: 1px solid var(--color-border);
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
   backdrop-filter: blur(10px);
   position: relative;
   z-index: 50;
@@ -177,6 +178,7 @@ const isActive = (path: string) => {
 
 .nav-links {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
