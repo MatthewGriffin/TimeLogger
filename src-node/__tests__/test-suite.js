@@ -377,6 +377,17 @@ async function runTests() {
       );
     });
 
+    test('reuses the known Tempo worklog when the local entry was resubmitted after time edits', () => {
+      assert(
+        takeDuplicateWorklog(
+          en({ start_time: '10:15', duration_mins: 45 }),
+          [wl({ startTime: '09:00', durationMins: 60, description: 'Work' })],
+          1001
+        )?.reason === 'same_issue_and_description',
+        'A single existing worklog for the ticket must be updated, not duplicated',
+      );
+    });
+
     test('allows a second genuine block on the same ticket', () => {
       assert(
         takeDuplicateWorklog(en({ start_time: '14:00', name: 'Review' }), [wl()], 1001) === null,
