@@ -446,7 +446,6 @@ const submitEntry = async () => {
     uiStore.showError('End time must be after start time')
     return
   }
-
   try {
     await entriesStore.addEntry({
       date: selectedDate.value,
@@ -481,6 +480,7 @@ const submitEditEntry = async () => {
     uiStore.showError('End time must be after start time')
     return
   }
+  const edit = editingEntry.value
 
   try {
     await entriesStore.updateEntry(editingEntry.value.id, {
@@ -492,7 +492,48 @@ const submitEditEntry = async () => {
     })
     editingEntry.value = null
     uiStore.showSuccess('Entry updated successfully')
-  } catch {
+  } catch (error) {
+    const response = error instanceof Error && 'response' in error
+      ? (error as {
+          response?: {
+            conflict?: {
+              entries?: Array<{ id: number; name: string; startTime: string; endTime: string }>
+            }
+          }
+        }).response
+      : undefined
+    const conflicts = response?.conflict?.entries || []
+    if (conflicts.length === 1) {
+      const conflict = conflicts[0]
+      const move = window.confirm(
+        `${conflict.name} (${conflict.startTime}-${conflict.endTime}) conflicts with this change. ` +
+        `Move it to start at ${edit.endTime}?`
+      )
+      if (move) {
+        try {
+          const [startHour, startMin] = edit.endTime.split(':').map(Number)
+          const [endHour, endMin] = conflict.endTime.split(':').map(Number)
+          await entriesStore.updateEntry(String(conflict.id), {
+            startTime: edit.endTime,
+            endTime: conflict.endTime,
+            duration: (endHour * 60 + endMin) - (startHour * 60 + startMin)
+          })
+          await entriesStore.updateEntry(edit.id, {
+            taskName: edit.taskName,
+            ticketId: edit.ticketId,
+            startTime: edit.startTime,
+            endTime: edit.endTime,
+            duration
+          })
+          editingEntry.value = null
+          uiStore.showSuccess(`${conflict.name} moved and entry updated successfully`)
+          return
+        } catch {
+          uiStore.showError(entriesStore.error || 'Could not move the conflicting entry')
+          return
+        }
+      }
+    }
     uiStore.showError(entriesStore.error || 'Failed to update entry')
   }
 }
