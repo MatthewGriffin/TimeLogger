@@ -69,6 +69,81 @@
             </div>
           </div>
         </div>
+
+        <div class="dashboard-panels">
+          <section class="dashboard-panel tempo-panel">
+            <div class="panel-heading">
+              <div>
+                <h2 class="section-title">Tempo health</h2>
+                <p class="panel-subtitle">{{ tempoSummary.lastChecked ? `Checked ${formatCheckedTime(tempoSummary.lastChecked)}` : 'Not checked yet' }}</p>
+              </div>
+              <router-link to="/tempo" class="panel-link">Open Tempo Status →</router-link>
+            </div>
+            <div class="panel-metrics">
+              <div><strong>{{ tempoSummary.missing }}</strong><span>Missing</span></div>
+              <div><strong>{{ tempoSummary.different }}</strong><span>Duration differs</span></div>
+              <div><strong>{{ tempoSummary.only }}</strong><span>Tempo only</span></div>
+            </div>
+            <p class="panel-message" :class="{ warning: tempoSummary.error || tempoSummary.missing || tempoSummary.different || tempoSummary.only }">
+              {{ tempoSummary.error || tempoHealthMessage }}
+            </p>
+          </section>
+
+          <section class="dashboard-panel">
+            <div class="panel-heading">
+              <div>
+                <h2 class="section-title">Today’s submission</h2>
+                <p class="panel-subtitle">{{ todayTicketedCount }} ticketed entries</p>
+              </div>
+              <router-link to="/submit" class="panel-link">Submit time →</router-link>
+            </div>
+            <div class="progress-track"><span :style="{ width: `${todaySubmissionPercent}%` }"></span></div>
+            <p class="panel-message">{{ todaySubmissionMessage }}</p>
+          </section>
+
+          <section class="dashboard-panel">
+            <div class="panel-heading">
+              <div>
+                <h2 class="section-title">Workday target</h2>
+                <p class="panel-subtitle">{{ workdayTarget }}h scheduled</p>
+              </div>
+              <router-link to="/settings" class="panel-link">Edit hours →</router-link>
+            </div>
+            <div class="progress-track"><span :style="{ width: `${workdayPercent}%` }"></span></div>
+            <p class="panel-message">{{ todayHours }}h logged · {{ workdayRemaining }}h remaining</p>
+          </section>
+
+          <section class="dashboard-panel">
+            <div class="panel-heading">
+              <div>
+                <h2 class="section-title">Needs attention</h2>
+                <p class="panel-subtitle">{{ attentionCount ? `${attentionCount} item${attentionCount === 1 ? '' : 's'}` : 'Nothing outstanding' }}</p>
+              </div>
+              <router-link to="/entries" class="panel-link">Review entries →</router-link>
+            </div>
+            <p class="panel-message" :class="{ warning: attentionCount > 0 }">
+              {{ attentionMessage }}
+            </p>
+          </section>
+        </div>
+
+        <section class="dashboard-panel submission-history-panel">
+          <div class="panel-heading">
+            <div>
+              <h2 class="section-title">Recent submissions</h2>
+              <p class="panel-subtitle">The last uploads recorded by TimeLogger</p>
+            </div>
+            <router-link to="/submit" class="panel-link">View submit page →</router-link>
+          </div>
+          <div v-if="entriesStore.submissionHistory.length" class="submission-history">
+            <div v-for="run in entriesStore.submissionHistory.slice(0, 5)" :key="run.id" class="submission-row">
+              <span>{{ run.date }}</span>
+              <span>{{ run.entryCount }} entries</span>
+              <span :class="['submission-status', run.status]">{{ run.status }}{{ run.failedCount ? ` · ${run.failedCount} failed` : '' }}</span>
+            </div>
+          </div>
+          <p v-else class="panel-message">No Tempo submissions recorded yet.</p>
+        </section>
       </div>
 
       <!-- Recent Activity -->
@@ -126,6 +201,8 @@ import { useEntriesStore } from '@/shared/stores/entries'
 import { useConfigStore } from '@/shared/stores/config'
 import { useAppStore } from '@/shared/stores/app'
 import { localDate, startOfWeek, parseDateKey } from '@/shared/utils/dates'
+import { executeApi } from '@/shared/utils/api'
+import { asBoolean, asRecord, readList } from '@/shared/utils/schema'
 import ConfigurationStatus from '@/features/dashboard/components/ConfigurationStatus.vue'
 
 const router = useRouter()
@@ -172,11 +249,71 @@ const unsubmitted = computed(() => {
     const date = parseDateKey(entry.date)
     return !!date && date >= start
   })
+
   return {
     count: pending.length,
     hours: (pending.reduce((sum, entry) => sum + entry.duration, 0) / 60).toFixed(1)
   }
 })
+
+const tempoSummary = ref({ missing: 0, different: 0, only: 0, lastChecked: '', error: '' })
+const todayTicketed = computed(() => entriesStore.getTodayEntries().filter(entry => Boolean(entry.ticketId?.trim())))
+const todayTicketedCount = computed(() => todayTicketed.value.length)
+const todaySubmittedCount = computed(() => todayTicketed.value.filter(entry => entry.submitted).length)
+const todaySubmissionPercent = computed(() => todayTicketedCount.value
+  ? Math.round((todaySubmittedCount.value / todayTicketedCount.value) * 100)
+  : 0)
+const todaySubmissionMessage = computed(() => todayTicketedCount.value === 0
+  ? 'No ticketed time recorded today.'
+  : todaySubmittedCount.value === todayTicketedCount.value
+    ? 'All ticketed time is submitted.'
+    : `${todayTicketedCount.value - todaySubmittedCount.value} ticketed ${todayTicketedCount.value - todaySubmittedCount.value === 1 ? 'entry remains' : 'entries remain'} to submit.`)
+const workdayTarget = computed(() => {
+  const workday = configStore.config.workday
+  if (!workday) return '8.0'
+  const [startHour, startMinute] = workday.startTime.split(':').map(Number)
+  const [endHour, endMinute] = workday.endTime.split(':').map(Number)
+  return ((endHour * 60 + endMinute - startHour * 60 - startMinute) / 60).toFixed(1)
+})
+const workdayPercent = computed(() => Math.min(100, Math.round((Number(todayHours.value) / Number(workdayTarget.value)) * 100)) || 0)
+const workdayRemaining = computed(() => Math.max(0, Number(workdayTarget.value) - Number(todayHours.value)).toFixed(1))
+const attentionCount = computed(() => unsubmitted.value.count + entriesStore.pendingMeetingConflicts.length + tempoSummary.value.missing + tempoSummary.value.different)
+const attentionMessage = computed(() => {
+  if (entriesStore.pendingMeetingConflicts.length) return `${entriesStore.pendingMeetingConflicts.length} calendar conflict${entriesStore.pendingMeetingConflicts.length === 1 ? '' : 's'} need resolving.`
+  if (unsubmitted.value.count) return `${unsubmitted.value.count} ticketed entr${unsubmitted.value.count === 1 ? 'y remains' : 'ies remain'} unsubmitted.`
+  if (tempoSummary.value.missing || tempoSummary.value.different) return 'Tempo has differences to reconcile.'
+  return 'Your entries and integrations look up to date.'
+})
+const tempoHealthMessage = computed(() => {
+  if (!configStore.isTempoConfigured()) return 'Configure Tempo to see reconciliation health.'
+  if (!tempoSummary.value.missing && !tempoSummary.value.different && !tempoSummary.value.only) return 'No differences found in this week’s range.'
+  return 'Review the differences in Tempo Status.'
+})
+const formatCheckedTime = (timestamp: string) => new Date(timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+
+const loadTempoSummary = async () => {
+  if (!configStore.isTempoConfigured()) return
+  try {
+    const record = asRecord(await executeApi('tempo_get_worklogs', {
+      from: localDate(startOfWeek()),
+      to: localDate()
+    }))
+    if (!asBoolean(record.success, false)) {
+      tempoSummary.value.error = String(record.message || 'Tempo status unavailable')
+      return
+    }
+    const reconciled = readList<Record<string, unknown>>(record.reconciled, undefined, item => item)
+    tempoSummary.value = {
+      missing: reconciled.filter(row => String(row.status) === 'missing_from_tempo').length,
+      different: reconciled.filter(row => Boolean(row.durationDiffers)).length,
+      only: readList(record.unmatchedWorklogs, undefined, item => item).length,
+      lastChecked: new Date().toISOString(),
+      error: ''
+    }
+  } catch {
+    tempoSummary.value.error = 'Tempo status unavailable'
+  }
+}
 
 const recentActivity = computed(() => {
   return entriesStore.entries
@@ -279,6 +416,8 @@ onMounted(async () => {
   // Deliberately not awaited with the above: the count is a secondary stat and
   // should never hold up the dashboard rendering.
   entriesStore.loadMissedDays()
+  entriesStore.loadSubmissionHistory(5)
+  loadTempoSummary()
 })
 </script>
 
@@ -351,6 +490,124 @@ onMounted(async () => {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: var(--space-lg);
   margin-bottom: var(--space-2xl);
+}
+
+.dashboard-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-lg);
+  margin-bottom: var(--space-2xl);
+}
+
+.dashboard-panel {
+  padding: 1.25rem 1.5rem;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.6));
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  backdrop-filter: blur(10px);
+}
+
+.submission-history-panel {
+  margin-bottom: var(--space-2xl);
+}
+
+.panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.panel-heading .section-title {
+  margin: 0;
+}
+
+.panel-subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--color-text-subtle);
+  font-size: 0.8rem;
+}
+
+.panel-link {
+  color: var(--color-accent);
+  font-size: 0.8rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.panel-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin: 1.25rem 0 0.75rem;
+}
+
+.panel-metrics div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.panel-metrics strong {
+  font-size: 1.4rem;
+}
+
+.panel-metrics span {
+  color: var(--color-text-subtle);
+  font-size: 0.75rem;
+}
+
+.panel-message {
+  margin: 0.9rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.panel-message.warning {
+  color: var(--color-accent);
+}
+
+.progress-track {
+  height: 0.5rem;
+  margin-top: 1.5rem;
+  overflow: hidden;
+  background: var(--color-control);
+  border-radius: 999px;
+}
+
+.progress-track span {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: inherit;
+  transition: width 0.3s ease;
+}
+
+.submission-history {
+  display: flex;
+  flex-direction: column;
+  margin-top: 1rem;
+}
+
+.submission-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+  padding: 0.7rem 0;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.submission-status {
+  color: var(--color-success);
+  text-align: right;
+  text-transform: capitalize;
+}
+
+.submission-status.partial,
+.submission-status.failed {
+  color: var(--color-accent);
 }
 
 .stat-card {
@@ -615,6 +872,10 @@ onMounted(async () => {
     gap: var(--space-lg);
   }
 
+  .dashboard-panels {
+    grid-template-columns: 1fr;
+  }
+
   .timer-value {
     font-size: 3rem;
   }
@@ -647,6 +908,19 @@ onMounted(async () => {
 
   .activity-item {
     flex-wrap: wrap;
+  }
+
+  .panel-heading {
+    flex-direction: column;
+  }
+
+  .submission-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .submission-status {
+    text-align: left;
+    grid-column: 1 / -1;
   }
 }
 </style>
