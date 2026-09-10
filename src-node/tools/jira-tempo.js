@@ -1031,7 +1031,7 @@ export const tools = [
         // so it drifts whenever a worklog is edited or deleted directly in
         // Tempo. Matching on ticket + date is what surfaces that drift.
         const localEntries = db.prepare(`
-          SELECT id, date, name, ticket_id, start_time, duration_mins, submitted, tempo_worklog_id
+          SELECT id, date, name, ticket_id, start_time, end_time, duration_mins, submitted, tempo_worklog_id
           FROM daily_summary
           WHERE date >= ? AND date <= ?
             AND ticket_id IS NOT NULL
