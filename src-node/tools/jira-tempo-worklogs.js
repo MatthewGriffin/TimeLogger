@@ -61,6 +61,16 @@ export async function updateTempoWorklogTimes(worklogId, tempoToken, { startDate
   });
 }
 
+export async function deleteTempoWorklog(worklogId, tempoToken) {
+  await makeHttpRequest(`https://api.tempo.io/4/worklogs/${worklogId}`, {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${tempoToken}`,
+      'Content-Type': 'application/json'
+    }
+  });
+}
+
 /**
  * Fetch a user's Tempo worklogs for a range and shape them for the app.
  *
