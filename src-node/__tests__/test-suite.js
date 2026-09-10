@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { tools, db, executeTool, healthCheck } from '../index.js';
-import { syncDayFromEvents } from '../tools/outlook.js';
+import { syncDayFromEvents, applyConflictResolutions } from '../tools/outlook.js';
 import {
   takeDuplicateWorklog,
   classifyWorklogFailure,
@@ -886,6 +886,46 @@ async function runTests() {
     const rows = db.prepare('SELECT name FROM daily_summary WHERE date = ?').all(TEST_DATE);
     assert.strictEqual(rows.length, 1, 'Only one meeting should remain logged, not both');
     assert.strictEqual(rows[0].name, 'Design Review');
+    cleanTestFixtures();
+  });
+
+  test('a split resolved after the meeting was already submitted corrects the stale worklog instead of leaving it', () => {
+    cleanTestFixtures();
+    // Planning was already synced and submitted to Tempo in full, before the
+    // user decided they actually left it early to join Design Review.
+    db.prepare(`
+      INSERT INTO daily_summary
+        (date, name, ticket_id, start_time, end_time, duration_mins, submitted, from_calendar, calendar_event_id)
+      VALUES (?, 'Planning', 'ABC-1', '13:00', '14:00', 60, 1, 1, 'evt-n')
+    `).run(TEST_DATE);
+
+    applyConflictResolutions(TEST_DATE, [
+      { eventId: 'evt-n', attended: true, endTimeOverride: '13:30' },
+      { eventId: 'evt-o', attended: true, startTimeOverride: '13:30' }
+    ]);
+
+    const planning = db.prepare('SELECT * FROM daily_summary WHERE date = ? AND calendar_event_id = ?')
+      .get(TEST_DATE, 'evt-n');
+    assert(planning, 'The Planning row should still exist rather than being deleted');
+    assert.strictEqual(planning.end_time, '13:30', 'The end time should shrink to the actual attended portion');
+    assert.strictEqual(planning.duration_mins, 30, 'The duration should reflect the shortened time');
+    assert.strictEqual(planning.submitted, 0, 'It must be flagged for resubmission so Tempo gets corrected');
+    cleanTestFixtures();
+  });
+
+  await testAsync('mark_entries_for_resubmit clears the submitted flag so a Tempo-deleted entry can be sent again', async () => {
+    cleanTestFixtures();
+    const inserted = db.prepare(`
+      INSERT INTO daily_summary (date, name, ticket_id, start_time, end_time, duration_mins, submitted, from_calendar)
+      VALUES (?, 'Deleted from Tempo', 'ABC-2', '10:00', '11:00', 60, 1, 0)
+    `).run(TEST_DATE);
+
+    const result = await executeTool('mark_entries_for_resubmit', { ids: [inserted.lastInsertRowid] });
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.updated, 1);
+
+    const row = db.prepare('SELECT submitted FROM daily_summary WHERE id = ?').get(inserted.lastInsertRowid);
+    assert.strictEqual(row.submitted, 0, 'The entry should be unmarked so it is offered for submission again');
     cleanTestFixtures();
   });
 
