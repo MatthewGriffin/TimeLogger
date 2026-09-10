@@ -47,6 +47,7 @@ import {
 import {
   fetchTempoWorklogs,
   updateTempoWorklogTimes,
+  deleteTempoWorklog,
   isConnectivityError
 } from './jira-tempo-worklogs.js';
 import { readSprintConfig } from './sprint.js';
@@ -1100,7 +1101,52 @@ export const tools = [
         const unmatchedWorklogs = [...remaining.values()].flat()
           .sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
 
-        const totalTempoMins = worklogs.reduce((sum, w) => sum + w.durationMins, 0);
+        // The local entry list is authoritative. A Tempo-only worklog that
+        // overlaps one of our local entries is a duplicate, not something to
+        // import: importing it would preserve the overlap and make the next
+        // submission capable of creating another copy. Remove only these
+        // unambiguous duplicates; standalone Tempo worklogs remain available
+        // in the "In Tempo Only" section for deliberate import.
+        const duplicateRemoteWorklogs = [];
+        const deletionsFailed = [];
+        for (const log of unmatchedWorklogs) {
+          const start = timeToMinutes(log.startTime);
+          const end = start + log.durationMins;
+          const clash = localEntries.find(entry =>
+            entry.date === log.date &&
+            entry.start_time && entry.end_time &&
+            timeToMinutes(entry.start_time) < end &&
+            timeToMinutes(entry.end_time) > start
+          );
+          if (!clash) continue;
+
+          try {
+            await deleteTempoWorklog(log.worklogId, tempoToken);
+            duplicateRemoteWorklogs.push({
+              worklogId: log.worklogId,
+              date: log.date,
+              time: `${log.startTime}-${minutesToTime(end)}`,
+              conflictsWith: `${clash.name} (${clash.start_time}-${clash.end_time})`
+            });
+          } catch (error) {
+            deletionsFailed.push({
+              worklogId: log.worklogId,
+              reason: error.message
+            });
+          }
+        }
+
+        const deletedIds = new Set(duplicateRemoteWorklogs.map(item => String(item.worklogId)));
+        const remainingUnmatchedWorklogs = unmatchedWorklogs.filter(
+          log => !deletedIds.has(String(log.worklogId))
+        );
+        const activeWorklogs = worklogs.filter(
+          log => !deletedIds.has(String(log.worklogId))
+        );
+
+        const totalTempoMins = worklogs
+          .filter(log => !deletedIds.has(String(log.worklogId)))
+          .reduce((sum, w) => sum + w.durationMins, 0);
         const counts = reconciled.reduce((acc, row) => {
           acc[row.status] = (acc[row.status] || 0) + 1;
           return acc;
@@ -1110,21 +1156,24 @@ export const tools = [
           success: true,
           from: args.from,
           to: args.to,
-          worklogs,
+          worklogs: activeWorklogs,
           reconciled,
-          unmatchedWorklogs,
+          unmatchedWorklogs: remainingUnmatchedWorklogs,
+          deletedDuplicateWorklogs: duplicateRemoteWorklogs,
+          failedDuplicateDeletions: deletionsFailed,
           counts: {
-            tempoWorklogs: worklogs.length,
+            tempoWorklogs: activeWorklogs.length,
             localEntries: localEntries.length,
             matched: counts.matched || 0,
             missingFromTempo: counts.missing_from_tempo || 0,
             inTempoNotMarked: counts.in_tempo_not_marked || 0,
             notSubmitted: counts.not_submitted || 0,
-            onlyInTempo: unmatchedWorklogs.length
+            onlyInTempo: remainingUnmatchedWorklogs.length
           },
           totalTempoMins,
           totalTempoHours: Math.round((totalTempoMins / 60) * 100) / 100,
-          message: `Found ${worklogs.length} Tempo worklog(s) totalling ${(totalTempoMins / 60).toFixed(2)}h between ${args.from} and ${args.to}`
+          message: `Found ${worklogs.length} Tempo worklog(s), removed ${duplicateRemoteWorklogs.length} overlapping duplicate(s), ` +
+            `totalling ${(totalTempoMins / 60).toFixed(2)}h between ${args.from} and ${args.to}`
         };
       } catch (error) {
         return {
@@ -1171,7 +1220,7 @@ export const tools = [
           ? new Set(args.worklogIds.map(Number))
           : null;
 
-        const requested = wanted
+        let requested = wanted
           ? worklogs.filter(log => wanted.has(Number(log.worklogId)))
           : worklogs;
 
@@ -1184,6 +1233,37 @@ export const tools = [
           FROM daily_summary
           WHERE date >= ? AND date <= ?
         `).all(args.from, args.to);
+
+        // The local log is authoritative. Remove remote-only worklogs that
+        // overlap an existing local time range before importing anything, so
+        // an explicit "Pull down" action cannot preserve a duplicate.
+        const deletedDuplicates = [];
+        const deletionFailures = [];
+        const duplicateIds = new Set();
+        for (const log of requested) {
+          const start = timeToMinutes(log.startTime);
+          const end = start + log.durationMins;
+          const clash = localEntries.find(entry =>
+            entry.date === log.date && entry.start_time && entry.end_time &&
+            timeToMinutes(entry.start_time) < end &&
+            timeToMinutes(entry.end_time) > start &&
+            entry.ticket_id !== log.ticketId
+          );
+          if (!clash) continue;
+          try {
+            await deleteTempoWorklog(log.worklogId, tempoToken);
+            duplicateIds.add(String(log.worklogId));
+            deletedDuplicates.push({
+              worklogId: log.worklogId,
+              date: log.date,
+              time: `${log.startTime}-${minutesToTime(end)}`,
+              conflictsWith: `${clash.name} (${clash.start_time}-${clash.end_time})`
+            });
+          } catch (error) {
+            deletionFailures.push({ worklogId: log.worklogId, reason: error.message });
+          }
+        }
+        requested = requested.filter(log => !duplicateIds.has(String(log.worklogId)));
 
         // Same date+ticket pairing the reconcile view uses, so anything it
         // shows as already matched is not imported a second time.
@@ -1307,6 +1387,8 @@ export const tools = [
           skippedWorklogs: skipped,
           overlapped: overlapped.length,
           overlappedEntries: overlapped,
+          deletedDuplicates,
+          deletionFailures,
           missingWorklogIds: missingIds,
           message: parts.join('. ')
         };
