@@ -150,13 +150,15 @@ declare global {
 
 <style>
 .app-shell {
-  min-height: 100vh;
+  height: 100vh;
   width: 100%;
 }
 
 .app-layout {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
   background: linear-gradient(135deg, var(--color-surface) 0%, var(--color-surface-raised) 100%);
 }
 
