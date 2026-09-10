@@ -795,7 +795,11 @@ export const tools = [
             if (duplicate) {
               // The work is in Tempo; only this app's record of it was wrong.
               // Correcting the flag stops it being offered for submission again.
-              db.prepare('UPDATE daily_summary SET submitted = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(entry.id);
+              db.prepare(`
+                UPDATE daily_summary
+                SET submitted = 1, tempo_worklog_id = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+              `).run(String(duplicate.worklog.worklogId), entry.id);
 
               // A meeting resolved as split-attendance (or otherwise edited)
               // after it was first logged has times that no longer match what
@@ -876,7 +880,11 @@ export const tools = [
             }
             
             // Mark as submitted
-            db.prepare('UPDATE daily_summary SET submitted = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(entry.id);
+            db.prepare(`
+              UPDATE daily_summary
+              SET submitted = 1, tempo_worklog_id = ?, updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `).run(String(worklogId), entry.id);
 
             // Fold the new worklog into the pool so two identical local rows
             // cannot both post against the same slot in one run.
@@ -1022,7 +1030,7 @@ export const tools = [
         // so it drifts whenever a worklog is edited or deleted directly in
         // Tempo. Matching on ticket + date is what surfaces that drift.
         const localEntries = db.prepare(`
-          SELECT id, date, name, ticket_id, start_time, duration_mins, submitted
+          SELECT id, date, name, ticket_id, start_time, duration_mins, submitted, tempo_worklog_id
           FROM daily_summary
           WHERE date >= ? AND date <= ?
             AND ticket_id IS NOT NULL
@@ -1040,11 +1048,32 @@ export const tools = [
         const reconciled = localEntries.map(entry => {
           const key = `${entry.date}|${entry.ticket_id}`;
           const pool = remaining.get(key) || [];
-          // Prefer the worklog whose duration also agrees, so a part-matched
-          // pair is not consumed by an unrelated entry on the same ticket.
-          let index = pool.findIndex(log => log.durationMins === entry.duration_mins);
-          if (index === -1) index = pool.length > 0 ? 0 : -1;
+          // Prefer the persisted Tempo ID. For older rows, match by start
+          // time first, then duration and description, so two blocks on the
+          // same ticket cannot be paired in arbitrary order.
+          let index = entry.tempo_worklog_id
+            ? pool.findIndex(log => String(log.worklogId) === String(entry.tempo_worklog_id))
+            : -1;
+          if (index === -1 && entry.start_time) {
+            const entryStart = String(entry.start_time).slice(0, 5);
+            index = pool.findIndex(log => String(log.startTime || '').slice(0, 5) === entryStart);
+          }
+          if (index === -1) {
+            const description = String(entry.name || '').trim().toLowerCase();
+            index = pool.findIndex(log =>
+              log.durationMins === entry.duration_mins &&
+              String(log.description || '').trim().toLowerCase() === description
+            );
+          }
           const match = index >= 0 ? pool.splice(index, 1)[0] : null;
+
+          if (match && String(entry.tempo_worklog_id || '') !== String(match.worklogId)) {
+            db.prepare(`
+              UPDATE daily_summary
+              SET tempo_worklog_id = ?, updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `).run(String(match.worklogId), entry.id);
+          }
 
           let status;
           if (match && entry.submitted) status = 'matched';

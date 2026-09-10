@@ -24,6 +24,19 @@ export function takeDuplicateWorklog(entry, pool, issueId = null) {
   const entryMins = Number(entry.duration_mins) || 0;
   const entryDesc = normaliseDescription(entry.name);
 
+  // Once a POST or reconciliation has associated a local row with Tempo,
+  // the remote worklog ID is the only unambiguous identity. Always consume
+  // that row first, even if its time or description was edited in Tempo.
+  if (entry.tempo_worklog_id) {
+    const index = pool.findIndex(log =>
+      String(log.worklogId) === String(entry.tempo_worklog_id)
+    );
+    if (index !== -1) {
+      const worklog = pool.splice(index, 1)[0];
+      return { worklog, reason: 'known_worklog_id', detail: 'Already in Tempo' };
+    }
+  }
+
   const isSameIssue = (log) => (
     numericIssueId !== null && Number(log.issueId) === numericIssueId
   ) || (
@@ -55,6 +68,21 @@ export function takeDuplicateWorklog(entry, pool, issueId = null) {
   if (index !== -1) {
     const worklog = pool.splice(index, 1)[0];
     return { worklog, reason: 'same_duration_and_description', detail: 'Already in Tempo' };
+  }
+
+  // A resubmitted row may have been edited locally after its original
+  // submission, changing both its start and duration. If there is exactly one
+  // remaining worklog for this issue and its description still identifies the
+  // same work, reuse it; never guess when the ticket has multiple candidates.
+  const candidates = pool.filter(log =>
+    isSameIssue(log) &&
+    entryDesc !== '' &&
+    normaliseDescription(log.description) === entryDesc
+  );
+  if (candidates.length === 1) {
+    const worklog = candidates[0];
+    pool.splice(pool.indexOf(worklog), 1);
+    return { worklog, reason: 'same_issue_and_description', detail: 'Already in Tempo' };
   }
 
   return null;

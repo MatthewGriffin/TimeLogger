@@ -88,6 +88,8 @@ const columns = (table) => db.prepare(`PRAGMA table_info(${table})`).all().map(c
 const dailySummaryColumns = columns('daily_summary');
 if (!dailySummaryColumns.includes('calendar_event_id')) db.exec('ALTER TABLE daily_summary ADD COLUMN calendar_event_id TEXT');
 if (!dailySummaryColumns.includes('is_holiday')) db.exec('ALTER TABLE daily_summary ADD COLUMN is_holiday INTEGER DEFAULT 0');
+if (!dailySummaryColumns.includes('tempo_worklog_id')) db.exec('ALTER TABLE daily_summary ADD COLUMN tempo_worklog_id TEXT');
+db.exec('CREATE INDEX IF NOT EXISTS idx_daily_summary_tempo_worklog ON daily_summary(tempo_worklog_id)');
 db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_daily_summary_calendar_event
     ON daily_summary(date, calendar_event_id)
