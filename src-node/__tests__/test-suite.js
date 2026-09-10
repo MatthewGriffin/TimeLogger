@@ -504,6 +504,9 @@ async function runTests() {
     );
     try {
       insert.run('1991-01-02', 'Submitted work', 'TIME-1', '09:00', '10:00', 60, 1);
+      // Lunch is local-only and must not make a fully submitted workday look
+      // partially submitted.
+      insert.run('1991-01-02', 'Lunch', null, '12:00', '13:00', 60, 0);
       insert.run('1991-01-03', 'Unsubmitted work', 'TIME-2', '09:00', '10:00', 60, 0);
       // 1991-01-04 and 1991-01-07 are deliberately left with no rows at all.
 
@@ -513,6 +516,7 @@ async function runTests() {
       const byDate = new Map(result.days.map(d => [d.date, d]));
       assert.strictEqual(byDate.get('1991-01-01')?.status, 'holiday', 'New Year should be a holiday');
       assert.strictEqual(byDate.get('1991-01-02')?.status, 'complete', 'Fully submitted day should be complete');
+      assert.strictEqual(byDate.get('1991-01-02')?.entryCount, 1, 'Lunch should not count as a Tempo entry');
       assert.strictEqual(byDate.get('1991-01-03')?.status, 'not_submitted');
       assert.strictEqual(byDate.get('1991-01-04')?.status, 'no_time_logged');
       assert(!byDate.has('1991-01-05'), 'Saturday should not be evaluated');
