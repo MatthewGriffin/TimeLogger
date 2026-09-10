@@ -69,65 +69,66 @@
             </div>
           </div>
         </div>
+      </div>
 
-        <div class="dashboard-panels">
-          <section class="dashboard-panel tempo-panel">
-            <div class="panel-heading">
-              <div>
-                <h2 class="section-title">Tempo health</h2>
-                <p class="panel-subtitle">{{ tempoSummary.lastChecked ? `Checked ${formatCheckedTime(tempoSummary.lastChecked)}` : 'Not checked yet' }}</p>
-              </div>
-              <router-link to="/tempo" class="panel-link">Open Tempo Status →</router-link>
+      <div class="dashboard-panels">
+        <section class="dashboard-panel tempo-panel">
+          <div class="panel-heading">
+            <div>
+              <h2 class="section-title">Tempo health</h2>
+              <p class="panel-subtitle">{{ tempoSummary.lastChecked ? `Checked ${formatCheckedTime(tempoSummary.lastChecked)}` : 'Not checked yet' }}</p>
             </div>
-            <div class="panel-metrics">
-              <div><strong>{{ tempoSummary.missing }}</strong><span>Missing</span></div>
-              <div><strong>{{ tempoSummary.different }}</strong><span>Duration differs</span></div>
-              <div><strong>{{ tempoSummary.only }}</strong><span>Tempo only</span></div>
-            </div>
-            <p class="panel-message" :class="{ warning: tempoSummary.error || tempoSummary.missing || tempoSummary.different || tempoSummary.only }">
-              {{ tempoSummary.error || tempoHealthMessage }}
-            </p>
-          </section>
+            <router-link to="/tempo" class="panel-link">Open Tempo Status →</router-link>
+          </div>
+          <div class="panel-metrics">
+            <div><strong>{{ tempoSummary.missing }}</strong><span>Missing</span></div>
+            <div><strong>{{ tempoSummary.different }}</strong><span>Duration differs</span></div>
+            <div><strong>{{ tempoSummary.only }}</strong><span>Tempo only</span></div>
+          </div>
+          <p class="panel-message" :class="{ warning: tempoSummary.error || tempoSummary.missing || tempoSummary.different || tempoSummary.only }">
+            {{ tempoSummary.error || tempoHealthMessage }}
+          </p>
+        </section>
 
-          <section class="dashboard-panel">
-            <div class="panel-heading">
-              <div>
-                <h2 class="section-title">Today’s submission</h2>
-                <p class="panel-subtitle">{{ todayTicketedCount }} ticketed entries</p>
-              </div>
-              <router-link to="/submit" class="panel-link">Submit time →</router-link>
+        <section class="dashboard-panel">
+          <div class="panel-heading">
+            <div>
+              <h2 class="section-title">Today’s submission</h2>
+              <p class="panel-subtitle">{{ todayTicketedCount }} ticketed entries</p>
             </div>
-            <div class="progress-track"><span :style="{ width: `${todaySubmissionPercent}%` }"></span></div>
-            <p class="panel-message">{{ todaySubmissionMessage }}</p>
-          </section>
+            <router-link to="/submit" class="panel-link">Submit time →</router-link>
+          </div>
+          <div class="progress-track"><span :style="{ width: `${todaySubmissionPercent}%` }"></span></div>
+          <p class="panel-message">{{ todaySubmissionMessage }}</p>
+        </section>
 
-          <section class="dashboard-panel">
-            <div class="panel-heading">
-              <div>
-                <h2 class="section-title">Workday target</h2>
-                <p class="panel-subtitle">{{ workdayTarget }}h scheduled</p>
-              </div>
-              <router-link to="/settings" class="panel-link">Edit hours →</router-link>
+        <section class="dashboard-panel">
+          <div class="panel-heading">
+            <div>
+              <h2 class="section-title">Workday target</h2>
+              <p class="panel-subtitle">{{ workdayTarget }}h scheduled</p>
             </div>
-            <div class="progress-track"><span :style="{ width: `${workdayPercent}%` }"></span></div>
-            <p class="panel-message">{{ todayHours }}h logged · {{ workdayRemaining }}h remaining</p>
-          </section>
+            <router-link to="/settings" class="panel-link">Edit hours →</router-link>
+          </div>
+          <div class="progress-track"><span :style="{ width: `${workdayPercent}%` }"></span></div>
+          <p class="panel-message">{{ todayHours }}h logged · {{ workdayRemaining }}h remaining</p>
+        </section>
 
-          <section class="dashboard-panel">
-            <div class="panel-heading">
-              <div>
-                <h2 class="section-title">Needs attention</h2>
-                <p class="panel-subtitle">{{ attentionCount ? `${attentionCount} item${attentionCount === 1 ? '' : 's'}` : 'Nothing outstanding' }}</p>
-              </div>
-              <router-link to="/entries" class="panel-link">Review entries →</router-link>
+        <section class="dashboard-panel">
+          <div class="panel-heading">
+            <div>
+              <h2 class="section-title">Needs attention</h2>
+              <p class="panel-subtitle">{{ attentionCount ? `${attentionCount} item${attentionCount === 1 ? '' : 's'}` : 'Nothing outstanding' }}</p>
             </div>
-            <p class="panel-message" :class="{ warning: attentionCount > 0 }">
-              {{ attentionMessage }}
-            </p>
-          </section>
-        </div>
+            <router-link to="/entries" class="panel-link">Review entries →</router-link>
+          </div>
+          <p class="panel-message" :class="{ warning: attentionCount > 0 }">
+            {{ attentionMessage }}
+          </p>
+        </section>
+      </div>
 
-        <section class="dashboard-panel submission-history-panel">
+      <section class="dashboard-panel submission-history-panel">
           <div class="panel-heading">
             <div>
               <h2 class="section-title">Recent submissions</h2>
@@ -143,8 +144,7 @@
             </div>
           </div>
           <p v-else class="panel-message">No Tempo submissions recorded yet.</p>
-        </section>
-      </div>
+      </section>
 
       <!-- Recent Activity -->
       <div class="activity-section">
