@@ -78,7 +78,7 @@
               <h2 class="section-title">Tempo health</h2>
               <p class="panel-subtitle">{{ tempoSummary.lastChecked ? `Checked ${formatCheckedTime(tempoSummary.lastChecked)}` : 'Not checked yet' }}</p>
             </div>
-            <router-link to="/tempo" class="panel-link">Open Tempo Status →</router-link>
+            <router-link :to="tempoHealthLink" class="panel-link">{{ tempoHealthLinkLabel }} →</router-link>
           </div>
           <div class="panel-metrics">
             <div><strong>{{ tempoSummary.missing }}</strong><span>Missing</span></div>
@@ -108,7 +108,7 @@
               <h2 class="section-title">Workday target</h2>
               <p class="panel-subtitle">{{ workdayTarget }}h scheduled</p>
             </div>
-            <router-link to="/settings" class="panel-link">Edit hours →</router-link>
+            <router-link :to="{ path: '/settings', query: { tab: 'App Settings' } }" class="panel-link">Edit hours →</router-link>
           </div>
           <div class="progress-track"><span :style="{ width: `${workdayPercent}%` }"></span></div>
           <p class="panel-message">{{ todayHours }}h logged · {{ workdayRemaining }}h remaining</p>
@@ -117,13 +117,13 @@
         <section class="dashboard-panel">
           <div class="panel-heading">
             <div>
-              <h2 class="section-title">Needs attention</h2>
-              <p class="panel-subtitle">{{ attentionCount ? `${attentionCount} item${attentionCount === 1 ? '' : 's'}` : 'Nothing outstanding' }}</p>
+              <h2 class="section-title">Calendar conflicts</h2>
+              <p class="panel-subtitle">{{ entriesStore.pendingMeetingConflicts.length ? `${entriesStore.pendingMeetingConflicts.length} pending` : 'Nothing outstanding' }}</p>
             </div>
-            <router-link to="/entries" class="panel-link">Review entries →</router-link>
+            <router-link :to="conflictLink" class="panel-link">{{ conflictLinkLabel }} →</router-link>
           </div>
-          <p class="panel-message" :class="{ warning: attentionCount > 0 }">
-            {{ attentionMessage }}
+          <p class="panel-message" :class="{ warning: entriesStore.pendingMeetingConflicts.length > 0 }">
+            {{ conflictMessage }}
           </p>
         </section>
       </div>
@@ -278,11 +278,26 @@ const workdayTarget = computed(() => {
 const workdayPercent = computed(() => Math.min(100, Math.round((Number(todayHours.value) / Number(workdayTarget.value)) * 100)) || 0)
 const workdayRemaining = computed(() => Math.max(0, Number(workdayTarget.value) - Number(todayHours.value)).toFixed(1))
 const attentionCount = computed(() => unsubmitted.value.count + entriesStore.pendingMeetingConflicts.length + tempoSummary.value.missing + tempoSummary.value.different)
-const attentionMessage = computed(() => {
-  if (entriesStore.pendingMeetingConflicts.length) return `${entriesStore.pendingMeetingConflicts.length} calendar conflict${entriesStore.pendingMeetingConflicts.length === 1 ? '' : 's'} need resolving.`
-  if (unsubmitted.value.count) return `${unsubmitted.value.count} ticketed entr${unsubmitted.value.count === 1 ? 'y remains' : 'ies remain'} unsubmitted.`
-  if (tempoSummary.value.missing || tempoSummary.value.different) return 'Tempo has differences to reconcile.'
-  return 'Your entries and integrations look up to date.'
+const tempoHealthLink = computed(() => (attentionCount.value > 0)
+  ? { path: '/tempo', query: { range: 'week', filter: 'needs_fixing' } }
+  : { path: '/tempo' })
+const tempoHealthLinkLabel = computed(() => (tempoSummary.value.missing || tempoSummary.value.different)
+  ? 'Fix Tempo entries'
+  : 'Open Tempo Status')
+const conflictLink = computed(() => {
+  const next = entriesStore.pendingMeetingConflicts[0]
+  return next ? { path: '/entries', query: { date: next.date } } : { path: '/entries' }
+})
+const conflictLinkLabel = computed(() => entriesStore.pendingMeetingConflicts.length ? 'Resolve conflicts' : 'View entries')
+const conflictMessage = computed(() => {
+  const conflicts = entriesStore.pendingMeetingConflicts
+  if (!conflicts.length) return 'No overlapping meetings detected this week.'
+  const next = conflicts[0]
+  const firstEvent = next.events[0]
+  const eventCount = conflicts.reduce((sum, day) => sum + day.events.length, 0)
+  return conflicts.length === 1
+    ? `${firstEvent?.subject ?? 'A meeting'} on ${next.date} overlaps another entry.`
+    : `${eventCount} meeting${eventCount === 1 ? '' : 's'} overlap other entries across ${conflicts.length} days, starting ${next.date}.`
 })
 const tempoHealthMessage = computed(() => {
   if (!configStore.isTempoConfigured()) return 'Configure Tempo to see reconciliation health.'

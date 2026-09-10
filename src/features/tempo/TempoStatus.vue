@@ -121,6 +121,10 @@
           These are marked as submitted here but no longer exist in Tempo — most likely deleted directly there.
           Resubmit to send them again.
         </p>
+        <p v-else-if="statusFilter === 'needs_fixing' && filteredReconciled.length > 0" class="section-note">
+          Entries here either vanished from Tempo after being marked sent, or have a duration that no longer
+          matches what's in Tempo. Use Resubmit or "Use local time" below to fix each one.
+        </p>
 
         <div v-if="filteredReconciled.length === 0" class="empty-state">
           Nothing matches this filter.
@@ -234,6 +238,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { executeApi, ApiError } from '@/shared/utils/api'
 import { asRecord, asString, asNumber, asBoolean, readList } from '@/shared/utils/schema'
 import { localDate, startOfWeek } from '@/shared/utils/dates'
@@ -331,17 +336,20 @@ const toDate = ref(localDate(new Date()))
 
 const statusFilters = [
   { label: 'All', value: 'all' },
+  { label: 'Needs fixing', value: 'needs_fixing' },
   { label: 'Matched', value: 'matched' },
   { label: 'Marked sent, absent', value: 'missing_from_tempo' },
   { label: 'In Tempo, not marked', value: 'in_tempo_not_marked' },
   { label: 'Not submitted', value: 'not_submitted' }
 ]
 
-const filteredReconciled = computed(() =>
-  statusFilter.value === 'all'
-    ? reconciled.value
-    : reconciled.value.filter(row => row.status === statusFilter.value)
-)
+const filteredReconciled = computed(() => {
+  if (statusFilter.value === 'all') return reconciled.value
+  if (statusFilter.value === 'needs_fixing') {
+    return reconciled.value.filter(row => row.status === 'missing_from_tempo' || row.durationDiffers)
+  }
+  return reconciled.value.filter(row => row.status === statusFilter.value)
+})
 
 const statusLabel = (status: string) => {
   switch (status) {
@@ -445,7 +453,21 @@ const load = async () => {
   }
 }
 
-onMounted(load)
+const route = useRoute()
+
+onMounted(() => {
+  const rangeQuery = route.query.range
+  if (rangeQuery === 'week') {
+    selectedRange.value = 'This Week'
+    fromDate.value = localDate(startOfWeek())
+    toDate.value = localDate(new Date())
+  }
+  const filterQuery = route.query.filter
+  if (typeof filterQuery === 'string' && statusFilters.some(f => f.value === filterQuery)) {
+    statusFilter.value = filterQuery
+  }
+  load()
+})
 
 const importWorklogs = async (worklogIds?: number[]) => {
   isImporting.value = true
