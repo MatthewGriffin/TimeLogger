@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url';
 import { router as setupRoutes } from './api/setup-routes.js';
 import { apiLimiter } from './api/rate-limit.js';
 import { tools, executeTool } from './index.js';
+import { backendPort } from './utils/backend-port.js';
 
 // Setup file logging
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -36,7 +37,7 @@ function log(msg) {
 log('🚀 TimeLogger Backend Starting...');
 
 const app = express();
-const PORT = Number(process.env.TIMELOGGER_PORT) || 3001;
+const PORT = backendPort();
 
 const ALLOWED_ORIGINS = [
   'http://localhost:5173',
@@ -47,6 +48,32 @@ const ALLOWED_ORIGINS = [
   'https://tauri.localhost',
   'tauri://localhost',
 ];
+
+
+const ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+// CORS alone is insufficient: browsers can send cross-origin requests even
+// when they cannot read the response (for example HTML form posts). Reject
+// hostile Origin and Host headers before any credentialed API route is reached.
+app.use((req, res, next) => {
+  let host;
+  try {
+    host = new URL(`http://${req.headers.host || ''}`);
+  } catch {
+    return res.status(400).json({ success: false, message: 'Invalid Host header' });
+  }
+
+  if (!ALLOWED_HOSTS.has(host.hostname.toLowerCase()) ||
+      (host.port && Number(host.port) !== PORT)) {
+    return res.status(403).json({ success: false, message: 'Requests must target the local TimeLogger backend' });
+  }
+
+  const origin = req.headers.origin;
+  if (origin !== undefined && !ALLOWED_ORIGINS.includes(origin)) {
+    return res.status(403).json({ success: false, message: 'Cross-origin request blocked' });
+  }
+  next();
+});
 
 const corsOptions = {
   origin(origin, callback) {
