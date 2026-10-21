@@ -745,6 +745,22 @@ async function runTests() {
   });
 
   // ============================================================
+  await testAsync('Tempo rejects future-dated single worklogs before contacting Jira', async () => {
+    const result = await executeTool('tempo_post_worklog', {
+      baseUrl: 'https://example.atlassian.net', email: 'test@example.com', apiToken: 'x', tempoToken: 'y',
+      issueKey: 'TIME-1', startDate: isoDaysFromToday(1), timeSpentSeconds: 1800
+    });
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(result.code, 'future_date_not_allowed');
+  });
+
+  await testAsync('Tempo rejects future-dated day submissions before contacting Jira', async () => {
+    const result = await executeTool('tempo_submit_day', { date: isoDaysFromToday(1) });
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(result.code, 'future_date_not_allowed');
+    assert.strictEqual(result.count, 0);
+  });
+
   // SECTION 14: Calendar meeting conflicts
   // ============================================================
   log(colors.yellow, '\n🗓️  SECTION 14: Calendar Meeting Conflicts\n');
@@ -761,6 +777,20 @@ async function runTests() {
     isCancelled: false,
     categories: [],
     ...overrides,
+  });
+
+  test('future meetings are not added to daily entries during calendar sync', () => {
+    cleanTestFixtures();
+    const futureDate = isoDaysFromToday(1);
+    const result = syncDayFromEvents(
+      futureDate,
+      [meetingEvent('evt-future', 'Future Planning', '10:00', '11:00', { date: futureDate })],
+      {},
+    );
+    assert.strictEqual(result.created, 0);
+    assert.match(result.message, /future meetings are not synced/i);
+    assert.strictEqual(db.prepare('SELECT COUNT(*) AS count FROM daily_summary WHERE date = ?').get(futureDate).count, 0);
+    cleanTestFixtures();
   });
 
   test('two overlapping meetings are held back for the user to choose', () => {

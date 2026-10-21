@@ -265,6 +265,16 @@ export function applyConflictResolutions(date, resolutions) {
  * and the event cache is keyed by range, so it would not help.
  */
 export function syncDayFromEvents(date, events, calendarConfig) {
+      const today = new Date().toLocaleDateString('en-CA');
+      if (date > today) {
+        return {
+          success: true, created: 0, skipped: 0, clashed: 0, clashedSubjects: [],
+          adjusted: 0, adjustedEntries: [], unmapped: 0, unmappedSubjects: [],
+          unmappedMeetings: [], meetingConflicts: [], entries: [],
+          message: 'Future meetings are not synced into time entries.'
+        };
+      }
+
       const workday = readAppConfig().workday || {};
       const workdayStart = workday.startTime || '09:00';
       const workdayEnd = workday.endTime || '17:00';
@@ -805,12 +815,22 @@ export const tools = [
         const lastDay = new Date(year, monthIndex, 0).getDate();
         const startDate = `${month}-01`;
         const endDate = `${month}-${String(lastDay).padStart(2, '0')}`;
+        const today = new Date().toLocaleDateString('en-CA');
+        if (startDate > today) {
+          return {
+            success: true, month, days: 0, created: 0, skipped: 0, clashed: 0,
+            adjusted: 0, unmapped: 0, unmappedSubjects: [], unmappedMeetings: [],
+            meetingConflicts: [], entries: [], failedDates: [],
+            message: 'Future meetings are not synced into time entries.'
+          };
+        }
+        const syncEndDate = endDate > today ? today : endDate;
 
-        // One COM round trip for the whole month; the per-day logic then works
-        // off this list rather than re-fetching 30 times.
+        // One COM round trip for the whole eligible part of the month; future
+        // meetings are deliberately excluded before they can become entries.
         const { events } = await fetchEvents({
           startDate,
-          endDate,
+          endDate: syncEndDate,
           skipCache: args.skipCache !== false
         });
 
