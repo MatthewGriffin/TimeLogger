@@ -102,7 +102,7 @@ app.post('/api/execute', async (req, res) => {
     // throwing. Preserve their useful message, but do not wrap them in a
     // success:true envelope: the frontend would otherwise treat them as data.
     if (result && typeof result === 'object' &&
-        (result.resultType === 'failure' || result.success === false)) {
+        result.resultType === 'failure') {
       const message = result.message || result.textResultForLlm || 'Tool execution failed';
       return res.status(500).json({ success: false, message });
     }
