@@ -92,7 +92,6 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use('/api', apiLimiter);
-app.options('*', cors(corsOptions));
 
 app.get('/health', (req, res) => {
   res.json({
