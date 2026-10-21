@@ -33,18 +33,8 @@ jobs:
         # Visual Studio version. Skipping scripts uses the shipped prebuild.
         run: npm ci --ignore-scripts
         working-directory: src-node
-      - name: Resolve frontend dependency advisories for audit
-        run: |
-          npm audit fix --package-lock-only --ignore-scripts
-          node -e "const cp=require('child_process');const a=JSON.parse(cp.execFileSync('git',['show','HEAD:package-lock.json'],{encoding:'utf8'}));const b=require('./package-lock.json');for(const k of new Set([...Object.keys(a.packages),...Object.keys(b.packages)])){if(JSON.stringify(a.packages[k])!==JSON.stringify(b.packages[k])) console.log(k,JSON.stringify(b.packages[k]||null))}"
       - name: Audit frontend dependencies
         run: npm audit --audit-level=high
-        continue-on-error: true
-      - name: Resolve backend dependency advisories for audit
-        run: |
-          npm audit fix --package-lock-only --ignore-scripts
-          node -e "const cp=require('child_process');const a=JSON.parse(cp.execFileSync('git',['show','HEAD:src-node/package-lock.json'],{encoding:'utf8'}));const b=require('./package-lock.json');for(const k of new Set([...Object.keys(a.packages),...Object.keys(b.packages)])){if(JSON.stringify(a.packages[k])!==JSON.stringify(b.packages[k])) console.log(k,JSON.stringify(b.packages[k]||null))}"
-        working-directory: src-node
       - name: Audit backend dependencies
         run: npm audit --audit-level=high
         working-directory: src-node
