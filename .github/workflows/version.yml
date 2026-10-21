@@ -29,10 +29,21 @@ jobs:
           version=$(git show origin/main:src-tauri/tauri.conf.json | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).version))")
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Detect workflow-only changes
+        id: scope
+        shell: bash
+        run: |
+          changed_files=$(git diff --name-only "${{ github.event.pull_request.base.sha }}"...HEAD)
+          if [ -n "$changed_files" ] && ! printf '%s\n' "$changed_files" | grep -qv '^\.github/workflows/'; then
+            echo "workflow_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "workflow_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Check versions are consistent and increased
-        if: github.actor != 'dependabot[bot]'
+        if: github.actor != 'dependabot[bot]' && steps.scope.outputs.workflow_only != 'true'
         run: node scripts/check-version.mjs "${{ steps.baseline.outputs.version }}"
 
       - name: Check versions are consistent
-        if: github.actor == 'dependabot[bot]'
+        if: github.actor == 'dependabot[bot]' && steps.scope.outputs.workflow_only != 'true'
         run: node scripts/check-version.mjs
