@@ -26,7 +26,8 @@ const options = {
  * General allowance for the API. Generous, because the UI legitimately polls
  * some endpoints while a sign-in is in progress.
  */
-export const apiLimiter = rateLimit({ ...options, limit: 300 });
+const API_LIMIT = Number(process.env.TIMELOGGER_API_RATE_LIMIT) || 300;
+export const apiLimiter = rateLimit({ ...options, limit: API_LIMIT });
 
 /**
  * Tighter allowance for setup and credential-testing routes, which are
