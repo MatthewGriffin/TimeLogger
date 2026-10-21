@@ -41,6 +41,13 @@ function storePkceVerifier(verifier) {
   `).run(verifier);
 }
 
+function storeOAuthState(state) {
+  db.prepare(`
+    INSERT OR REPLACE INTO settings (key, value)
+    VALUES ('microsoft_oauth_state', ?)
+  `).run(state);
+}
+
 /**
  * Consume an OAuth flow only when the callback presents its matching state.
  *
