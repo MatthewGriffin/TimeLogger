@@ -33,6 +33,11 @@ jobs:
         # Visual Studio version. Skipping scripts uses the shipped prebuild.
         run: npm ci --ignore-scripts
         working-directory: src-node
+      - name: Audit frontend dependencies
+        run: npm audit --audit-level=high
+      - name: Audit backend dependencies
+        run: npm audit --audit-level=high
+        working-directory: src-node
       - name: Cache cargo
         uses: actions/cache@v4
         with:
@@ -43,6 +48,10 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
       - run: npm run check
+      - name: Audit Rust dependencies
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit --file src-tauri/Cargo.lock
       - name: Install Playwright browser
         # Chromium only: the app ships on WebView2, so the other engines would
         # not tell us anything about what users actually run.
