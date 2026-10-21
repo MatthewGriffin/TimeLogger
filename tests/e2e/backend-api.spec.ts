@@ -62,6 +62,27 @@ test.describe('Backend sidecar API', () => {
     createdIds = [];
   });
 
+  test('rejects browser requests from an untrusted origin', async ({ request }) => {
+    const res = await request.get(`${BACKEND_URL}/health`, {
+      headers: { Origin: 'https://attacker.example' },
+    });
+    expect(res.status()).toBe(403);
+  });
+
+  test('rejects cross-site browser requests even without an Origin header', async ({ request }) => {
+    const res = await request.get(`${BACKEND_URL}/health`, {
+      headers: { 'Sec-Fetch-Site': 'cross-site' },
+    });
+    expect(res.status()).toBe(403);
+  });
+
+  test('rejects requests with a non-local Host header', async ({ request }) => {
+    const res = await request.get(`${BACKEND_URL}/health`, {
+      headers: { Host: 'attacker.example' },
+    });
+    expect(res.status()).toBe(403);
+  });
+
   test('health endpoint reports ok', async ({ request }) => {
     const res = await request.get(`${BACKEND_URL}/health`);
     expect(res.ok()).toBe(true);
