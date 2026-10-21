@@ -150,7 +150,7 @@ pub(crate) async fn call_node_api_get(path: &str) -> Result<serde_json::Value, S
   let client = shared_client(&SETUP_CLIENT, std::time::Duration::from_secs(60))?;
 
   let response = client
-    .get(format!("{}/api{}", BACKEND_ORIGIN, path))
+    .get(format!("{}/api{}", backend_origin(), path))
     .send()
     .await
     .map_err(|e| format!("Failed to call backend: {}", e))?;
