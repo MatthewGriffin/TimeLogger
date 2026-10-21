@@ -3,7 +3,7 @@ import { join } from 'path';
 import os from 'os';
 import { existsSync, mkdirSync } from 'fs';
 
-export const APP_DATA_DIR = join(os.homedir(), '.timelogger-app');
+export const APP_DATA_DIR = process.env.TIMELOGGER_DATA_DIR || join(os.homedir(), '.timelogger-app');
 const DB_PATH = join(APP_DATA_DIR, 'daily_summary.db');
 
 if (!existsSync(APP_DATA_DIR)) {
