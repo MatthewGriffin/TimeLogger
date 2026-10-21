@@ -410,6 +410,10 @@ export const tools = [
     },
     handler: async (args) => {
       try {
+        if (args.startDate > isoDaysFromToday(0)) {
+          return { success: false, code: 'future_date_not_allowed',
+            message: 'Future-dated worklogs cannot be submitted to Tempo. Only today and past dates are allowed.' };
+        }
         if (!args.baseUrl || !args.email || !args.apiToken || !args.tempoToken) {
           throw new Error('Missing required credentials');
         }
@@ -678,6 +682,10 @@ export const tools = [
     },
     handler: async (args) => {
       try {
+        if (args.date > isoDaysFromToday(0)) {
+          return { success: false, code: 'future_date_not_allowed', count: 0,
+            message: 'Future-dated entries cannot be submitted to Tempo. Only today and past dates are allowed.' };
+        }
         const credentials = resolveJiraCredentials(args);
         const tempoToken = resolveTempoToken(args);
         const account = await getCurrentAccount(credentials);

@@ -21,11 +21,11 @@
       <div v-if="selectedRange === 'Custom'" class="custom-range">
         <label class="range-field">
           <span>From</span>
-          <input v-model="customStart" type="date" :max="customEnd || undefined" class="date-input" />
+          <input v-model="customStart" type="date" :max="todayDate" class="date-input" />
         </label>
         <label class="range-field">
           <span>To</span>
-          <input v-model="customEnd" type="date" :min="customStart || undefined" class="date-input" />
+          <input v-model="customEnd" type="date" :min="customStart || undefined" :max="todayDate" class="date-input" />
         </label>
       </div>
       <p class="range-summary">
@@ -293,11 +293,11 @@ const resolveRange = (range: DateRange): { start: string; end: string } | null =
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
+  const todayString = localDate(today)
+
   if (range === 'This Week') {
     const start = startOfWeek(today)
-    const end = new Date(start)
-    end.setDate(start.getDate() + 6)
-    return { start: localDate(start), end: localDate(end) }
+    return { start: localDate(start), end: todayString }
   }
 
   if (range === 'Last Week') {
@@ -312,15 +312,17 @@ const resolveRange = (range: DateRange): { start: string; end: string } | null =
     const start = new Date(today.getFullYear(), today.getMonth(), 1)
     // Day 0 of the next month is the last day of this one, which keeps the
     // month length correct without hardcoding 28/30/31.
-    const end = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-    return { start: localDate(start), end: localDate(end) }
+    return { start: localDate(start), end: todayString }
   }
 
   if (!customStart.value || !customEnd.value) return null
-  return customStart.value <= customEnd.value
-    ? { start: customStart.value, end: customEnd.value }
-    : { start: customEnd.value, end: customStart.value }
+  const start = customStart.value <= customEnd.value ? customStart.value : customEnd.value
+  const end = customStart.value <= customEnd.value ? customEnd.value : customStart.value
+  if (start > todayString) return null
+  return { start, end: end > todayString ? todayString : end }
 }
+
+const todayDate = localDate(new Date())
 
 const activeRange = computed(() => resolveRange(selectedRange.value))
 
@@ -383,7 +385,8 @@ const hasTicket = (entry: { ticketId?: string }) => Boolean(entry.ticketId && en
 const entriesInRange = computed(() => {
   const resolved = activeRange.value
   if (!resolved) return []
-  return entriesStore.entries.filter(e => e.date >= resolved.start && e.date <= resolved.end)
+  const today = localDate(new Date())
+  return entriesStore.entries.filter(e => e.date >= resolved.start && e.date <= resolved.end && e.date <= today)
 })
 
 /**
