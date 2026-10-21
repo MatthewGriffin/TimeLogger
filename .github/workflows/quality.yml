@@ -13,7 +13,7 @@ jobs:
     runs-on: windows-latest
     env:
       # Keep CI tests away from any user profile data, including on self-hosted runners.
-      TIMELOGGER_DATA_DIR: ${{ runner.temp }}/timelogger-test-data
+      TIMELOGGER_DATA_DIR: ${{ github.workspace }}/.timelogger-test-data
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -81,6 +81,10 @@ jobs:
             }
           }
           exit $exitCode
+      - name: Clean isolated backend data
+        if: always()
+        shell: pwsh
+        run: Remove-Item -Recurse -Force $env:TIMELOGGER_DATA_DIR -ErrorAction SilentlyContinue
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v4
