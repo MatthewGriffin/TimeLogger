@@ -744,6 +744,7 @@ async function runTests() {
     }
   });
 
+  // SECTION 13: Future-date safeguards
   // ============================================================
   await testAsync('Tempo rejects future-dated single worklogs before contacting Jira', async () => {
     const result = await executeTool('tempo_post_worklog', {
@@ -761,6 +762,7 @@ async function runTests() {
     assert.strictEqual(result.count, 0);
   });
 
+  // ============================================================
   // SECTION 14: Calendar meeting conflicts
   // ============================================================
   log(colors.yellow, '\n🗓️  SECTION 14: Calendar Meeting Conflicts\n');
