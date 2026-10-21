@@ -14,7 +14,13 @@ permissions:
 jobs:
   release:
     name: Build and publish
-    if: github.event.workflow_run.conclusion == 'success'
+    # workflow_run executes with write permissions and secrets. Only release a successful
+    # push to this repository's main branch; never check out code from a PR run.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
