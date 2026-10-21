@@ -68,6 +68,10 @@ app.use((req, res, next) => {
     return res.status(403).json({ success: false, message: 'Requests must target the local TimeLogger backend' });
   }
 
+  if (req.headers['sec-fetch-site'] === 'cross-site') {
+    return res.status(403).json({ success: false, message: 'Cross-site browser request blocked' });
+  }
+
   const origin = req.headers.origin;
   if (origin !== undefined && !ALLOWED_ORIGINS.includes(origin)) {
     return res.status(403).json({ success: false, message: 'Cross-origin request blocked' });
