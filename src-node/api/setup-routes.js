@@ -41,23 +41,32 @@ function storePkceVerifier(verifier) {
   `).run(verifier);
 }
 
-function takePkceVerifier() {
-  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('microsoft_pkce_verifier');
-  db.prepare('DELETE FROM settings WHERE key = ?').run('microsoft_pkce_verifier');
-  return row?.value || null;
-}
+/**
+ * Consume an OAuth flow only when the callback presents its matching state.
+ *
+ * Do not delete the saved state/verifier before checking the incoming state:
+ * any site can navigate a browser to the localhost callback URL, and an
+ * unsolicited request must not be able to cancel a legitimate sign-in.
+ * Reading, comparing and deleting happen in one SQLite transaction so a
+ * concurrent callback cannot consume the same flow twice.
+ */
+function takeOAuthFlow(state) {
+  if (typeof state !== 'string') return null;
 
-function storeOAuthState(state) {
-  db.prepare(`
-    INSERT OR REPLACE INTO settings (key, value)
-    VALUES ('microsoft_oauth_state', ?)
-  `).run(state);
-}
+  return db.transaction(() => {
+    const expectedState = db.prepare(
+      'SELECT value FROM settings WHERE key = ?'
+    ).get('microsoft_oauth_state')?.value;
+    const verifier = db.prepare(
+      'SELECT value FROM settings WHERE key = ?'
+    ).get('microsoft_pkce_verifier')?.value;
 
-function takeOAuthState() {
-  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('microsoft_oauth_state');
-  db.prepare('DELETE FROM settings WHERE key = ?').run('microsoft_oauth_state');
-  return row?.value || null;
+    if (!expectedState || expectedState !== state || !verifier) return null;
+
+    db.prepare('DELETE FROM settings WHERE key = ?').run('microsoft_oauth_state');
+    db.prepare('DELETE FROM settings WHERE key = ?').run('microsoft_pkce_verifier');
+    return verifier;
+  })();
 }
 
 // Field names whose values are credentials and must never leave the process.
@@ -420,13 +429,11 @@ router.get('/setup/oauth-callback', async (req, res) => {
 
   try {
     const { code, error, error_description, state } = req.query;
-    const expectedState = takeOAuthState();
-    const verifier = takePkceVerifier();
+    const verifier = takeOAuthFlow(state);
 
     // A callback must match the one-time state and PKCE verifier created for
-    // the sign-in request. Reject unsolicited or replayed callbacks before
-    // they can change the saved OAuth status or exchange an authorization code.
-    if (typeof state !== 'string' || !expectedState || state !== expectedState || !verifier) {
+    // the sign-in request. Invalid requests leave the legitimate flow intact.
+    if (!verifier) {
       return res.status(400).send(page(
         'Authentication Failed',
         'This sign-in response could not be verified. Start sign-in again.'
