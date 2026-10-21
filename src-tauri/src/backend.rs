@@ -20,8 +20,16 @@ static BACKEND_WANTED: std::sync::atomic::AtomicBool = std::sync::atomic::Atomic
 /// are deliberately shutting down.
 pub(crate) static SHUTTING_DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+pub(crate) fn backend_port() -> u16 {
+  std::env::var("TIMELOGGER_PORT")
+    .ok()
+    .and_then(|value| value.parse::<u16>().ok())
+    .filter(|port| *port != 0)
+    .unwrap_or(3001)
+}
+
 fn backend_is_listening() -> bool {
-  std::net::TcpStream::connect("127.0.0.1:3001").is_ok()
+  std::net::TcpStream::connect(format!("127.0.0.1:{}", backend_port())).is_ok()
 }
 
 /// Starts the backend if needed. `force` restarts even a healthy backend, which
@@ -199,7 +207,7 @@ fn launch_backend() -> Result<String, String> {
         // The port lingers briefly after the kill; starting before it frees
         // makes the new process die with EADDRINUSE.
         for _ in 0..20 {
-          if std::net::TcpStream::connect("127.0.0.1:3001").is_err() {
+          if std::net::TcpStream::connect(format!("127.0.0.1:{}", backend_port())).is_err() {
             break;
           }
           std::thread::sleep(std::time::Duration::from_millis(250));
@@ -211,15 +219,16 @@ fn launch_backend() -> Result<String, String> {
     // The tracked PID misses backends left by a crash or an older build. Any
     // survivor still owning the port would make the new process exit with
     // EADDRINUSE, so reclaim it before spawning.
-    if std::net::TcpStream::connect("127.0.0.1:3001").is_ok() {
-      let _ = writeln!(log_file, "Port 3001 still in use; reclaiming it");
+    if std::net::TcpStream::connect(format!("127.0.0.1:{}", backend_port())).is_ok() {
+      let _ = writeln!(log_file, "Port {} still in use; reclaiming it", backend_port());
+      let reclaim_command = format!("for /f \"tokens=5\" %a in ('netstat -ano ^| find \":{}\" ^| find \"LISTENING\"') do taskkill /PID %a /F", backend_port());
       let _ = std::process::Command::new("cmd.exe")
-        .args(&["/c", "for /f \"tokens=5\" %a in ('netstat -ano ^| find \":3001\" ^| find \"LISTENING\"') do taskkill /PID %a /F"])
+        .args(&["/c", &reclaim_command])
         .creation_flags(CREATE_NO_WINDOW)
         .output();
 
       for _ in 0..20 {
-        if std::net::TcpStream::connect("127.0.0.1:3001").is_err() {
+        if std::net::TcpStream::connect(format!("127.0.0.1:{}", backend_port())).is_err() {
           break;
         }
         std::thread::sleep(std::time::Duration::from_millis(250));
@@ -247,7 +256,7 @@ fn launch_backend() -> Result<String, String> {
           Ok(mut child) => {
             let _ = writeln!(log_file, "✅ Backend process started with PID: {}", child.id());
             let _ = std::fs::write(&pid_file, child.id().to_string());
-            // Wait until port 3001 is reachable or the process exits.
+            // Wait until the configured backend port is reachable or the process exits.
             for _ in 0..40 {
               if let Ok(Some(status)) = child.try_wait() {
                 let _ = writeln!(log_file, "❌ Backend exited early with status: {}", status);
@@ -265,8 +274,8 @@ fn launch_backend() -> Result<String, String> {
                 ));
               }
 
-              if std::net::TcpStream::connect("127.0.0.1:3001").is_ok() {
-                let _ = writeln!(log_file, "✅ Backend is now listening on 3001");
+              if std::net::TcpStream::connect(format!("127.0.0.1:{}", backend_port())).is_ok() {
+                let _ = writeln!(log_file, "✅ Backend is now listening on {}", backend_port());
                 return Ok("Backend started".to_string());
               }
               std::thread::sleep(std::time::Duration::from_millis(500));
@@ -281,9 +290,9 @@ fn launch_backend() -> Result<String, String> {
                 }
               }
             } else {
-              let _ = writeln!(log_file, "❌ Backend did not start listening on 3001 in time");
+              let _ = writeln!(log_file, "❌ Backend did not start listening on {} in time", backend_port());
             }
-            return Err("Backend did not start listening on port 3001 in time.".to_string());
+            return Err(format!("Backend did not start listening on port {} in time.", backend_port()));
           }
           Err(e) => {
             let _ = writeln!(log_file, "❌ Failed to spawn backend from {}: {}", path.display(), e);
@@ -312,8 +321,9 @@ pub fn stop_backend() -> Result<String, String> {
       }
     }
     let _ = std::fs::remove_file(&pid_file);
+    let reclaim_command = format!("for /f \"tokens=5\" %a in ('netstat -ano ^| find \":{}\" ^| find \"LISTENING\"') do taskkill /PID %a /F", backend_port());
     let output = std::process::Command::new("cmd.exe")
-      .args(&["/c", "for /f \"tokens=5\" %a in ('netstat -ano ^| find \":3001\" ^| find \"LISTENING\"') do taskkill /PID %a /F"])
+      .args(&["/c", &reclaim_command])
       .creation_flags(CREATE_NO_WINDOW)
       .output()
       .map_err(|e| format!("Failed to stop backend: {}", e))?;
