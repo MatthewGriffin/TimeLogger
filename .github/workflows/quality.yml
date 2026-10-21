@@ -47,6 +47,12 @@ jobs:
             src-tauri/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: Audit Rust dependencies
+        run: cargo audit --file src-tauri/Cargo.lock
       - run: npm run check
       - name: Install Playwright browser
         # Chromium only: the app ships on WebView2, so the other engines would
