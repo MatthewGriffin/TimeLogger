@@ -4,17 +4,9 @@ import { BACKEND_URL, backendAvailable } from './helpers';
 /**
  * Contract tests for the Node sidecar's tool API.
  *
- * The sidecar is launched by the Tauri shell, not by this suite, so it is
- * present when a developer has the app running and absent on CI. These tests
- * skip when it is unreachable rather than failing, so CI never goes red for a
- * dependency it was never given.
- *
- * The previous version of these tests wrote entries onto **today's date** in
- * the developer's real database and never removed them, so running the suite
- * locally corrupted real timesheets. Everything here goes on a date far outside
- * any real working range, and each test deletes only the entries it created -
- * deleting everything on the date instead makes the tests fight each other when
- * they run in parallel.
+ * These tests use a dedicated test database in CI. Local runs can still skip
+ * when the sidecar is not running, but the quality workflow starts its own
+ * isolated instance before invoking Playwright.
  */
 const TEST_DATE = '1999-01-04';
 
@@ -78,9 +70,6 @@ test.describe('Backend sidecar API', () => {
     expect(res.ok()).toBe(true);
 
     const names: string[] = ((await res.json()).tools ?? []).map((t: { name: string }) => t.name);
-
-    /* Named explicitly: a bare "length > 0" assertion still passes after the
-       tool the UI actually calls has been renamed or dropped. */
     for (const required of [
       'get_daily_summary',
       'upsert_daily_summary',
@@ -89,6 +78,17 @@ test.describe('Backend sidecar API', () => {
     ]) {
       expect(names, `missing tool ${required}`).toContain(required);
     }
+  });
+
+  test('returns an explicit API failure for an unknown tool', async ({ request }) => {
+    const res = await request.post(`${BACKEND_URL}/api/execute`, {
+      data: { toolName: '__e2e_unknown_tool__', args: {} },
+    });
+
+    expect(res.status()).toBe(500);
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    expect(body.message).toContain('not found');
   });
 
   test('creates an entry and reads it back', async ({ request }) => {
@@ -117,9 +117,6 @@ test.describe('Backend sidecar API', () => {
     });
 
     const entry = await fetchEntry(request, created.entryId);
-
-    /* An exact value, not "greater than zero" - this is the calculation the
-       whole app is built on. */
     expect(entry.duration_mins).toBe(120);
   });
 
@@ -156,8 +153,6 @@ test.describe('Backend sidecar API', () => {
     });
 
     const entry = await fetchEntry(request, created.entryId);
-
-    /* Plans change, so an edited entry must be resubmittable to Tempo. */
     expect(entry.submitted).toBeFalsy();
   });
 });
