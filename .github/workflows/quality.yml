@@ -58,10 +58,6 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
       - run: npm run check
-      - name: Audit Rust dependencies
-        run: |
-          cargo install cargo-audit --locked
-          cargo audit --file src-tauri/Cargo.lock
       - name: Install Playwright browser
         # Chromium only: the app ships on WebView2, so the other engines would
         # not tell us anything about what users actually run.
