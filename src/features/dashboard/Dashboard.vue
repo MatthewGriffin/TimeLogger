@@ -391,7 +391,9 @@ const formatActivityTime = (timestamp: number) => {
 // that day's entries rather than just counting them.
 const openDay = (date: string) => {
   entriesStore.selectedDate = date
-  router.push('/entries')
+  // Keep the selected day in the URL so navigation is reliable on remount
+  // and the destination can be linked/bookmarked directly.
+  router.push({ path: '/entries', query: { date } })
 }
 
 const formatMissedDay = (date: string) => {
