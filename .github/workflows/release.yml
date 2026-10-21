@@ -102,6 +102,11 @@ jobs:
             Write-Error "No signature at $signature - is TAURI_SIGNING_PRIVATE_KEY set on the repository?"
             exit 1
           }
+          $signatureContent = (Get-Content $signature -Raw).Trim()
+          if ([string]::IsNullOrWhiteSpace($signatureContent)) {
+            Write-Error "Signature file is empty: $signature"
+            exit 1
+          }
           # Installed apps read this from the 'latest' release, so the download
           # URL must point at the tag rather than at 'latest' - otherwise an
           # older client would follow it to a newer build than it was told about.
@@ -111,7 +116,7 @@ jobs:
             pub_date  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
             platforms = [ordered]@{
               'windows-x86_64' = [ordered]@{
-                signature = (Get-Content $signature -Raw).Trim()
+                signature = $signatureContent
                 url       = "https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/TimeLogger_${{ steps.version.outputs.version }}_x64-setup.exe"
               }
             }
