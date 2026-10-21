@@ -19,7 +19,12 @@ export const ROUTES = {
   settings: '#/settings',
 } as const;
 
-export const BACKEND_URL = 'http://localhost:3001';
+const configuredPort = process.env.TIMELOGGER_PORT || '';
+const BACKEND_PORT = /^\\d+$/.test(configuredPort) &&
+  Number(configuredPort) >= 1 && Number(configuredPort) <= 65535
+  ? configuredPort
+  : '3001';
+export const BACKEND_URL = `http://localhost:${BACKEND_PORT}`;
 
 /**
  * The heading of the current page.
