@@ -14,6 +14,7 @@ import {
 import { ukBankHolidays, isUkBankHoliday } from '../utils/uk-holidays.js';
 import { previousWorkingDay, isWorkingDay } from '../utils/working-days.js';
 import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, microsoftAuthorityUrl, escapeHtml } from '../utils/safe-url.js';
+import { backendPort } from '../utils/backend-port.js';
 
 // Color codes for output
 const colors = {
