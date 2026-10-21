@@ -11,6 +11,7 @@ import { db } from '../index.js';
 import { graphClient, readMicrosoftConfig, GRAPH_SCOPE_STRING, buildTokenEndpoint } from './graph-client.js';
 import { ollamaClient } from './ollama-client.js';
 import { setupLimiter } from './rate-limit.js';
+import { backendPort } from '../utils/backend-port.js';
 import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, microsoftAuthorityUrl, escapeHtml } from '../utils/safe-url.js';
 
 export const router = express.Router();
@@ -20,7 +21,7 @@ export const router = express.Router();
 router.use(setupLimiter);
 
 // Must match the redirect URI registered in Azure and used by the sign-in URL.
-const OAUTH_REDIRECT_URI = 'http://localhost:3001/api/setup/oauth-callback';
+const OAUTH_REDIRECT_URI = `http://localhost:${backendPort()}/api/setup/oauth-callback`;
 
 /**
  * Build a PKCE verifier/challenge pair.
