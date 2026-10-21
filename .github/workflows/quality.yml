@@ -13,7 +13,7 @@ jobs:
     runs-on: windows-latest
     env:
       # Keep CI tests away from any user profile data, including on self-hosted runners.
-      TIMELOGGER_DATA_DIR: ${{ runner.temp }}\\timelogger-test-data
+      TIMELOGGER_DATA_DIR: ${{ runner.temp }}/timelogger-test-data
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
