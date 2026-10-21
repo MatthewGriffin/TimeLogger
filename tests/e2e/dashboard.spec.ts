@@ -59,7 +59,7 @@ test.describe('Dashboard', () => {
     await expect(shortcut).toHaveCount(1)
     await shortcut.click()
 
-    await expect(page).toHaveURL(/#\\/entries\\?date=1999-01-04$/)
+    await expect(page).toHaveURL(/date=1999-01-04$/)
     await expect(pageHeading(page)).toHaveText('Daily Entries')
   })
 
