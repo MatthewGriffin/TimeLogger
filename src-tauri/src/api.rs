@@ -6,7 +6,9 @@
 use crate::backend::ensure_backend;
 use crate::platform::host_log;
 
-const BACKEND_ORIGIN: &str = "http://127.0.0.1:3001";
+fn backend_origin() -> String {
+  format!("http://127.0.0.1:{}", crate::backend::backend_port())
+}
 
 static API_CLIENT: std::sync::OnceLock<Result<reqwest::Client, String>> = std::sync::OnceLock::new();
 
@@ -54,7 +56,7 @@ pub async fn api_request(tool_name: String, args: serde_json::Value) -> Result<s
 
   let send = |client: &'static reqwest::Client, tool: String, args: serde_json::Value| async move {
     client
-      .post(format!("{}/api/execute", BACKEND_ORIGIN))
+      .post(format!("{}/api/execute", backend_origin()))
       .json(&serde_json::json!({ "toolName": tool, "args": args }))
       .send()
       .await
@@ -113,7 +115,7 @@ pub async fn backend_health() -> bool {
     return false;
   };
 
-  match client.get(format!("{}/health", BACKEND_ORIGIN)).send().await {
+  match client.get(format!("{}/health", backend_origin())).send().await {
     Ok(response) => {
       host_log(&format!("backend_health: HTTP {}", response.status()));
       response.status().is_success()
@@ -134,7 +136,7 @@ pub(crate) async fn call_node_api(path: &str, payload: serde_json::Value) -> Res
   let client = shared_client(&SETUP_CLIENT, std::time::Duration::from_secs(60))?;
 
   let response = client
-    .post(format!("{}/api{}", BACKEND_ORIGIN, path))
+    .post(format!("{}/api{}", backend_origin(), path))
     .json(&payload)
     .send()
     .await
