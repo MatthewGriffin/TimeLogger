@@ -31,27 +31,3 @@ pub fn read_microsoft_oauth_signal(_path: String) -> Result<serde_json::Value, S
     .map_err(|e| format!("Failed to clear OAuth signal: {}", e))?;
   serde_json::from_str(&data).map_err(|e| format!("Failed to parse OAuth signal: {}", e))
 }
-
-#[tauri::command]
-pub fn start_microsoft_oauth(tenant_id: String, client_id: String, redirect_uri: String, scope: String) -> Result<String, String> {
-  fn encode_param(s: &str) -> String {
-    s.chars().map(|c| {
-      match c {
-        'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' | '/' | ':' => c.to_string(),
-        ' ' => "%20".to_string(),
-        _ => format!("%{:02X}", c as u8),
-      }
-    }).collect()
-  }
-
-  let auth_url = format!(
-    "https://login.microsoftonline.com/{}/oauth2/v2.0/authorize?client_id={}&redirect_uri={}&response_type=code&scope={}",
-    tenant_id,
-    encode_param(&client_id),
-    encode_param(&redirect_uri),
-    encode_param(&scope)
-  );
-
-  println!("OAuth URL: {}", auth_url);
-  Ok(auth_url)
-}
