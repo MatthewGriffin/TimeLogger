@@ -47,6 +47,19 @@ function takePkceVerifier() {
   return row?.value || null;
 }
 
+function storeOAuthState(state) {
+  db.prepare(`
+    INSERT OR REPLACE INTO settings (key, value)
+    VALUES ('microsoft_oauth_state', ?)
+  `).run(state);
+}
+
+function takeOAuthState() {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('microsoft_oauth_state');
+  db.prepare('DELETE FROM settings WHERE key = ?').run('microsoft_oauth_state');
+  return row?.value || null;
+}
+
 // Field names whose values are credentials and must never leave the process.
 const SECRET_KEYS = new Set([
   'apitoken', 'tempotoken', 'clientsecret', 'password', 'secret',
@@ -328,7 +341,9 @@ router.get('/setup/oauth-authorize-url', async (req, res) => {
     }
 
     const { verifier, challenge } = createPkcePair();
+    const state = crypto.randomBytes(32).toString('base64url');
     storePkceVerifier(verifier);
+    storeOAuthState(state);
 
     const params = new URLSearchParams({
       client_id: stored.clientId,
@@ -338,6 +353,7 @@ router.get('/setup/oauth-authorize-url', async (req, res) => {
       scope: GRAPH_SCOPE_STRING,
       code_challenge: challenge,
       code_challenge_method: 'S256',
+      state,
       prompt: 'select_account',
     });
 
@@ -403,7 +419,19 @@ router.get('/setup/oauth-callback', async (req, res) => {
   };
 
   try {
-    const { code, error, error_description } = req.query;
+    const { code, error, error_description, state } = req.query;
+    const expectedState = takeOAuthState();
+    const verifier = takePkceVerifier();
+
+    // A callback must match the one-time state and PKCE verifier created for
+    // the sign-in request. Reject unsolicited or replayed callbacks before
+    // they can change the saved OAuth status or exchange an authorization code.
+    if (typeof state !== 'string' || !expectedState || state !== expectedState || !verifier) {
+      return res.status(400).send(page(
+        'Authentication Failed',
+        'This sign-in response could not be verified. Start sign-in again.'
+      ));
+    }
 
     if (error) {
       const message = error_description || error;
@@ -436,10 +464,7 @@ router.get('/setup/oauth-callback', async (req, res) => {
       tokenBody.set('client_secret', stored.clientSecret);
     }
 
-    const verifier = takePkceVerifier();
-    if (verifier) {
-      tokenBody.set('code_verifier', verifier);
-    }
+    tokenBody.set('code_verifier', verifier);
 
     const exchange = async () =>
       fetch(buildTokenEndpoint(stored.tenantId), {
