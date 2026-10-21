@@ -69,8 +69,9 @@ test.describe('Dashboard', () => {
     const items = page.locator('.activity-item');
     const empty = page.locator('.activity-empty');
 
-    /* Exactly one of the two must be present - an activity panel that renders
-       neither means the section failed to load. */
+    /* Wait for either state to render before counting: the activity request is
+       asynchronous, so an immediate count can observe the empty initial DOM. */
+    await expect(page.locator('.activity-item, .activity-empty').first()).toBeVisible();
     const itemCount = await items.count();
     if (itemCount > 0) {
       expect(itemCount).toBeLessThanOrEqual(5);
