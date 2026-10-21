@@ -52,9 +52,11 @@ test.describe('Dashboard', () => {
       }
     })
 
-    // Revisit after installing the route so the dashboard's initial request
-    // for missed days is controlled by this test.
-    await visit(page, ROUTES.dashboard)
+    // Reload after installing the route so the dashboard's initial request
+    // for missed days is controlled by this test, even though beforeEach has
+    // already visited the dashboard.
+    await page.reload()
+    await expect(pageHeading(page)).toBeVisible()
     const shortcut = page.locator('.missed-day')
     await expect(shortcut).toHaveCount(1)
     await shortcut.click()
