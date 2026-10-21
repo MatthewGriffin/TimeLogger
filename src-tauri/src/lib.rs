@@ -90,7 +90,6 @@ pub fn run() {
       platform::get_app_data_dir,
       oauth::write_microsoft_oauth_signal,
       oauth::read_microsoft_oauth_signal,
-      oauth::start_microsoft_oauth,
       notifications::show_notification,
       notifications::show_submission_success_notification,
       notifications::show_submission_error_notification,
