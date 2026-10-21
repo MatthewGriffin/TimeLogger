@@ -363,61 +363,6 @@ router.get('/setup/oauth-authorize-url', async (req, res) => {
 });
 
 /**
- * OAuth Token Exchange
- * POST /api/setup/oauth-token
- */
-router.post('/setup/oauth-token', async (req, res) => {
-  try {
-    const { tenantId, clientId, clientSecret, code, redirectUri } = req.body;
-
-    const tokenUrl = microsoftAuthorityUrl(tenantId, 'oauth2/v2.0/token');
-    if (!tokenUrl) {
-      return res.status(400).json({
-        success: false,
-        message: 'Tenant ID must be a directory GUID, a verified domain, or one of: common, organizations, consumers',
-      });
-    }
-
-    const scope = 'openid profile offline_access https://graph.microsoft.com/Calendars.Read https://graph.microsoft.com/Notes.ReadWrite';
-    const tokenBody = new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      code,
-      redirect_uri: redirectUri,
-      grant_type: 'authorization_code',
-      scope,
-    });
-
-    const response = await fetch(tokenUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: tokenBody.toString(),
-    });
-
-    const text = await response.text();
-    if (!response.ok) {
-      return res.status(400).json({
-        success: false,
-        message: `Token exchange failed (${response.status}): ${text}`,
-      });
-    }
-
-    const tokenData = JSON.parse(text);
-    return res.json({
-      success: true,
-      tokenData,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: `Token exchange failed: ${error.message}`,
-    });
-  }
-});
-
-/**
  * OAuth Callback Handler
  * GET /api/setup/oauth-callback
  *
