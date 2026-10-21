@@ -37,6 +37,32 @@ test.describe('Dashboard', () => {
     await expect(pageHeading(page)).toHaveText('Submit Time');
   });
 
+  test('a missed-day shortcut opens Entries on that exact date', async ({ page }) => {
+    const missedDate = '1999-01-04'
+    await page.route('**/api/execute', async route => {
+      const request = route.request().postDataJSON() as { toolName?: string }
+      if (request.toolName === 'get_missed_days') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ success: true, result: { missedDays: [missedDate] } })
+        })
+      } else {
+        await route.abort()
+      }
+    })
+
+    // Revisit after installing the route so the dashboard's initial request
+    // for missed days is controlled by this test.
+    await visit(page, ROUTES.dashboard)
+    const shortcut = page.locator('.missed-day')
+    await expect(shortcut).toHaveCount(1)
+    await shortcut.click()
+
+    await expect(page).toHaveURL(/#\\/entries\\?date=1999-01-04$/)
+    await expect(pageHeading(page)).toHaveText('Daily Entries')
+  })
+
   test('recent activity shows entries or an explicit empty state', async ({ page }) => {
     const items = page.locator('.activity-item');
     const empty = page.locator('.activity-empty');
