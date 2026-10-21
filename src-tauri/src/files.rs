@@ -1,11 +1,14 @@
 //! Filesystem and shell commands exposed to the webview.
 //!
-//! These exist instead of `tauri-plugin-fs` so the webview is never granted a
-//! general filesystem scope: each command does one narrow thing.
+//! File selection happens in the native host, not in JavaScript. This keeps a
+//! compromised webview from substituting an arbitrary path after a dialog has
+//! been shown.
 
 use crate::platform::app_data_dir;
 #[cfg(target_os = "windows")]
 use crate::platform::CREATE_NO_WINDOW;
+use tauri::AppHandle;
+use tauri_plugin_dialog::DialogExt;
 
 #[tauri::command]
 pub fn open_external_url(url: String) -> Result<String, String> {
@@ -28,22 +31,53 @@ pub fn open_external_url(url: String) -> Result<String, String> {
   Err("Opening URLs is only supported on Windows in this build".to_string())
 }
 
-/// Write a backup to a path the user chose in the save dialog.
-///
-/// The webview never gets a general filesystem write: the only way to reach
-/// this is a path the user just picked themselves in a native dialog.
+/// Show the native save dialog and write the backup to the selected path.
+/// The webview supplies content and a suggested name, never a filesystem path.
 #[tauri::command]
-pub fn write_backup_file(path: String, contents: String) -> Result<String, String> {
+pub fn write_backup_file(
+  app: AppHandle,
+  suggested_name: String,
+  extension: String,
+  contents: String,
+) -> Result<Option<String>, String> {
+  if !matches!(extension.as_str(), "json" | "csv") {
+    return Err("Unsupported backup format.".to_string());
+  }
+
+  let Some(selected) = app
+    .dialog()
+    .file()
+    .set_file_name(&suggested_name)
+    .add_filter("TimeLogger backup", &[extension.as_str()])
+    .blocking_save_file()
+  else {
+    return Ok(None);
+  };
+
+  let path = selected
+    .into_path()
+    .map_err(|e| format!("Invalid save location: {}", e))?;
   std::fs::write(&path, contents).map_err(|e| format!("Could not save the file: {}", e))?;
-  Ok(path)
+  Ok(Some(path.to_string_lossy().to_string()))
 }
 
-/// Read a backup the user chose in the open dialog.
+/// Show the native open dialog and read only the file the user selected.
 #[tauri::command]
-pub fn read_backup_file(path: String) -> Result<String, String> {
-  // Guards against a mis-picked multi-gigabyte file being pulled into memory
-  // and taking the app down; a real backup is orders of magnitude smaller.
+pub fn read_backup_file(app: AppHandle) -> Result<Option<String>, String> {
   const MAX_BACKUP_BYTES: u64 = 100 * 1024 * 1024;
+
+  let Some(selected) = app
+    .dialog()
+    .file()
+    .add_filter("JSON backup", &["json"])
+    .blocking_pick_file()
+  else {
+    return Ok(None);
+  };
+
+  let path = selected
+    .into_path()
+    .map_err(|e| format!("Invalid file selection: {}", e))?;
   match std::fs::metadata(&path) {
     Ok(meta) if meta.len() > MAX_BACKUP_BYTES => {
       return Err("That file is too large to be a TimeLogger backup.".to_string())
@@ -51,7 +85,9 @@ pub fn read_backup_file(path: String) -> Result<String, String> {
     Ok(_) => {}
     Err(e) => return Err(format!("Could not open the file: {}", e)),
   }
-  std::fs::read_to_string(&path).map_err(|e| format!("Could not read the file: {}", e))
+  let contents =
+    std::fs::read_to_string(&path).map_err(|e| format!("Could not read the file: {}", e))?;
+  Ok(Some(contents))
 }
 
 /// Reveal the folder holding host.log so a user can attach it to a bug report.
