@@ -20,28 +20,28 @@
     "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
-    "@tanstack/vue-query": "^5.102.8",
-    "@tauri-apps/plugin-dialog": "^2.7.3",
-    "@tauri-apps/plugin-http": "^2.6.0",
-    "@tauri-apps/plugin-process": "^2.3.1",
-    "@tauri-apps/plugin-updater": "^2.11.0",
+    "@tanstack/vue-query": "^5.104.4",
+    "@tauri-apps/plugin-dialog": "^2.8.3",
+    "@tauri-apps/plugin-http": "^2.8.3",
+    "@tauri-apps/plugin-process": "^2.4.0",
+    "@tauri-apps/plugin-updater": "^2.14.0",
     "axios": "^1.20.0",
     "lucide-vue-next": "^1.0.0",
-    "pinia": "^4.0.3",
-    "vue": "^3.5.41",
+    "pinia": "^4.1.0",
+    "vue": "^3.5.44",
     "vue-router": "^4.5.0",
-    "vuetify": "^4.2.0"
+    "vuetify": "^4.2.6"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1",
+    "@playwright/test": "^1.64.1",
     "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/cli": "^2.11.4",
+    "@tauri-apps/cli": "^2.12.3",
     "@types/node": "^24.13.3",
-    "@vitejs/plugin-vue": "^6.0.8",
+    "@vitejs/plugin-vue": "^6.0.10",
     "@vue/tsconfig": "^0.9.1",
     "typescript": "~6.0.2",
-    "vite": "^8.2.4",
-    "vue-tsc": "^3.3.11"
+    "vite": "^8.3.4",
+    "vue-tsc": "^3.3.13"
   },
   "overrides": {
     "follow-redirects": "^1.16.1",
