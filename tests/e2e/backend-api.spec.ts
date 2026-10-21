@@ -35,7 +35,9 @@ async function callTool(request: APIRequestContext, toolName: string, args: Reco
 
 async function createEntry(request: APIRequestContext, args: Record<string, unknown>) {
   const result = await callTool(request, 'upsert_daily_summary', { date: TEST_DATE, ...args });
-  for (const id of result?.entryIds ?? []) createdIds.push(id);
+  for (const id of result?.entryIds ?? []) {
+    if (!createdIds.includes(id)) createdIds.push(id);
+  }
   return result;
 }
 
