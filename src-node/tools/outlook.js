@@ -6,6 +6,7 @@ import { getLocalCalendarEvents } from '../api/outlook-com.js';
 import { db } from '../index.js';
 import { splitTimeRange, timeToMinutes } from '../utils/time-ranges.js';
 import { readSprintConfig, matchMeetingTicket } from './sprint.js';
+import { isoDaysFromToday } from './jira-tempo-future.js';
 
 // Cached responses keyed by date range (TTL: 3 minutes). Keying by range
 // matters because each calendar view requests a different window.
@@ -265,7 +266,7 @@ export function applyConflictResolutions(date, resolutions) {
  * and the event cache is keyed by range, so it would not help.
  */
 export function syncDayFromEvents(date, events, calendarConfig) {
-      const today = new Date().toLocaleDateString('en-CA');
+      const today = isoDaysFromToday(0);
       if (date > today) {
         return {
           success: true, created: 0, skipped: 0, clashed: 0, clashedSubjects: [],
@@ -815,7 +816,7 @@ export const tools = [
         const lastDay = new Date(year, monthIndex, 0).getDate();
         const startDate = `${month}-01`;
         const endDate = `${month}-${String(lastDay).padStart(2, '0')}`;
-        const today = new Date().toLocaleDateString('en-CA');
+        const today = isoDaysFromToday(0);
         if (startDate > today) {
           return {
             success: true, month, days: 0, created: 0, skipped: 0, clashed: 0,
