@@ -151,6 +151,7 @@ async function pollReviewEvents(token, prs) {
   ensureEventTable();
   const known = new Set(db.prepare('SELECT event_id FROM github_pr_seen_events').all().map(row => row.event_id));
   const initialized = db.prepare("SELECT value FROM settings WHERE key = 'github_pr_poll_initialized'").get()?.value === 'true';
+  const linkedLogin = String(readConfig().login || await account(token)).toLowerCase();
   const results = await Promise.all(prs.slice(0, EVENT_PR_LIMIT).map(async pr => {
     const base = `/repos/${pr.repository}/pulls/${pr.number}`;
     const [reviews, comments, discussionComments] = await Promise.all([
@@ -166,7 +167,7 @@ async function pollReviewEvents(token, prs) {
       const eventId = `review:${pr.repository}:${review.id}`;
       if (known.has(eventId)) continue;
       discovered.push(eventId);
-      if (initialized && String(review.user?.login || '').toLowerCase() !== pr.author.toLowerCase()) {
+      if (initialized && String(review.user?.login || '').toLowerCase() !== pr.author.toLowerCase() && String(review.user?.login || '').toLowerCase() !== linkedLogin) {
         events.push({
           id: eventId, kind: state === 'APPROVED' ? 'approval' : 'review',
           reviewer: review.user?.login || 'A reviewer', outcome: state,
@@ -179,7 +180,7 @@ async function pollReviewEvents(token, prs) {
       const eventId = `comment:${pr.repository}:${comment.id}`;
       if (known.has(eventId)) continue;
       discovered.push(eventId);
-      if (initialized && String(comment.user?.login || '').toLowerCase() !== pr.author.toLowerCase()) {
+      if (initialized && String(comment.user?.login || '').toLowerCase() !== pr.author.toLowerCase() && String(comment.user?.login || '').toLowerCase() !== linkedLogin) {
         events.push({
           id: eventId, kind: 'inline-comment', reviewer: comment.user?.login || 'A reviewer',
           outcome: 'COMMENTED', title: pr.title, url: pr.url, repository: pr.repository,
