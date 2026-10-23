@@ -14,14 +14,24 @@
       <div class="day-total">Total {{ formattedTotal }}</div>
     </div>
 
-    <div v-if="day.notes.length > 0" class="day-notes">
-      <h4>Notes</h4>
-      <ul>
-        <li v-for="note in day.notes" :key="note.id">
-          <span v-if="note.ticketId" class="note-ticket">{{ note.ticketId }}</span>
-          {{ note.title || note.note }}
-        </li>
-      </ul>
+    <div v-if="generalNotes.length > 0 || ticketNotes.length > 0" class="day-notes">
+      <div v-if="generalNotes.length > 0" class="note-group">
+        <h4>General notes</h4>
+        <ul>
+          <li v-for="note in generalNotes" :key="note.id">
+            <strong v-if="note.title">{{ note.title }}: </strong>{{ note.note }}
+          </li>
+        </ul>
+      </div>
+      <div v-if="ticketNotes.length > 0" class="note-group">
+        <h4>Ticket notes</h4>
+        <ul>
+          <li v-for="note in ticketNotes" :key="note.id">
+            <span class="note-ticket">{{ note.ticketId }}</span>
+            <strong v-if="note.title">{{ note.title }}: </strong>{{ note.note }}
+          </li>
+        </ul>
+      </div>
     </div>
   </section>
 </template>
@@ -32,6 +42,9 @@ import ScrumEntryRow from '@/features/scrum/components/ScrumEntryRow.vue'
 import type { ScrumDay } from '@/features/scrum/models/scrum'
 
 const props = defineProps<{ day: ScrumDay; label: string }>()
+
+const generalNotes = computed(() => props.day.notes.filter(note => !note.ticketId))
+const ticketNotes = computed(() => props.day.notes.filter(note => Boolean(note.ticketId)))
 
 const formattedDate = computed(() => {
   const parsed = new Date(`${props.day.date}T00:00:00`)
@@ -92,6 +105,10 @@ const formattedTotal = computed(() => {
   margin-top: 1rem;
   padding-top: 0.75rem;
   border-top: 1px solid var(--color-border);
+}
+
+.note-group + .note-group {
+  margin-top: 1rem;
 }
 
 .day-notes h4 {
