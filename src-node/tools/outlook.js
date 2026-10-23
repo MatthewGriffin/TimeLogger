@@ -119,15 +119,10 @@ function readAppConfig() {
  * filter (if any).
  */
 function buildCandidates(events, calendarConfig) {
-  const filterLabel = String(calendarConfig.filterLabel || '').trim().toLowerCase();
   return events.filter(event => {
     if (event.isCancelled) return false;
     if (!event.id || !event.startTime || !event.endTime) return false;
     if (!event.isAllDay && timeToMinutes(event.endTime) <= timeToMinutes(event.startTime)) return false;
-    if (filterLabel) {
-      const categories = event.categories.map(category => String(category).toLowerCase());
-      if (!categories.includes(filterLabel)) return false;
-    }
     return true;
   });
 }
