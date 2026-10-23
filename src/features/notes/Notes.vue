@@ -118,7 +118,7 @@
           <!-- Choose a category manually, or leave a new note on AI suggestion. -->
           <div v-if="!editorTicketId" class="form-group">
             <label>Category *</label>
-            <select v-model="notesStore.editingNote!.topic" required>
+            <select v-model="notesStore.editingNote!.topic">
               <option v-if="!notesStore.editingNote?.id" value="">Let AI suggest after saving</option>
               <option v-for="topic in notesStore.topics" :key="topic" :value="topic">
                 {{ topic }}
@@ -643,6 +643,24 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   flex-direction: column;
   gap: 0.5rem;
   padding: 0 0.5rem;
+}
+
+.btn-add-topic {
+  width: calc(100% - 1rem);
+  margin: 0 0.5rem 0.25rem;
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  background: var(--color-control);
+  color: var(--color-text);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.btn-add-topic:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-muted);
 }
 
 .topic-item {
