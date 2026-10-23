@@ -246,12 +246,9 @@ export const tools = [
       required: ['topic']
     },
     handler: async (args) => {
-      const topic = String(args.topic || '').trim().replace(/\\s+/g, ' ');
+      const topic = String(args.topic || '').trim().replace(/\s+/g, ' ');
       if (!topic || topic.length > 30) {
         return { success: false, message: 'Category names must be between 1 and 30 characters' };
-      }
-      if (/\\d/.test(topic) && topic.length > 30) {
-        return { success: false, message: 'Invalid category name' };
       }
       const existing = getKnownTopics().find(item => item.toLowerCase() === topic.toLowerCase());
       if (existing) return { success: true, topic: existing, topics: getKnownTopics(), alreadyExists: true };
