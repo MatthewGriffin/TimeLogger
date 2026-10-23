@@ -54,7 +54,6 @@ const DEFAULTS = {
   piNumber: '',
   projectKey: 'TIME',
   teamLabel: '',
-  defaultMeetingTicket: '',
   mappings: DEFAULT_TYPES.map(t => ({ ...t, ticketKey: '' }))
 };
 
@@ -92,7 +91,6 @@ export function readSprintConfig() {
     piNumber: stored.piNumber != null ? String(stored.piNumber) : '',
     projectKey: stored.projectKey || DEFAULTS.projectKey,
     teamLabel: stored.teamLabel || '',
-    defaultMeetingTicket: stored.defaultMeetingTicket || '',
     mappings
   };
 }
@@ -145,9 +143,6 @@ export function matchMeetingTicket(subject, config = readSprintConfig()) {
   }
 
   if (best) return { ticketKey: best.ticketKey, matchedAlias: best.matchedAlias, typeId: best.typeId, label: best.label, source: 'alias' };
-  if (config.defaultMeetingTicket) {
-    return { ticketKey: config.defaultMeetingTicket, matchedAlias: null, typeId: null, label: 'Default', source: 'default' };
-  }
   return null;
 }
 
@@ -167,7 +162,6 @@ export const tools = [
         piNumber: { type: 'string' },
         projectKey: { type: 'string' },
         teamLabel: { type: 'string' },
-        defaultMeetingTicket: { type: 'string' },
         mappings: { type: 'array' }
       },
       required: []
@@ -178,9 +172,6 @@ export const tools = [
         piNumber: args.piNumber != null ? String(args.piNumber).trim() : current.piNumber,
         projectKey: args.projectKey != null ? String(args.projectKey).trim() : current.projectKey,
         teamLabel: args.teamLabel != null ? String(args.teamLabel).trim() : current.teamLabel,
-        defaultMeetingTicket: args.defaultMeetingTicket != null
-          ? String(args.defaultMeetingTicket).trim().toUpperCase()
-          : current.defaultMeetingTicket,
         mappings: Array.isArray(args.mappings)
           ? args.mappings.map(m => ({
               id: String(m.id || '').trim(),
@@ -404,27 +395,6 @@ export const tools = [
         remembered,
         message: `Assigned ${ticketKey} to ${updated} entr${updated === 1 ? 'y' : 'ies'}` +
           (remembered ? `, and will match "${remembered.keyword}" automatically from now on` : '')
-      };
-    }
-  },
-  {
-    name: 'sprint_preview_meeting_match',
-    description: 'Show which ticket a meeting subject would be mapped to',
-    parameters: {
-      type: 'object',
-      properties: { subject: { type: 'string' } },
-      required: ['subject']
-    },
-    handler: async (args) => {
-      const match = matchMeetingTicket(args.subject);
-      return {
-        success: true,
-        subject: args.subject,
-        matched: Boolean(match),
-        ticketKey: match?.ticketKey || null,
-        label: match?.label || null,
-        matchedAlias: match?.matchedAlias || null,
-        source: match?.source || 'none'
       };
     }
   }
