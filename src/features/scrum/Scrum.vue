@@ -15,6 +15,8 @@
       <template v-else-if="report">
         <ScrumSummaryCard :summary="report.summary" />
 
+        <GitHubPullRequestsPanel :pull-requests="report.pullRequests" />
+
         <div class="scrum-days">
           <ScrumDayPanel :day="report.yesterday" label="Yesterday" />
           <ScrumDayPanel :day="report.today" label="Today" />
@@ -52,6 +54,7 @@ import ScrumDayPanel from '@/features/scrum/components/ScrumDayPanel.vue'
 import ScrumBlockersPanel from '@/features/scrum/components/ScrumBlockersPanel.vue'
 import ScrumPlannedPanel from '@/features/scrum/components/ScrumPlannedPanel.vue'
 import ScrumTicketSearch from '@/features/scrum/components/ScrumTicketSearch.vue'
+import GitHubPullRequestsPanel from '@/features/scrum/components/GitHubPullRequestsPanel.vue'
 import { useScrum } from '@/features/scrum/composables/useScrum'
 import { usePlannedWork } from '@/features/scrum/composables/usePlannedWork'
 import type { JiraIssueResult } from '@/features/scrum/models/jiraIssueResult'
