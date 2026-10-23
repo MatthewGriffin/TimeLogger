@@ -44,12 +44,12 @@ const groups = computed(() => {
   return [...grouped.entries()].map(([ticket, items]) => ({ ticket, items }))
 })
 
-const stateLabel = (state: string) => ({
+const stateLabel = (state: string) => (({
   open: 'Open',
   draft: 'Draft',
   merged: 'Merged',
   closed: 'Closed'
-}[state] || state)
+}) as Record<string, string>)[state] || state
 
 const openPr = async (url: string) => {
   if (!/^https:\/\/github\.com\//i.test(url)) {
