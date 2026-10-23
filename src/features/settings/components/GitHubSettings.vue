@@ -142,6 +142,7 @@ const refresh = async () => {
   try {
     const result = await executeApi<{ connected?: boolean; login?: string; message?: string }>('github_pr_connection_status')
     status.value = { connected: result.connected === true, login: result.login || '' }
+    if (!status.value.connected) { prs.value = []; prsLoaded.value = false }
     message.value = result.message || ''
     failed.value = result.connected === false && Boolean(result.message && !result.message.includes('No GitHub token configured'))
   } catch (error) {
@@ -159,6 +160,8 @@ const save = async () => {
   try {
     const result = await executeApi<{ connected?: boolean; login?: string; message?: string }>('github_pr_save_token', { token: token.value.trim() })
     status.value = { connected: result.connected === true, login: result.login || '' }
+    prs.value = []
+    prsLoaded.value = false
     message.value = result.message || 'GitHub connected.'
     token.value = ''
   } catch (error) {
@@ -175,6 +178,8 @@ const disconnect = async () => {
   try {
     const result = await executeApi<{ connected?: boolean; message?: string }>('github_pr_save_token', { token: '' })
     status.value = { connected: false, login: '' }
+    prs.value = []
+    prsLoaded.value = false
     message.value = result.message || 'GitHub disconnected.'
   } catch (error) {
     failed.value = true
