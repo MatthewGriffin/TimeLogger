@@ -114,11 +114,10 @@ function readAppConfig() {
 }
 
 /**
- * Filter raw events down to the ones that are candidates for logging: not
- * cancelled, with a usable id/start/end, and matching the configured category
- * filter (if any).
+ * Filter raw events down to those eligible for logging: not cancelled and
+ * with a usable id/start/end.
  */
-function buildCandidates(events, calendarConfig) {
+function buildCandidates(events) {
   return events.filter(event => {
     if (event.isCancelled) return false;
     if (!event.id || !event.startTime || !event.endTime) return false;
@@ -275,7 +274,7 @@ export function syncDayFromEvents(date, events, calendarConfig) {
       const workdayStart = workday.startTime || '09:00';
       const workdayEnd = workday.endTime || '17:00';
 
-      const candidates = buildCandidates(events, calendarConfig);
+      const candidates = buildCandidates(events);
 
       let created = 0;
       let skipped = 0;
