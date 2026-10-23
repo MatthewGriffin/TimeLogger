@@ -204,7 +204,7 @@ Note title: ${title || '(none)'}
 Note content: ${body}
 
 Existing categories:
-${categories.length ? categories.map(topic => `- ${topic}`).join('\\n') : '(none)'}
+${categories.length ? categories.join(', ') : '(none)'}
 
 If an existing category clearly fits the note's subject, answer with that category name exactly as listed.
 Otherwise suggest a reusable, broad category for the main product, system, technology, activity or area of work.
