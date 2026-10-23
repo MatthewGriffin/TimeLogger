@@ -113,7 +113,7 @@ const filteredPrs = computed(() => prs.value.filter(pr => {
 }))
 const statusOrder = ['open', 'draft', 'merged', 'closed']
 const prGroups = computed(() => statusOrder.map(status => ({ status, items: filteredPrs.value.filter(pr => pr.state === status) })).filter(group => group.items.length))
-const statusLabel = (state: string) => ({ open: 'Open', draft: 'Draft', merged: 'Merged', closed: 'Closed' }[state] || state)
+const statusLabel = (state: string) => (({ open: 'Open', draft: 'Draft', merged: 'Merged', closed: 'Closed' }) as Record<string, string>)[state] || state
 
 const loadPullRequests = async () => {
   loadingPrs.value = true
