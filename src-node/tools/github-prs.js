@@ -97,7 +97,7 @@ async function searchPrs(token, login, query) {
   return all;
 }
 
-async function listRelevantPullRequests(token, ticketKeys = []) {
+async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS) {
   const login = await account(token);
   const [authored, reviewRequested, reviewedByAccount] = await Promise.all([
     searchPrs(token, login, `is:pr author:${login}`),
@@ -112,12 +112,13 @@ async function listRelevantPullRequests(token, ticketKeys = []) {
     if (!match || !Number.isInteger(number)) continue;
     const repository = match[1];
     const key = `${repository}#${number}`;
-    const prior = candidates.get(key) || { repository, number, fromReviewSearch: false };
+    const prior = candidates.get(key) || { repository, number, fromReviewSearch: false, updatedAt: '' };
     if (reviewedByAccount.includes(item)) prior.fromReviewSearch = true;
+    if (String(item.updated_at || '') > prior.updatedAt) prior.updatedAt = String(item.updated_at || '');
     candidates.set(key, prior);
   }
 
-  const details = await Promise.all([...candidates.values()].slice(0, MAX_PRS).map(async item => {
+  const details = await Promise.all([...candidates.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, limit).map(async item => {
     try {
       const pr = await githubGet(`/repos/${item.repository}/pulls/${item.number}`, token);
       const authoredByAccount = String(pr.user?.login || '').toLowerCase() === login.toLowerCase();
@@ -268,7 +269,7 @@ export const tools = [
     handler: async () => {
       try {
         const token = requireToken();
-        const prs = await listRelevantPullRequests(token);
+        const prs = await listRelevantPullRequests(token, [], EVENT_PR_LIMIT);
         const events = await pollReviewEvents(token, prs);
         return { success: true, events };
       } catch (error) {
