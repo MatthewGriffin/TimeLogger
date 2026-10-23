@@ -33,9 +33,28 @@ export interface ScrumDay {
   totalMinutes: number
 }
 
+export interface ScrumPullRequest {
+  id: string
+  number: number
+  repository: string
+  title: string
+  description: string
+  url: string
+  author: string
+  branch: string
+  state: 'open' | 'draft' | 'merged' | 'closed' | string
+  isDraft: boolean
+  requestedReviewer: boolean
+  isAuthoredByAccount: boolean
+  ticketKeys: string[]
+  matchedTicketKeys: string[]
+  updatedAt: string | null
+}
+
 export interface ScrumReport {
   yesterday: ScrumDay
   today: ScrumDay
   blockers: ScrumBlocker[]
   summary: string
+  pullRequests: ScrumPullRequest[]
 }
