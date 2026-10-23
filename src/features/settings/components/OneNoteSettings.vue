@@ -1,5 +1,4 @@
 <template>
-  <>
   <div class="settings-section">
     <h2>OneNote Configuration</h2>
     <div class="settings-form">
@@ -90,7 +89,6 @@
     :microsoft-connect-failed="props.microsoftConnectFailed"
     @connect-microsoft="$emit('connect-microsoft')"
   />
-  </>
 </template>
 
 <script setup lang="ts">
