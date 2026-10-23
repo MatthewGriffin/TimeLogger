@@ -16,7 +16,7 @@ export function extractTicketKeys(...values) {
   const keys = new Set();
   for (const value of values) {
     const text = String(value || '');
-    for (const match of text.matchAll(/\\b([A-Z][A-Z0-9]{1,15}-\\d+)\\b/gi)) keys.add(match[1].toUpperCase());
+    for (const match of text.matchAll(/\b([A-Z][A-Z0-9]{1,15}-\d+)\b/gi)) keys.add(match[1].toUpperCase());
   }
   return [...keys];
 }
@@ -99,18 +99,22 @@ async function searchPrs(token, login, query) {
 
 async function listRelevantPullRequests(token, ticketKeys = []) {
   const login = await account(token);
-  const [authored, reviewRequested] = await Promise.all([
+  const [authored, reviewRequested, reviewedByAccount] = await Promise.all([
     searchPrs(token, login, `is:pr author:${login}`),
-    searchPrs(token, login, `is:pr review-requested:${login} is:open`)
+    searchPrs(token, login, `is:pr review-requested:${login} is:open`),
+    searchPrs(token, login, `is:pr reviewed-by:${login}`)
   ]);
   const candidates = new Map();
-  for (const item of [...authored, ...reviewRequested]) {
+  for (const item of [...authored, ...reviewRequested, ...reviewedByAccount]) {
     const repoUrl = String(item.repository_url || '');
     const match = repoUrl.match(/\/repos\/([^/]+\/[^/]+)$/);
     const number = Number(item.number);
     if (!match || !Number.isInteger(number)) continue;
     const repository = match[1];
-    candidates.set(`${repository}#${number}`, { repository, number });
+    const key = `${repository}#${number}`;
+    const prior = candidates.get(key) || { repository, number, fromReviewSearch: false };
+    if (reviewedByAccount.includes(item)) prior.fromReviewSearch = true;
+    candidates.set(key, prior);
   }
 
   const details = await Promise.all([...candidates.values()].slice(0, MAX_PRS).map(async item => {
@@ -118,11 +122,16 @@ async function listRelevantPullRequests(token, ticketKeys = []) {
       const pr = await githubGet(`/repos/${item.repository}/pulls/${item.number}`, token);
       const authoredByAccount = String(pr.user?.login || '').toLowerCase() === login.toLowerCase();
       const requested = (pr.requested_reviewers || []).some(r => String(r.login || '').toLowerCase() === login.toLowerCase());
-      // This second check is deliberate: search results alone are not trusted
-      // to decide account relevance.
-      if (!authoredByAccount && !requested) return null;
+      let reviewedByAccount = false;
+      if (!authoredByAccount && !requested && item.fromReviewSearch) {
+        const reviews = await githubGet(`/repos/${item.repository}/pulls/${item.number}/reviews?per_page=100`, token).catch(() => []);
+        reviewedByAccount = Array.isArray(reviews) && reviews.some(review => String(review.user?.login || '').toLowerCase() === login.toLowerCase());
+      }
+      // Verify the account is the author, a current requested reviewer, or
+      // actually reviewed the PR; search results alone are not trusted.
+      if (!authoredByAccount && !requested && !reviewedByAccount) return null;
       const shaped = safePr({ ...pr, __linkedLogin: login }, ticketKeys);
-      return { ...shaped, requestedReviewer: requested, isAuthoredByAccount: authoredByAccount };
+      return { ...shaped, requestedReviewer: requested, isAuthoredByAccount: authoredByAccount, reviewedByAccount };
     } catch {
       return null;
     }
@@ -231,6 +240,7 @@ export const tools = [
       }
       db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
       try { db.prepare('DELETE FROM github_pr_seen_events').run(); } catch { /* table is created on first poll */ }
+      db.prepare("DELETE FROM settings WHERE key = 'github_pr_poll_initialized'").run();
       return { success: true, connected: false, login: '', message: 'GitHub disconnected.' };
     }
   },
