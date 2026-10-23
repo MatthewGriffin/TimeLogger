@@ -69,9 +69,36 @@ test.describe('Backend sidecar API', () => {
     expect(res.status()).toBe(403);
   });
 
+  test('allows the Microsoft OAuth top-level callback navigation', async ({ request }) => {
+    const res = await request.get(`${BACKEND_URL}/api/setup/oauth-callback?state=invalid`, {
+      headers: {
+        'Sec-Fetch-Site': 'cross-site',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Dest': 'document',
+        Origin: 'https://login.microsoftonline.com',
+      },
+    });
+
+    // Invalid state must be handled by the OAuth route, not blocked by the
+    // cross-site middleware. This does not complete authentication.
+    expect(res.status()).toBe(400);
+    expect(await res.text()).toContain('Authentication Failed');
+  });
+
   test('rejects cross-site browser requests even without an Origin header', async ({ request }) => {
     const res = await request.get(`${BACKEND_URL}/health`, {
       headers: { 'Sec-Fetch-Site': 'cross-site' },
+    });
+    expect(res.status()).toBe(403);
+  });
+
+  test('does not allow cross-site fetches to the OAuth callback route', async ({ request }) => {
+    const res = await request.get(`${BACKEND_URL}/api/setup/oauth-callback?state=invalid`, {
+      headers: {
+        'Sec-Fetch-Site': 'cross-site',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Dest': 'empty',
+      },
     });
     expect(res.status()).toBe(403);
   });
