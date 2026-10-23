@@ -177,7 +177,7 @@ async function suggestTopic(note, knownTopics, title) {
   if (mentioned) return { topic: mentioned, isNew: false, available: true };
 
   try {
-    const subject = await withinBudget(deadline, timeoutMs => extractSubject(cleanTitle, body, timeoutMs));
+    const subject = await withinBudget(deadline, timeoutMs => extractSubject(cleanTitle, body, timeoutMs, knownTopics));
     if (!subject) return { topic: 'General', isNew: false, available: true };
 
     // A subject naming a topic that already exists reuses it as-is.
@@ -196,17 +196,20 @@ async function suggestTopic(note, knownTopics, title) {
  * candidate topics up front anchors a small model and it simply echoes one
  * back. The answer is capped at two words to keep topics broad.
  */
-async function extractSubject(title, body, timeoutMs) {
-  const prompt = `Read this work note and name its main subject.
+async function extractSubject(title, body, timeoutMs, knownTopics = []) {
+  const categories = knownTopics.filter(topic => !isCatchAll(topic)).slice(0, 40);
+  const prompt = `Categorize this work note.
 
 Note title: ${title || '(none)'}
 Note content: ${body}
 
-The subject is the product, system, technology, activity or area of work the note is mainly about.
-It should be general enough that other notes about the same thing would share it.
-Do not describe what happened in the note, and do not include names of people, ticket numbers or error messages.
+Existing categories:
+${categories.length ? categories.map(topic => `- ${topic}`).join('\\n') : '(none)'}
 
-Answer with 1 or 2 words and nothing else.`;
+If an existing category clearly fits the note's subject, answer with that category name exactly as listed.
+Otherwise suggest a reusable, broad category for the main product, system, technology, activity or area of work.
+Do not describe what happened in the note, and do not include names of people, ticket numbers or error messages.
+If suggesting a new category, answer with 1 or 2 words. Answer with the category name only.`;
 
   const result = await ollamaClient.generate(prompt, null, { options: { temperature: 0 }, timeoutMs });
   const answer = normalizeTopicAnswer(result?.response);
