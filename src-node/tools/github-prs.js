@@ -16,7 +16,7 @@ export function extractTicketKeys(...values) {
   const keys = new Set();
   for (const value of values) {
     const text = String(value || '');
-    for (const match of text.matchAll(/\b([A-Z][A-Z0-9]{1,15}-\d+)\b/g)) keys.add(match[1].toUpperCase());
+    for (const match of text.matchAll(/\\b([A-Z][A-Z0-9]{1,15}-\\d+)\\b/gi)) keys.add(match[1].toUpperCase());
   }
   return [...keys];
 }
@@ -140,22 +140,22 @@ function ensureEventTable() {
 async function pollReviewEvents(token, prs) {
   ensureEventTable();
   const known = new Set(db.prepare('SELECT event_id FROM github_pr_seen_events').all().map(row => row.event_id));
-  const firstRun = known.size === 0;
-  const events = [];
-  const discovered = [];
-  for (const pr of prs.slice(0, EVENT_PR_LIMIT)) {
+  const initialized = db.prepare("SELECT value FROM settings WHERE key = 'github_pr_poll_initialized'").get()?.value === 'true';
+  const results = await Promise.all(prs.slice(0, EVENT_PR_LIMIT).map(async pr => {
     const base = `/repos/${pr.repository}/pulls/${pr.number}`;
     const [reviews, comments] = await Promise.all([
       githubGet(`${base}/reviews?per_page=100`, token).catch(() => []),
       githubGet(`${base}/comments?per_page=100`, token).catch(() => [])
     ]);
+    const discovered = [];
+    const events = [];
     for (const review of Array.isArray(reviews) ? reviews : []) {
       const state = String(review.state || '').toUpperCase();
       if (!['APPROVED', 'COMMENTED', 'CHANGES_REQUESTED'].includes(state)) continue;
       const eventId = `review:${pr.repository}:${review.id}`;
       if (known.has(eventId)) continue;
       discovered.push(eventId);
-      if (!firstRun && String(review.user?.login || '').toLowerCase() !== pr.author.toLowerCase()) {
+      if (initialized && String(review.user?.login || '').toLowerCase() !== pr.author.toLowerCase()) {
         events.push({
           id: eventId, kind: state === 'APPROVED' ? 'approval' : 'review',
           reviewer: review.user?.login || 'A reviewer', outcome: state,
@@ -168,7 +168,7 @@ async function pollReviewEvents(token, prs) {
       const eventId = `comment:${pr.repository}:${comment.id}`;
       if (known.has(eventId)) continue;
       discovered.push(eventId);
-      if (!firstRun && String(comment.user?.login || '').toLowerCase() !== pr.author.toLowerCase()) {
+      if (initialized && String(comment.user?.login || '').toLowerCase() !== pr.author.toLowerCase()) {
         events.push({
           id: eventId, kind: 'inline-comment', reviewer: comment.user?.login || 'A reviewer',
           outcome: 'COMMENTED', title: pr.title, url: pr.url, repository: pr.repository,
@@ -176,9 +176,15 @@ async function pollReviewEvents(token, prs) {
         });
       }
     }
-  }
+    return { discovered, events };
+  }));
+  const discovered = results.flatMap(result => result.discovered);
+  const events = results.flatMap(result => result.events);
   const insert = db.prepare('INSERT OR IGNORE INTO github_pr_seen_events (event_id) VALUES (?)');
-  db.transaction(() => discovered.forEach(id => insert.run(id)))();
+  db.transaction(() => {
+    discovered.forEach(id => insert.run(id));
+    db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('github_pr_poll_initialized', 'true', CURRENT_TIMESTAMP)").run();
+  })();
   return events;
 }
 
