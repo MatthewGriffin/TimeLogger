@@ -153,9 +153,10 @@ async function pollReviewEvents(token, prs) {
   const initialized = db.prepare("SELECT value FROM settings WHERE key = 'github_pr_poll_initialized'").get()?.value === 'true';
   const results = await Promise.all(prs.slice(0, EVENT_PR_LIMIT).map(async pr => {
     const base = `/repos/${pr.repository}/pulls/${pr.number}`;
-    const [reviews, comments] = await Promise.all([
+    const [reviews, comments, discussionComments] = await Promise.all([
       githubGet(`${base}/reviews?per_page=100`, token).catch(() => []),
-      githubGet(`${base}/comments?per_page=100`, token).catch(() => [])
+      githubGet(`${base}/comments?per_page=100`, token).catch(() => []),
+      githubGet(`/repos/${pr.repository}/issues/${pr.number}/comments?per_page=100`, token).catch(() => [])
     ]);
     const discovered = [];
     const events = [];
@@ -181,6 +182,18 @@ async function pollReviewEvents(token, prs) {
       if (initialized && String(comment.user?.login || '').toLowerCase() !== pr.author.toLowerCase()) {
         events.push({
           id: eventId, kind: 'inline-comment', reviewer: comment.user?.login || 'A reviewer',
+          outcome: 'COMMENTED', title: pr.title, url: pr.url, repository: pr.repository,
+          number: pr.number, body: String(comment.body || '').trim().slice(0, 240)
+        });
+      }
+    }
+    for (const comment of Array.isArray(discussionComments) ? discussionComments : []) {
+      const eventId = `discussion-comment:${pr.repository}:${comment.id}`;
+      if (known.has(eventId)) continue;
+      discovered.push(eventId);
+      if (initialized && String(comment.user?.login || '').toLowerCase() !== pr.author.toLowerCase()) {
+        events.push({
+          id: eventId, kind: 'discussion-comment', reviewer: comment.user?.login || 'A commenter',
           outcome: 'COMMENTED', title: pr.title, url: pr.url, repository: pr.repository,
           number: pr.number, body: String(comment.body || '').trim().slice(0, 240)
         });
