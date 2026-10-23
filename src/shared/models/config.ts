@@ -3,7 +3,6 @@ export interface JiraConfig {
   email: string
   apiToken: string
   tempoToken?: string
-  defaultIssueMapping?: string
 }
 
 export interface MicrosoftConfig {
@@ -33,7 +32,6 @@ export interface OneNoteConfig {
 
 export interface CalendarConfig {
   includeAllDayEvents: boolean
-  filterLabel?: string
   enabled?: boolean
   refreshInterval?: string
   syncOnStartup?: boolean
