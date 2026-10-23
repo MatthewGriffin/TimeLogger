@@ -32,6 +32,7 @@
         </div>
 
         <div class="topics-list">
+          <button class="btn-add-topic" type="button" @click="createCategory">+ Category</button>
           <div
             v-for="topic in notesStore.topics"
             :key="topic"
@@ -114,17 +115,16 @@
             />
           </div>
 
-          <!-- Topic is picked by the local AI on save; editing an existing
-               note still lets the user override that choice. A note linked
-               to a ticket is always filed under its ticket number, so the
-               override is not offered in that case. -->
-          <div v-if="notesStore.editingNote?.id && !editorTicketId" class="form-group">
-            <label>Topic *</label>
+          <!-- Choose a category manually, or leave a new note on AI suggestion. -->
+          <div v-if="!editorTicketId" class="form-group">
+            <label>Category *</label>
             <select v-model="notesStore.editingNote!.topic" required>
+              <option v-if="!notesStore.editingNote?.id" value="">Let AI suggest after saving</option>
               <option v-for="topic in notesStore.topics" :key="topic" :value="topic">
                 {{ topic }}
               </option>
             </select>
+            <p class="field-hint">AI suggestions are shown for approval before the category changes.</p>
           </div>
           <p v-else-if="editorTicketId" class="field-hint">
             Topic is <strong>{{ editorTicketId }}</strong> — ticket notes are filed under their ticket number
@@ -205,13 +205,13 @@
     <div v-if="pendingTopicSuggestion" class="modal-overlay" @click.self="useExistingTopic">
       <div class="modal modal-small">
         <div class="modal-header">
-          <h2>🆕 New Topic Suggested</h2>
+          <h2>🤖 AI Category Suggestion</h2>
           <button class="modal-close" @click="useExistingTopic">✕</button>
         </div>
         <p class="new-topic-copy">
-          <strong>"{{ pendingNoteSave?.title || 'Your note' }}"</strong> is saved. The AI thinks it belongs to a new
-          topic, <strong>"{{ pendingTopicSuggestion.topic }}"</strong>, which doesn't exist yet.
-          Add it as a new topic, or file the note under one you already have?
+          <strong>"{{ pendingNoteSave?.title || 'Your note' }}"</strong> has been saved. The AI suggests the category
+          <strong>"{{ pendingTopicSuggestion.topic }}"</strong>{{ pendingTopicSuggestion.isNew ? ', which is new.' : '.' }}
+          Nothing will change unless you approve it. You can accept the suggestion or keep/select another category.
         </p>
         <div class="form-group">
           <label for="fallback-topic">Existing topic</label>
@@ -222,8 +222,8 @@
           </select>
         </div>
         <div class="modal-footer">
-          <button class="btn-secondary" @click="useExistingTopic">Use "{{ fallbackTopic }}" instead</button>
-          <button class="btn-primary" @click="confirmNewTopic">✓ Add "{{ pendingTopicSuggestion.topic }}"</button>
+          <button class="btn-secondary" @click="useExistingTopic">Keep "{{ fallbackTopic }}"</button>
+          <button class="btn-primary" @click="confirmNewTopic">✓ {{ pendingTopicSuggestion.isNew ? 'Create and use' : 'Move to' }} "{{ pendingTopicSuggestion.topic }}"</button>
         </div>
       </div>
     </div>
@@ -248,7 +248,8 @@ const entriesStore = useEntriesStore()
 
 const pendingTopicSuggestion = ref<TopicSuggestion | null>(null)
 const pendingNoteSave = ref<{ id: string; title: string } | null>(null)
-// Which existing topic to use if the user declines the AI's new one.
+const originalEditingNote = ref<{ id: string; title: string; content: string; topic: string } | null>(null)
+// Which existing topic to use if the user declines the AI suggestion.
 const fallbackTopic = ref<string>(DEFAULT_TOPIC)
 
 /** Move an already-saved note into the chosen topic. */
@@ -345,11 +346,12 @@ const formatDate = (dateStr: string) => {
 }
 
 const openNewNote = () => {
+  originalEditingNote.value = null
   notesStore.setEditingNote({
     id: '',
     title: '',
     content: '',
-    topic: notesStore.selectedTopic,
+    topic: '',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     oneNoteSynced: false,
@@ -360,8 +362,25 @@ const openNewNote = () => {
 }
 
 const editNote = (note: Note) => {
+  originalEditingNote.value = { id: note.id, title: note.title, content: note.content, topic: note.topic }
   notesStore.setEditingNote({ ...note })
   notesStore.showNoteEditor = true
+}
+
+const createCategory = async () => {
+  const name = window.prompt('Name for the new note category')
+  if (name == null) return
+  const trimmed = name.trim()
+  if (!trimmed) {
+    uiStore.showError('Enter a category name')
+    return
+  }
+  try {
+    const topic = await notesStore.createNoteTopic(trimmed)
+    uiStore.showSuccess(`Category "${topic}" created`)
+  } catch (error) {
+    uiStore.showError(error instanceof Error ? error.message : 'Failed to create category')
+  }
 }
 
 const deleteNote = async (noteId: string) => {
@@ -374,6 +393,7 @@ const deleteNote = async (noteId: string) => {
 }
 
 const closeEditor = () => {
+  originalEditingNote.value = null
   notesStore.setEditingNote(null)
   notesStore.showNoteEditor = false
 }
@@ -389,17 +409,20 @@ const saveNote = async () => {
 
   try {
     if (note.id) {
-      // Update existing note; the topic here is the user's explicit choice.
-      await notesStore.updateNote(
+      const original = originalEditingNote.value
+      const contentChanged = Boolean(original && (note.content !== original.content || note.title !== original.title))
+      const categoryChanged = Boolean(original && note.topic !== original.topic)
+      const updated = await notesStore.updateNote(
         note.id,
         note.title,
         note.content,
-        note.topic,
+        note.topic || original?.topic,
         note.ticketId,
         note.isBlocker
       )
       uiStore.showSuccess('Note updated')
       closeEditor()
+      if (contentChanged && !categoryChanged && !note.ticketId) categorizeInBackground(updated)
     } else {
       // New note: save it straight away so writing a note is never held up
       // by the local model, then work out the topic in the background. A
@@ -407,14 +430,15 @@ const saveNote = async () => {
       const created = await notesStore.createNote(
         note.title,
         note.content,
-        note.ticketId ? undefined : DEFAULT_TOPIC,
+        note.ticketId ? undefined : (note.topic || DEFAULT_TOPIC),
         note.ticketId,
         undefined,
         note.isBlocker
       )
       uiStore.showSuccess('Note created')
+      const shouldSuggest = !note.ticketId && !note.topic
       closeEditor()
-      if (!note.ticketId) categorizeInBackground(created)
+      if (shouldSuggest) categorizeInBackground(created)
     }
   } catch (error) {
     uiStore.showError(notesStore.error || 'Failed to save note')
@@ -431,18 +455,13 @@ const categorizeInBackground = async (note: Note) => {
     const suggestion = await notesStore.suggestTopic(note.content, note.ticketId, note.title)
     // The user may have deleted or edited the note while the AI was thinking.
     const current = notesStore.notes.find(existing => existing.id === note.id)
-    if (!current || current.topic !== DEFAULT_TOPIC) return
-    if (suggestion.topic === DEFAULT_TOPIC) return
+    if (!current || suggestion.topic === current.topic) return
 
-    if (suggestion.isNew) {
-      // A brand-new topic still needs the user's say-so before it appears.
-      pendingTopicSuggestion.value = suggestion
-      pendingNoteSave.value = { id: note.id, title: note.title }
-      const topics = notesStore.topics
-      fallbackTopic.value = topics.includes(DEFAULT_TOPIC) ? DEFAULT_TOPIC : (topics[0] || DEFAULT_TOPIC)
-      return
-    }
-    await notesStore.updateNote(note.id, current.title, current.content, suggestion.topic, current.ticketId)
+    // Always ask before changing a category, whether the AI chose an existing
+    // category or proposed a new one.
+    pendingTopicSuggestion.value = suggestion
+    pendingNoteSave.value = { id: note.id, title: current.title }
+    fallbackTopic.value = current.topic || DEFAULT_TOPIC
   } catch {
     // Categorisation is best-effort: the note keeps the default topic.
   }
@@ -471,7 +490,7 @@ const useExistingTopic = async () => {
   const topic = fallbackTopic.value || DEFAULT_TOPIC
   try {
     await applyTopicToPendingNote(pending.id, topic)
-    uiStore.showSuccess(`Note filed under "${topic}"`)
+    uiStore.showInfo(`Note remains filed under "${topic}"`)
   } catch (error) {
     uiStore.showError(notesStore.error || 'Failed to save note')
   } finally {
