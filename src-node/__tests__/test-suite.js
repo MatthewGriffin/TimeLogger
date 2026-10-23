@@ -15,6 +15,7 @@ import { ukBankHolidays, isUkBankHoliday } from '../utils/uk-holidays.js';
 import { previousWorkingDay, isWorkingDay } from '../utils/working-days.js';
 import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, microsoftAuthorityUrl, escapeHtml } from '../utils/safe-url.js';
 import { backendPort } from '../utils/backend-port.js';
+import { extractTicketKeys, classifyPullRequest } from '../tools/github-prs.js';
 
 // Color codes for output
 const colors = {
@@ -163,6 +164,27 @@ async function runTests() {
   });
 
   // ============================================================
+  test('GitHub ticket key extraction is case-insensitive and deduplicates', () => {
+    assert.deepStrictEqual(
+      extractTicketKeys('TIME-123 fix', 'time-123 follow-up', 'feature/bug-2'),
+      ['TIME-123', 'BUG-2']
+    );
+  });
+
+  test('GitHub pull-request states distinguish merged, closed, draft and open', () => {
+    assert.strictEqual(classifyPullRequest({ state: 'closed', merged: true }), 'merged');
+    assert.strictEqual(classifyPullRequest({ state: 'closed', merged: false }), 'closed');
+    assert.strictEqual(classifyPullRequest({ state: 'open', draft: true }), 'draft');
+    assert.strictEqual(classifyPullRequest({ state: 'open', draft: false }), 'open');
+  });
+
+  test('GitHub integration exposes only read-oriented PR operations', () => {
+    const names = tools.map(tool => tool.name).filter(name => name.startsWith('github_pr_'));
+    assert(names.includes('github_pr_list'));
+    assert(names.includes('github_pr_poll_activity'));
+    assert(!names.some(name => /create|update|approve|review|merge|close/i.test(name)));
+  });
+
   // SECTION 2: Database Tests
   // ============================================================
   log(colors.yellow, '\n📚 SECTION 2: Database\n');
