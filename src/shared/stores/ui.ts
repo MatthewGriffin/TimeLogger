@@ -35,7 +35,7 @@ export const useUiStore = defineStore('ui', () => {
     const notif: Notification = {
       ...notification,
       id,
-      duration: notification.duration || 3000
+      duration: notification.duration ?? 3000
     }
     notifications.value.push(notif)
 
