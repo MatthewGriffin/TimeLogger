@@ -12,24 +12,6 @@
         <label for="minimized">Start Minimized to System Tray</label>
       </div>
 
-      <h3 class="settings-subheading">Lunch Break</h3>
-      <div class="form-group checkbox">
-        <input v-model="formData.lunch.enabled" type="checkbox" id="lunch-enabled" />
-        <label for="lunch-enabled">Automatically add a lunch break to each day</label>
-      </div>
-      <div class="form-group">
-        <label for="lunch-name">Entry Name</label>
-        <input v-model="formData.lunch.name" type="text" id="lunch-name" :disabled="!formData.lunch.enabled" />
-      </div>
-      <div class="form-group">
-        <label for="lunch-start">Start Time</label>
-        <input v-model="formData.lunch.startTime" type="time" id="lunch-start" :disabled="!formData.lunch.enabled" />
-      </div>
-      <div class="form-group">
-        <label for="lunch-end">End Time</label>
-        <input v-model="formData.lunch.endTime" type="time" id="lunch-end" :disabled="!formData.lunch.enabled" />
-      </div>
-
       <h3 class="settings-subheading">Working Hours</h3>
       <div class="form-group">
         <label for="workday-start">Day Starts</label>
