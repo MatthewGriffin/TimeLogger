@@ -21,6 +21,8 @@ const DEFAULT_NOTE_TOPICS = ['General'];
  */
 function getKnownTopics() {
   const rows = db.prepare(`
+    SELECT name AS topic FROM note_topics
+    UNION
     SELECT DISTINCT topic FROM notes
     WHERE topic IS NOT NULL AND topic <> ''
       AND (ticket_id IS NULL OR ticket_id = '' OR topic <> ticket_id)
@@ -225,6 +227,34 @@ function toTitleCase(text) {
 
 export const tools = [
   {
+    name: 'get_note_topics',
+    description: 'List all saved note categories, including categories that currently have no notes',
+    parameters: { type: 'object', properties: {}, required: [] },
+    handler: async () => ({ success: true, topics: getKnownTopics() })
+  },
+  {
+    name: 'create_note_topic',
+    description: 'Create a reusable category for notes and AI categorization',
+    parameters: {
+      type: 'object',
+      properties: { topic: { type: 'string', description: 'Category name, 1 to 30 characters' } },
+      required: ['topic']
+    },
+    handler: async (args) => {
+      const topic = String(args.topic || '').trim().replace(/\\s+/g, ' ');
+      if (!topic || topic.length > 30) {
+        return { success: false, message: 'Category names must be between 1 and 30 characters' };
+      }
+      if (/\\d/.test(topic) && topic.length > 30) {
+        return { success: false, message: 'Invalid category name' };
+      }
+      const existing = getKnownTopics().find(item => item.toLowerCase() === topic.toLowerCase());
+      if (existing) return { success: true, topic: existing, topics: getKnownTopics(), alreadyExists: true };
+      db.prepare('INSERT OR IGNORE INTO note_topics (name) VALUES (?)').run(topic);
+      return { success: true, topic, topics: getKnownTopics() };
+    }
+  },
+  {
     name: 'suggest_note_topic',
     description: 'Ask the local AI to suggest a topic for a note, flagging whether it is a brand-new topic that needs user confirmation',
     parameters: {
@@ -371,6 +401,7 @@ export const tools = [
           topic = suggestion.isNew ? 'General' : suggestion.topic;
         }
 
+        if (!ticketId && topic) db.prepare('INSERT OR IGNORE INTO note_topics (name) VALUES (?)').run(topic);
         const result = db.prepare(`
           INSERT INTO notes (date, note, topic, title, ticket_id, is_blocker)
           VALUES (?, ?, ?, ?, ?, ?)
