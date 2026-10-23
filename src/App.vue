@@ -59,8 +59,10 @@ const pollGitHubActivity = async () => {
     for (const event of result.events || []) {
       const outcome = event.kind === 'approval'
         ? 'approved'
-        : event.kind === 'inline-comment'
+         : event.kind === 'inline-comment'
           ? 'left an inline review comment on'
+          : event.kind === 'discussion-comment'
+            ? 'left a comment on'
           : event.outcome === 'CHANGES_REQUESTED'
             ? 'requested changes on'
             : 'left review feedback on'
@@ -68,7 +70,7 @@ const pollGitHubActivity = async () => {
       uiStore.addNotification({ type: 'info', message, duration: 0, url: event.url })
       try {
         await invoke('show_notification', {
-          title: event.kind === 'approval' ? 'GitHub PR approved' : 'GitHub review activity',
+          title: event.kind === 'approval' ? 'GitHub PR approved' : event.kind.includes('comment') ? 'GitHub PR comment' : 'GitHub review activity',
           message
         })
       } catch (error) {
