@@ -393,14 +393,9 @@ export const tools = [
         } else if (args.topic) {
           topic = args.topic;
         } else {
-          // The topic picker was removed from the "new note" UI: the frontend
-          // calls suggest_note_topic first and passes the (user-confirmed)
-          // result here. If a caller skips that step, fall back to a direct
-          // suggestion collapsed to a known topic, since a new topic must be
-          // confirmed by a user before it can be created.
-          const knownTopics = getKnownTopics();
-          const suggestion = await suggestTopic(args.note, knownTopics, args.title);
-          topic = suggestion.isNew ? 'General' : suggestion.topic;
+          // Never apply an AI category implicitly in the create path. The UI
+          // can request a suggestion separately and ask the user to approve it.
+          topic = 'General';
         }
 
         if (!ticketId && topic) db.prepare('INSERT OR IGNORE INTO note_topics (name) VALUES (?)').run(topic);
