@@ -68,12 +68,23 @@ app.use((req, res, next) => {
     return res.status(403).json({ success: false, message: 'Requests must target the local TimeLogger backend' });
   }
 
-  if (req.headers['sec-fetch-site'] === 'cross-site') {
+  // Microsoft returns to this local endpoint through a top-level navigation
+  // from login.microsoftonline.com. That legitimate OAuth redirect is
+  // necessarily cross-site; allow only a document navigation to this exact
+  // GET callback route. The callback still validates one-time state and PKCE
+  // before accepting the authorization response.
+  const isOAuthCallbackNavigation =
+    req.method === 'GET' &&
+    req.path === '/api/setup/oauth-callback' &&
+    req.headers['sec-fetch-mode'] === 'navigate' &&
+    req.headers['sec-fetch-dest'] === 'document';
+
+  if (req.headers['sec-fetch-site'] === 'cross-site' && !isOAuthCallbackNavigation) {
     return res.status(403).json({ success: false, message: 'Cross-site browser request blocked' });
   }
 
   const origin = req.headers.origin;
-  if (origin !== undefined && !ALLOWED_ORIGINS.includes(origin)) {
+  if (origin !== undefined && !ALLOWED_ORIGINS.includes(origin) && !isOAuthCallbackNavigation) {
     return res.status(403).json({ success: false, message: 'Cross-origin request blocked' });
   }
   next();
