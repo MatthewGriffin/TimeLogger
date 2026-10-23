@@ -34,10 +34,7 @@
           :lookup-busy="sprintLookupBusy"
           :lookup-message="sprintLookupMessage"
           :lookup-ok="sprintLookupOk"
-          v-model:test-subject="sprintTestSubject"
-          :test-result="sprintTestResult"
           @lookup-pi-tickets="lookupPiTickets"
-          @test-meeting-match="testMeetingMatch"
         />
         <MicrosoftSettings
           v-if="activeTab === 'Microsoft'"
@@ -54,12 +51,21 @@
         <OneNoteSettings
           v-if="activeTab === 'OneNote'"
           :form-data="formData.oneNote"
+          :microsoft-form-data="formData.microsoft"
+          :microsoft-connected="microsoftConnected"
+          :microsoft-account="microsoftAccount"
+          :graph-blockers="graphBlockers"
+          :can-connect-microsoft="canConnectMicrosoft"
+          :is-connecting-microsoft="isConnectingMicrosoft"
+          :microsoft-connect-message="microsoftConnectMessage"
+          :microsoft-connect-failed="microsoftConnectFailed"
           :notebooks="notebooks"
           :available-sections="availableSections"
           :is-loading-notebooks="isLoadingNotebooks"
           :notebook-error="notebookError"
           @load-notebooks="loadNotebooks"
           @notebook-changed="onNotebookChanged"
+          @connect-microsoft="connectMicrosoft"
         />
         <CalendarSettings
           v-if="activeTab === 'Calendar'"
@@ -130,7 +136,6 @@ import CurrentSprintSettings from '@/features/settings/components/CurrentSprintS
 import DatabaseSettings from '@/features/settings/components/DatabaseSettings.vue'
 import AppSettings from '@/features/settings/components/AppSettings.vue'
 import JiraTempoSettings from '@/features/settings/components/JiraTempoSettings.vue'
-import MicrosoftSettings from '@/features/settings/components/MicrosoftSettings.vue'
 import OneNoteSettings from '@/features/settings/components/OneNoteSettings.vue'
 import OllamaSettings from '@/features/settings/components/OllamaSettings.vue'
 import type {
@@ -143,7 +148,6 @@ import type {
   SettingsFormData,
   SettingsTabName,
   SprintMappingForm,
-  SprintTestResult,
 } from '@/features/settings/models/settings'
 
 const route = useRoute()
@@ -153,7 +157,7 @@ const uiStore = useUiStore()
 const updater = useUpdater()
 const dataManagement = useDataManagement()
 
-const tabs: SettingsTabName[] = ['Jira & Tempo', 'Current Sprint', 'Microsoft', 'OneNote', 'Calendar', 'Ollama', 'App Settings', 'Database & Data', 'About']
+const tabs: SettingsTabName[] = ['Jira & Tempo', 'Current Sprint', 'OneNote', 'Calendar', 'Ollama', 'App Settings', 'Database & Data', 'About']
 const initialTab = tabs.find(tab => tab === route.query.tab)
 const activeTab = ref<SettingsTabName>(initialTab ?? 'Jira & Tempo')
 const isSaving = ref(false)
@@ -179,7 +183,6 @@ const formData = ref<SettingsFormData>({
     email: '',
     apiToken: '',
     tempoToken: '',
-    defaultIssueMapping: ''
   },
   microsoft: {
     tenantId: '',
@@ -207,7 +210,6 @@ const formData = ref<SettingsFormData>({
   },
   calendar: {
     includeAllDayEvents: false,
-    filterLabel: '',
     enabled: false,
     refreshInterval: '30',
     syncOnStartup: true
@@ -244,15 +246,12 @@ const sprintForm = ref<CurrentSprintSettingsForm>({
   piNumber: '',
   projectKey: 'TIME',
   teamLabel: '',
-  defaultMeetingTicket: '',
   mappings: [] as SprintMappingForm[]
 })
 const originalSprint = ref('')
 const sprintLookupBusy = ref(false)
 const sprintLookupMessage = ref('')
 const sprintLookupOk = ref(false)
-const sprintTestSubject = ref('')
-const sprintTestResult = ref<SprintTestResult | null>(null)
 
 const splitAliases = (text: string): string[] =>
   text.split(',').map(a => a.trim()).filter(Boolean)
@@ -262,7 +261,6 @@ const applySprintConfig = (config: Record<string, unknown>): void => {
     piNumber: asString(config.piNumber, ''),
     projectKey: asString(config.projectKey, 'TIME'),
     teamLabel: asString(config.teamLabel, ''),
-    defaultMeetingTicket: asString(config.defaultMeetingTicket, ''),
     mappings: asList(config.mappings).map(raw => {
       const row = asRecord(raw)
       return {
@@ -325,7 +323,6 @@ const saveSprintConfig = async (): Promise<void> => {
     piNumber: sprintForm.value.piNumber,
     projectKey: sprintForm.value.projectKey,
     teamLabel: sprintForm.value.teamLabel,
-    defaultMeetingTicket: sprintForm.value.defaultMeetingTicket,
     mappings: sprintForm.value.mappings.map(m => ({
       id: m.id,
       label: m.label,
@@ -337,26 +334,6 @@ const saveSprintConfig = async (): Promise<void> => {
   if (result.config) applySprintConfig(asRecord(result.config))
 }
 
-const testMeetingMatch = async (): Promise<void> => {
-  try {
-    const result = asRecord(await executeApi('sprint_preview_meeting_match', {
-      subject: sprintTestSubject.value
-    }))
-    const matched = asBoolean(result.matched, false)
-    sprintTestResult.value = {
-      matched,
-      text: matched
-        ? `✓ ${asString(result.ticketKey, '')} — ${asString(result.label, '')} (matched "${asString(result.matchedAlias, '')}")`
-        : '✗ No ticket mapping matches this name. It will sync but cannot be submitted to Tempo.'
-    }
-  } catch (err) {
-    sprintTestResult.value = {
-      matched: false,
-      text: err instanceof Error ? err.message : 'Test failed'
-    }
-  }
-}
-
 const hasChanges = computed(() => {
   return JSON.stringify(formData.value) !== JSON.stringify(originalData.value)
     || JSON.stringify(sprintForm.value) !== originalSprint.value
@@ -366,7 +343,6 @@ const getTabIcon = (tab: SettingsTabName) => {
   const icons: Record<SettingsTabName, string> = {
     'Jira & Tempo': '🔗',
     'Current Sprint': '🏃',
-    'Microsoft': '📅',
     'OneNote': '📝',
     'Calendar': '📆',
     'Ollama': '🤖',
@@ -772,7 +748,6 @@ onMounted(async () => {
         email: configStore.config.jira.email || '',
         apiToken: configStore.config.jira.apiToken || '',
         tempoToken: configStore.config.jira.tempoToken || '',
-        defaultIssueMapping: configStore.config.jira.defaultIssueMapping || ''
       }
     }
 
@@ -826,7 +801,6 @@ onMounted(async () => {
     if (configStore.config.calendar) {
       formData.value.calendar = {
         includeAllDayEvents: configStore.config.calendar.includeAllDayEvents === true,
-        filterLabel: configStore.config.calendar.filterLabel || '',
         enabled: configStore.config.calendar.enabled !== false,
         refreshInterval: configStore.config.calendar.refreshInterval || '30',
         syncOnStartup: configStore.config.calendar.syncOnStartup !== false
