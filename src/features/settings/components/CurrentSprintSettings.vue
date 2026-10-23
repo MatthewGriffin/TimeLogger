@@ -80,11 +80,9 @@ const props = defineProps<{
   lookupOk: boolean
 }>()
 
-const emit = defineEmits<{
+defineEmits<{
   'lookup-pi-tickets': []
 }>()
-
-
 </script>
 
 <style scoped>
