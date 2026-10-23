@@ -126,22 +126,6 @@ function groupByTicket(entries) {
 }
 
 /**
- * Render planned tickets as prose.
- *
- * No duration is ever shown: planned work has no time logged against it, and
- * implying otherwise is exactly the confusion this feature has to avoid.
- */
-function describePlanned(planned) {
-  if (!planned || planned.length === 0) return null;
-  return planned
-    .map(item => {
-      const summary = String(item.summary || '').trim();
-      return summary ? `${item.ticket_id}: ${summary}` : item.ticket_id;
-    })
-    .join('; ');
-}
-
-/**
  * Compose the report without the LLM.
  *
  * This is a first-class path, not an error case: Ollama is optional throughout
