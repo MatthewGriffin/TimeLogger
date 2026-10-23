@@ -11,6 +11,7 @@ import { localDateKey } from '../utils/dates.js';
 import { previousWorkingDay } from '../utils/working-days.js';
 import { plannedWorkFor } from './scrum-plan.js';
 import { readSprintConfig, matchMeetingTicket } from './sprint.js';
+import { getPullRequestsForTickets } from './github-prs.js';
 
 /** Read the configured lunch name so it can be filtered out by whatever it is called. */
 function lunchName() {
@@ -208,13 +209,27 @@ export const tools = [
         const blockers = openBlockers();
 
         const summary = fallbackSummary(previous, current, blockers);
+        const workedTicketValues = [
+          ...previous.entries.map(entry => entry.ticket_id),
+          ...current.entries.map(entry => entry.ticket_id),
+          ...current.planned.map(item => item.ticket_id)
+        ].filter(Boolean);
+        let pullRequests = [];
+        try {
+          pullRequests = await getPullRequestsForTickets(workedTicketValues);
+        } catch (error) {
+          // GitHub is optional; a network or authentication issue must not
+          // make the core stand-up summary unavailable.
+          console.warn('Could not load GitHub pull requests for scrum:', error.message);
+        }
 
         return {
           success: true,
           yesterday: previous,
           today: current,
           blockers,
-          summary
+          summary,
+          pullRequests
         };
       } catch (error) {
         return { success: false, message: `Failed to build scrum summary: ${error.message}` };
