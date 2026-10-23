@@ -14,6 +14,7 @@ export const DEFAULT_TOPIC: NoteTopic = 'General'
 
 export const useNotesStore = defineStore('notes', () => {
   const notes = ref<Note[]>([])
+  const savedTopics = ref<NoteTopic[]>([DEFAULT_TOPIC])
   const selectedTopic = ref<NoteTopic>('General')
   const editingNote = ref<Note | null>(null)
   const showNoteEditor = ref(false)
@@ -21,11 +22,9 @@ export const useNotesStore = defineStore('notes', () => {
   const isLoading = ref(false)
   const isSuggestingTopic = ref(false)
   const error = ref('')
-  // Topics are open-ended and derived from the notes themselves, so an empty
-  // category cannot linger: the list is General plus whatever topics notes
-  // are currently filed under.
+  // Saved categories persist even when no notes are currently filed under them.
   const topics = computed<NoteTopic[]>(() => {
-    const seen: NoteTopic[] = [DEFAULT_TOPIC]
+    const seen: NoteTopic[] = [...savedTopics.value]
     notes.value.forEach(note => {
       const topic = note.topic
       if (topic && !seen.some(existing => existing.toLowerCase() === topic.toLowerCase())) seen.push(topic)
@@ -48,11 +47,30 @@ export const useNotesStore = defineStore('notes', () => {
     if (!current.some(topic => topic === selectedTopic.value)) selectedTopic.value = DEFAULT_TOPIC
   })
 
+  const loadNoteTopics = async () => {
+    try {
+      const result = await executeApi<{ topics?: string[] }>('get_note_topics', {})
+      const incoming = Array.isArray(result?.topics) ? result.topics : [DEFAULT_TOPIC]
+      savedTopics.value = [DEFAULT_TOPIC, ...incoming.filter(topic => topic && topic.toLowerCase() !== DEFAULT_TOPIC.toLowerCase())]
+    } catch {
+      // Notes still work if category listing is temporarily unavailable.
+    }
+  }
+
+  const createNoteTopic = async (name: string): Promise<NoteTopic> => {
+    const result = await executeApi<{ success?: boolean; topic?: string; message?: string }>('create_note_topic', { topic: name })
+    if (result?.success === false || !result?.topic) throw new Error(result?.message || 'Failed to create category')
+    const topic = result.topic
+    if (!savedTopics.value.some(existing => existing.toLowerCase() === topic.toLowerCase())) savedTopics.value.push(topic)
+    return topic
+  }
+
   const loadNotes = async (topic?: NoteTopic, date?: string) => {
     isLoading.value = true; error.value = ''
     try {
       const result = await executeApi('get_notes', { ...(topic ? { topic } : {}), ...(date ? { date } : {}) })
       notes.value = normalizeNotes(result)
+      await loadNoteTopics()
     } catch (err) {
       error.value = err instanceof ApiError ? err.message : 'Failed to load notes'
       try {
@@ -182,8 +200,8 @@ export const useNotesStore = defineStore('notes', () => {
   const syncNotesPersist = () => localStorage.setItem('timelogger_notes', JSON.stringify(notes.value))
 
   return {
-    notes, selectedTopic, editingNote, showNoteEditor, isSyncing, isLoading, isSuggestingTopic, error, topics, notesByTopic, notesCount,
-    loadNotes, createNote, updateNote, deleteNote, setEditingNote, setSelectedTopic, searchNotes, syncToOneNote,
+    notes, savedTopics, selectedTopic, editingNote, showNoteEditor, isSyncing, isLoading, isSuggestingTopic, error, topics, notesByTopic, notesCount,
+    loadNotes, loadNoteTopics, createNoteTopic, createNote, updateNote, deleteNote, setEditingNote, setSelectedTopic, searchNotes, syncToOneNote,
     syncAllToOneNote, suggestTopic,
     loadNotesFromBackend, syncNotesPersist
   }
