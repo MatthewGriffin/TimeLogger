@@ -214,6 +214,8 @@ If suggesting a new category, answer with 1 or 2 words. Answer with the category
   const result = await ollamaClient.generate(prompt, null, { options: { temperature: 0 }, timeoutMs });
   const answer = normalizeTopicAnswer(result?.response);
   if (!answer) return null;
+  const exactCategory = knownTopics.find(topic => topic.toLowerCase() === answer.toLowerCase());
+  if (exactCategory) return exactCategory;
   // Small models sometimes still answer in a sentence; take the leading words.
   const words = answer.replace(/[^\w\s-]/g, ' ').trim().split(/\s+/).filter(Boolean);
   if (words.length === 0 || words.length > 6) return null;
