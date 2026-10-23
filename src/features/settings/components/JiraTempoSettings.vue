@@ -39,17 +39,7 @@
         />
         <small>Required for worklog uploads. Get from Tempo Settings → Data Access → API integration (or ask your Jira admin for the API token)</small>
       </div>
-
-      <div class="form-group">
-        <label>Default Issue Mapping</label>
-        <input
-          v-model="props.formData.defaultIssueMapping"
-          type="text"
-          placeholder="e.g., PROJ-1234"
-        />
-      </div>
-
-      <div class="form-hint">
+\n      <div class="form-hint">
         💡 Get your API token from
         <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank">
           Atlassian account settings
