@@ -166,6 +166,7 @@ function fallbackSummary(yesterday, today, blockers) {
 
   if (loggedToday.length) {
     lines.push("Today I'll be working on:");
+    lines.push('I am working on:');
     lines.push(bullets(loggedToday, 'No development work logged'));
     if (plannedDescriptions.length) {
       lines.push('');
