@@ -267,12 +267,16 @@ async function runTests() {
 
   // ============================================================
   await testAsync('Custom note categories persist without notes and are available to AI', async () => {
-    const category = 'Category Test';
-    const created = await executeTool('create_note_topic', { topic: category });
-    assert.strictEqual(created.success, true, 'Category should be created');
-    const listed = await executeTool('get_note_topics', {});
-    assert(listed.topics.includes(category), 'Saved category should appear even without notes');
-    assert(tools.some(tool => tool.name === 'suggest_note_topic'), 'AI topic suggestion should remain available');
+    const category = '__TimeLogger_Test_Category__';
+    try {
+      const created = await executeTool('create_note_topic', { topic: category });
+      assert.strictEqual(created.success, true, 'Category should be created');
+      const listed = await executeTool('get_note_topics', {});
+      assert(listed.topics.includes(category), 'Saved category should appear even without notes');
+      assert(tools.some(tool => tool.name === 'suggest_note_topic'), 'AI topic suggestion should remain available');
+    } finally {
+      db.prepare('DELETE FROM note_topics WHERE name = ?').run(category);
+    }
   });
 
   // SECTION 6: Setup Tool Tests
