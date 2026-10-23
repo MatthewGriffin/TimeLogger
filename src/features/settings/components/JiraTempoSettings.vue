@@ -39,7 +39,8 @@
         />
         <small>Required for worklog uploads. Get from Tempo Settings → Data Access → API integration (or ask your Jira admin for the API token)</small>
       </div>
-\n      <div class="form-hint">
+
+      <div class="form-hint">
         💡 Get your API token from
         <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank">
           Atlassian account settings
