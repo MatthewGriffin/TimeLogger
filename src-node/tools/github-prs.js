@@ -224,7 +224,7 @@ export const tools = [
         return { success: true, connected: true, login, message: `Connected as @${login}. Only read-only GET requests are used.` };
       }
       db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
-      db.prepare('DELETE FROM github_pr_seen_events').run();
+      try { db.prepare('DELETE FROM github_pr_seen_events').run(); } catch { /* table is created on first poll */ }
       return { success: true, connected: false, login: '', message: 'GitHub disconnected.' };
     }
   },
