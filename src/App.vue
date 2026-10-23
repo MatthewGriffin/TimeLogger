@@ -11,6 +11,7 @@ import { startTempoReminderScheduler, stopTempoReminderScheduler } from '@/featu
 import { checkForUpdateOnStartup } from '@/features/updates/composables/useUpdater'
 import { useAppStore } from '@/shared/stores/app'
 import { useUiStore } from '@/shared/stores/ui'
+import { executeApi } from '@/shared/utils/api'
 
 const appStore = useAppStore()
 const uiStore = useUiStore()
@@ -18,6 +19,8 @@ const router = useRouter()
 const route = useRoute()
 const aiModelPrompt = ref<InstanceType<typeof AiModelPrompt> | null>(null)
 let unlistenTrayNavigate: (() => void) | undefined
+let githubPollingTimer: ReturnType<typeof setInterval> | undefined
+let githubPollInFlight = false
 
 const waitForBackend = async () => {
   // Health polling goes through Rust for the same reason API calls do: the
@@ -31,6 +34,53 @@ const waitForBackend = async () => {
     await new Promise(resolve => setTimeout(resolve, 250))
   }
   throw new Error('The TimeLogger backend did not start. Check that Node.js is installed and see backend_output.log.')
+}
+
+
+/**
+ * Check read-only GitHub review activity. The backend persists seen event IDs,
+ * so repeated polling and app restarts do not repeat the same alert.
+ */
+const pollGitHubActivity = async () => {
+  if (githubPollInFlight) return
+  githubPollInFlight = true
+  try {
+    const result = await executeApi<{ events?: Array<{
+      id: string
+      kind: string
+      reviewer: string
+      outcome: string
+      title: string
+      url: string
+      repository: string
+      number: number
+      body?: string
+    }> }>('github_pr_poll_activity')
+    for (const event of result.events || []) {
+      const outcome = event.kind === 'approval'
+        ? 'approved'
+        : event.kind === 'inline-comment'
+          ? 'left an inline review comment on'
+          : event.outcome === 'CHANGES_REQUESTED'
+            ? 'requested changes on'
+            : 'left review feedback on'
+      const message = `@${event.reviewer} ${outcome} “${event.title}” (${event.repository}#${event.number}).`
+      uiStore.addNotification({ type: 'info', message, duration: 0, url: event.url })
+      try {
+        await invoke('show_notification', {
+          title: event.kind === 'approval' ? 'GitHub PR approved' : 'GitHub review activity',
+          message
+        })
+      } catch (error) {
+        console.warn('Could not show GitHub review notification:', error)
+      }
+    }
+  } catch {
+    // GitHub is optional; do not interrupt normal app use when disconnected or
+    // temporarily offline. The Settings tab exposes connection diagnostics.
+  } finally {
+    githubPollInFlight = false
+  }
 }
 
 onMounted(async () => {
@@ -48,6 +98,10 @@ onMounted(async () => {
   void aiModelPrompt.value?.check()
 
   startTempoReminderScheduler()
+  // Review polling runs in the live app process (including when the window is
+  // hidden to the tray). It does not run while the app is closed.
+  void pollGitHubActivity()
+  githubPollingTimer = setInterval(() => void pollGitHubActivity(), 120_000)
 
   // Same reasoning as the model prompt: never awaited, and silent unless
   // there is actually a new version to offer.
@@ -75,6 +129,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  if (githubPollingTimer) clearInterval(githubPollingTimer)
   stopTempoReminderScheduler()
   unlistenTrayNavigate?.()
 })
