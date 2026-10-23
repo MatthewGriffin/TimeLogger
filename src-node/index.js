@@ -23,6 +23,7 @@ import * as Setup from './tools/setup.js';
 import * as AiModel from './tools/ai-model.js';
 import * as Reminders from './tools/reminders.js';
 import * as DataManagement from './tools/data-management.js';
+import * as GitHubPullRequests from './tools/github-prs.js';
 
 // Register all tools
 export const tools = [
@@ -59,6 +60,9 @@ export const tools = [
 
   // Notification reminders
   ...Reminders.tools,
+
+  // Read-only GitHub pull-request integration
+  ...GitHubPullRequests.tools,
 
   // Backup, restore and reset
   ...DataManagement.tools,
