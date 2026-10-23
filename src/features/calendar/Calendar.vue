@@ -263,10 +263,14 @@ const currentMonthKey = computed(() => {
 const loadMonthUnticketed = async () => {
   const year = currentDate.value.getFullYear()
   const month = currentDate.value.getMonth()
-  return entriesStore.loadUnticketedMeetings(
-    toLocalDateString(new Date(year, month, 1)),
-    toLocalDateString(new Date(year, month + 1, 0))
-  )
+  const startDate = toLocalDateString(new Date(year, month, 1))
+  const monthEnd = toLocalDateString(new Date(year, month + 1, 0))
+  const today = toLocalDateString(new Date())
+
+  // Future appointments are shown from Outlook in the calendar grid, but are
+  // not time logs yet and should never trigger ticket/type prompts.
+  if (startDate > today) return []
+  return entriesStore.loadUnticketedMeetings(startDate, monthEnd < today ? monthEnd : today)
 }
 
 /**
