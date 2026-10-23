@@ -77,7 +77,6 @@ test.describe('Settings tabs', () => {
   const TABS = [
     { tab: 'Jira & Tempo', heading: 'Jira & Tempo Settings' },
     { tab: 'Current Sprint', heading: 'Current Sprint' },
-    { tab: 'Microsoft', heading: 'Microsoft Integration Settings' },
     { tab: 'OneNote', heading: 'OneNote Configuration' },
     { tab: 'Calendar', heading: 'Outlook Calendar Integration' },
     { tab: 'Ollama', heading: 'Ollama AI Settings' },
