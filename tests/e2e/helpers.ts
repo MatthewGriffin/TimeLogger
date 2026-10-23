@@ -16,6 +16,7 @@ export const ROUTES = {
   scrum: '#/scrum',
   submit: '#/submit',
   tempo: '#/tempo',
+  pullRequests: '#/pull-requests',
   settings: '#/settings',
 } as const;
 
