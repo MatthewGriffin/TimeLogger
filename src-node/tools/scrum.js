@@ -173,7 +173,10 @@ function fallbackSummary(yesterday, today, blockers) {
       lines.push(bullets(plannedDescriptions, 'No additional work planned'));
     }
   } else {
-    lines.push('Today I plan to work on:');
+    // Keep the stable day heading for consumers while explicitly describing
+    // planned tickets as intent rather than work already in progress.
+    lines.push("Today I'll be working on:");
+    lines.push('I plan to work on:');
     lines.push(bullets(plannedDescriptions, 'No development work planned yet'));
   }
 
