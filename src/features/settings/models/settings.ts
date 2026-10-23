@@ -2,6 +2,7 @@ import type { JiraConfig, MicrosoftConfig, OllamaConfig, OneNoteConfig } from '@
 
 export type SettingsTabName =
   | 'Jira & Tempo'
+  | 'GitHub'
   | 'Current Sprint'
   | 'OneNote'
   | 'Calendar'
