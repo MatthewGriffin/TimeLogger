@@ -293,10 +293,18 @@ export const tools = [
         // already populated never syncs again, so a sync-only prompt would
         // strand it permanently.
         const startDate = args.startDate || args.date;
-        const endDate = args.endDate || args.date || args.startDate;
-        if (!startDate || !endDate) {
+        const requestedEndDate = args.endDate || args.date || args.startDate;
+        if (!startDate || !requestedEndDate) {
           throw new Error('date, or startDate and endDate, required in YYYY-MM-DD format');
         }
+        const today = isoDaysFromToday(0);
+        // Only meetings that have happened (or are happening today) can become
+        // time entries needing a ticket. Future appointments remain calendar
+        // display data, not work logs to classify.
+        if (startDate > today) {
+          return { success: true, date: args.date || startDate, startDate, endDate: requestedEndDate, count: 0, unmappedMeetings: [], message: 'Future meetings do not need a ticket yet' };
+        }
+        const endDate = requestedEndDate < today ? requestedEndDate : today;
 
         const rows = db.prepare(`
           SELECT id, name, date FROM daily_summary
