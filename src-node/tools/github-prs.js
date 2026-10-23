@@ -39,17 +39,26 @@ function readConfig() {
 
 async function githubGet(path, token) {
   if (!path.startsWith('/')) throw new Error('Invalid GitHub API path');
-  const response = await makeHttpRequest(`${API}${path}`, {
-    method: 'GET',
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${token}`,
-      'X-GitHub-Api-Version': '2022-11-28',
-      'User-Agent': 'TimeLogger-ReadOnly-GitHub-Integration'
-    },
-    timeoutMs: 12000
-  });
-  return response.data;
+  try {
+    const response = await makeHttpRequest(`${API}${path}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'TimeLogger-ReadOnly-GitHub-Integration'
+      },
+      timeoutMs: 12000
+    });
+    return response.data;
+  } catch (error) {
+    // Keep the failing endpoint and GitHub's status/message visible without
+    // ever including request headers or the stored token.
+    const message = error instanceof Error ? error.message : String(error);
+    const status = message.match(/HTTP (\d{3})/i)?.[1];
+    const detail = message.replace(/^HTTP \d{3}:\s*/i, '').slice(0, 500);
+    throw new Error(`GitHub API request failed${status ? ` (HTTP ${status})` : ''} for ${path}: ${detail}`);
+  }
 }
 
 function requireToken() {
@@ -97,12 +106,17 @@ async function searchPrs(token, login, query) {
   return all;
 }
 
-async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS) {
+async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS, diagnostics = null) {
   const login = await account(token);
+  const searchAndRecord = async (name, query) => {
+    const results = await searchPrs(token, login, query);
+    if (diagnostics) diagnostics.searches.push({ name, count: results.length });
+    return results;
+  };
   const [authored, reviewRequested, reviewedByAccount] = await Promise.all([
-    searchPrs(token, login, `is:pr author:${login}`),
-    searchPrs(token, login, `is:pr review-requested:${login} is:open`),
-    searchPrs(token, login, `is:pr reviewed-by:${login}`)
+    searchAndRecord('authored', `is:pr author:${login}`),
+    searchAndRecord('review-requested', `is:pr review-requested:${login} is:open`),
+    searchAndRecord('reviewed-by-account', `is:pr reviewed-by:${login}`)
   ]);
   const candidates = new Map();
   for (const item of [...authored, ...reviewRequested, ...reviewedByAccount]) {
@@ -118,6 +132,7 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS)
     candidates.set(key, prior);
   }
 
+  if (diagnostics) diagnostics.candidateCount = candidates.size;
   const details = await Promise.all([...candidates.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, limit).map(async item => {
     try {
       const pr = await githubGet(`/repos/${item.repository}/pulls/${item.number}`, token);
@@ -125,7 +140,13 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS)
       const requested = (pr.requested_reviewers || []).some(r => String(r.login || '').toLowerCase() === login.toLowerCase());
       let reviewedByAccount = false;
       if (!authoredByAccount && !requested && item.fromReviewSearch) {
-        const reviews = await githubGet(`/repos/${item.repository}/pulls/${item.number}/reviews?per_page=100`, token).catch(() => []);
+        const reviews = await githubGet(`/repos/${item.repository}/pulls/${item.number}/reviews?per_page=100`, token).catch(error => {
+          if (diagnostics) diagnostics.detailFailures.push({
+            repository: item.repository, number: item.number, endpoint: 'reviews',
+            message: error instanceof Error ? error.message : String(error)
+          });
+          return [];
+        });
         reviewedByAccount = Array.isArray(reviews) && reviews.some(review => String(review.user?.login || '').toLowerCase() === login.toLowerCase());
       }
       // Verify the account is the author, a current requested reviewer, or
@@ -133,7 +154,11 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS)
       if (!authoredByAccount && !requested && !reviewedByAccount) return null;
       const shaped = safePr({ ...pr, __linkedLogin: login }, ticketKeys);
       return { ...shaped, requestedReviewer: requested, isAuthoredByAccount: authoredByAccount, reviewedByAccount };
-    } catch {
+    } catch (error) {
+      if (diagnostics) diagnostics.detailFailures.push({
+        repository: item.repository, number: item.number, endpoint: 'pull-request',
+        message: error instanceof Error ? error.message : String(error)
+      });
       return null;
     }
   }));
@@ -269,8 +294,9 @@ export const tools = [
     },
     handler: async ({ ticketKeys = [] }) => {
       try {
-        const prs = await listRelevantPullRequests(requireToken(), extractTicketKeys(...ticketKeys));
-        return { success: true, prs };
+        const diagnostics = { searches: [], candidateCount: 0, detailFailures: [] };
+        const prs = await listRelevantPullRequests(requireToken(), extractTicketKeys(...ticketKeys), MAX_PRS, diagnostics);
+        return { success: true, prs, diagnostics };
       } catch (error) {
         return { success: false, message: error.message };
       }
