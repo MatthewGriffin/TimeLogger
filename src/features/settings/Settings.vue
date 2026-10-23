@@ -28,6 +28,7 @@
           v-if="activeTab === 'Jira & Tempo'"
           :form-data="formData.jira"
         />
+        <GitHubSettings v-if="activeTab === 'GitHub'" />
         <CurrentSprintSettings
           v-if="activeTab === 'Current Sprint'"
           :form-data="sprintForm"
@@ -125,6 +126,7 @@ import CurrentSprintSettings from '@/features/settings/components/CurrentSprintS
 import DatabaseSettings from '@/features/settings/components/DatabaseSettings.vue'
 import AppSettings from '@/features/settings/components/AppSettings.vue'
 import JiraTempoSettings from '@/features/settings/components/JiraTempoSettings.vue'
+import GitHubSettings from '@/features/settings/components/GitHubSettings.vue'
 import OneNoteSettings from '@/features/settings/components/OneNoteSettings.vue'
 import OllamaSettings from '@/features/settings/components/OllamaSettings.vue'
 import type {
@@ -146,7 +148,7 @@ const uiStore = useUiStore()
 const updater = useUpdater()
 const dataManagement = useDataManagement()
 
-const tabs: SettingsTabName[] = ['Jira & Tempo', 'Current Sprint', 'OneNote', 'Calendar', 'Ollama', 'App Settings', 'Database & Data', 'About']
+const tabs: SettingsTabName[] = ['Jira & Tempo', 'GitHub', 'Current Sprint', 'OneNote', 'Calendar', 'Ollama', 'App Settings', 'Database & Data', 'About']
 const initialTab = tabs.find(tab => tab === route.query.tab)
 const activeTab = ref<SettingsTabName>(initialTab ?? 'Jira & Tempo')
 const isSaving = ref(false)
@@ -331,6 +333,7 @@ const hasChanges = computed(() => {
 const getTabIcon = (tab: SettingsTabName) => {
   const icons: Record<SettingsTabName, string> = {
     'Jira & Tempo': '🔗',
+    'GitHub': '🐙',
     'Current Sprint': '🏃',
     'OneNote': '📝',
     'Calendar': '📆',
