@@ -13,6 +13,7 @@
 import { db } from '../index.js';
 import { makeHttpRequest } from '../api/http-client.js';
 import { resolveJiraCredentials, jiraHeaders } from './jira-tempo.js';
+import { isoDaysFromToday } from './jira-tempo-future.js';
 
 const SETTINGS_KEY = 'sprint_config';
 
