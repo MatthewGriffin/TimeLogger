@@ -192,7 +192,7 @@ async function pollReviewEvents(token, prs) {
       const eventId = `discussion-comment:${pr.repository}:${comment.id}`;
       if (known.has(eventId)) continue;
       discovered.push(eventId);
-      if (initialized && String(comment.user?.login || '').toLowerCase() !== pr.author.toLowerCase()) {
+      if (initialized && String(comment.user?.login || '').toLowerCase() !== pr.author.toLowerCase() && String(comment.user?.login || '').toLowerCase() !== linkedLogin) {
         events.push({
           id: eventId, kind: 'discussion-comment', reviewer: comment.user?.login || 'A commenter',
           outcome: 'COMMENTED', title: pr.title, url: pr.url, repository: pr.repository,
