@@ -152,13 +152,19 @@ function fallbackSummary(yesterday, today, blockers) {
   const bullets = (items, emptyText) => items.length ? items.map(item => `- ${item}`).join('\n') : `- ${emptyText}`;
   const descriptions = (day, meetings) => {
     const entries = day.entries.filter(entry => Boolean(entry.from_calendar) === meetings);
-    const groups = groupByTicket(entries);
-    return groups.map(group => {
+    return groupByTicket(entries).map(group => {
       const tasks = group.tasks.slice(0, 3).join(', ');
       const ticket = group.ticket === 'No ticket' ? '' : `${group.ticket}: `;
       return `${ticket}${tasks} (${formatDuration(group.minutes)})`;
     });
   };
+  const plannedDescriptions = today.planned.map(item => {
+    const summary = String(item.summary || '').trim();
+    return summary ? `${item.ticket_id}: ${summary}` : item.ticket_id;
+  });
+  const loggedToday = descriptions(today, false);
+  const loggedTodayTickets = new Set(today.entries.filter(entry => !entry.from_calendar && entry.ticket_id).map(entry => entry.ticket_id));
+  const proposedToday = [...loggedToday, ...plannedDescriptions.filter(item => ![...loggedTodayTickets].some(key => item.startsWith(`${key}:`)))];
 
   lines.push('Yesterday I worked on:');
   lines.push(bullets(descriptions(yesterday, false), 'No development tasks logged'));
@@ -167,15 +173,7 @@ function fallbackSummary(yesterday, today, blockers) {
   lines.push(bullets(descriptions(yesterday, true), 'No meetings or training logged'));
   lines.push('');
   lines.push("Today I'll be working on:");
-  const todayDevelopment = descriptions(today, false);
-  const planned = today.planned.map(item => {
-    const summary = String(item.summary || '').trim();
-    return summary ? `${item.ticket_id}: ${summary}` : item.ticket_id;
-  });
-  const plannedKeys = new Set(today.planned.map(item => item.ticket_id));
-  const currentKeys = new Set(today.entries.filter(entry => !entry.from_calendar && entry.ticket_id).map(entry => entry.ticket_id));
-  const proposed = [...todayDevelopment, ...planned.filter(item => ![...currentKeys].some(key => item.startsWith(`${key}:`)))];
-  lines.push(bullets(proposed, 'No development work planned yet'));
+  lines.push(bullets(proposedToday, 'No development work planned yet'));
   lines.push('');
   lines.push('I also have meetings / training:');
   lines.push(bullets(descriptions(today, true), 'No meetings or training scheduled/logged today'));
@@ -184,43 +182,6 @@ function fallbackSummary(yesterday, today, blockers) {
   lines.push(blockers.length ? bullets(blockers.map(b => `${b.ticket_id ? `${b.ticket_id}: ` : ''}${String(b.title || b.note).trim()}`), 'No blockers') : '- No blockers');
   return lines.join('\n');
 }
-    if (groups.length === 0) return null;
-    return groups
-      .map(group => {
-        const tasks = group.tasks.slice(0, 3).join(', ');
-        const ticket = group.ticket === 'No ticket' ? '' : `${group.ticket}: `;
-        return `${ticket}${tasks} (${formatDuration(group.minutes)})`;
-      })
-      .join('; ');
-  };
-
-  const parts = [];
-  const past = describe(yesterday);
-  parts.push(past ? `Yesterday I worked on ${past}.` : 'Yesterday I had no time logged.');
-
-  // Wording switches on the evidence available. At stand-up the current day is
-  // usually still empty, so planned work has to be able to carry the sentence
-  // on its own - but once time exists it is what actually happened, and the
-  // plan becomes what is still to come.
-  const now = describe(today);
-  const planned = describePlanned(today.planned);
-  if (now && planned) parts.push(`Today I am working on ${now}, and plan to pick up ${planned}.`);
-  else if (now) parts.push(`Today I am working on ${now}.`);
-  else if (planned) parts.push(`Today I plan to work on ${planned}.`);
-  else parts.push('Today I have nothing logged yet.');
-
-  if (blockers.length > 0) {
-    const list = blockers
-      .map(b => `${b.ticket_id ? `${b.ticket_id}: ` : ''}${String(b.title || b.note).trim()}`)
-      .join('; ');
-    parts.push(`Blocked on ${list}.`);
-  } else {
-    parts.push('No blockers.');
-  }
-
-  return parts.join(' ');
-}
-
 export const tools = [
   {
     name: 'generate_scrum_summary',
