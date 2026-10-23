@@ -13,6 +13,7 @@
             {{ pr.repository }}#{{ pr.number }} · {{ pr.state }}
             <span v-if="pr.isAuthoredByAccount">· authored by you</span>
             <span v-else-if="pr.requestedReviewer">· review requested</span>
+            <span v-else-if="pr.reviewedByAccount">· reviewed by you</span>
           </p>
           <p v-if="pr.description" class="pr-description">{{ pr.description }}</p>
           <p v-else class="pr-description muted">No description provided.</p>
