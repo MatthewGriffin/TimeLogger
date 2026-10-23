@@ -50,6 +50,11 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_notes_date ON notes(date);
   CREATE INDEX IF NOT EXISTS idx_notes_topic ON notes(topic);
   CREATE INDEX IF NOT EXISTS idx_notes_ticket ON notes(ticket_id);
+  CREATE TABLE IF NOT EXISTS note_topics (
+    name TEXT PRIMARY KEY COLLATE NOCASE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  INSERT OR IGNORE INTO note_topics (name) VALUES ('General');
   CREATE TABLE IF NOT EXISTS submission_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     date TEXT NOT NULL,
@@ -121,6 +126,13 @@ const calendarConflictColumns = columns('calendar_conflict_choices');
 // pair can be logged as two adjoining, non-overlapping blocks.
 if (!calendarConflictColumns.includes('start_time_override')) db.exec('ALTER TABLE calendar_conflict_choices ADD COLUMN start_time_override TEXT');
 if (!calendarConflictColumns.includes('end_time_override')) db.exec('ALTER TABLE calendar_conflict_choices ADD COLUMN end_time_override TEXT');
+
+db.exec(`
+  INSERT OR IGNORE INTO note_topics (name)
+  SELECT DISTINCT TRIM(topic) FROM notes
+  WHERE topic IS NOT NULL AND TRIM(topic) <> ''
+    AND (ticket_id IS NULL OR TRIM(ticket_id) = '' OR TRIM(topic) <> TRIM(ticket_id));
+`);
 
 db.exec(`
   UPDATE notes
