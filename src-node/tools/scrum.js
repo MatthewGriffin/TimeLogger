@@ -148,8 +148,42 @@ function describePlanned(planned) {
  * the app, so the tab has to be useful with it switched off.
  */
 function fallbackSummary(yesterday, today, blockers) {
-  const describe = (day) => {
-    const groups = groupByTicket(day.entries);
+  const lines = [];
+  const bullets = (items, emptyText) => items.length ? items.map(item => `- ${item}`).join('\n') : `- ${emptyText}`;
+  const descriptions = (day, meetings) => {
+    const entries = day.entries.filter(entry => Boolean(entry.from_calendar) === meetings);
+    const groups = groupByTicket(entries);
+    return groups.map(group => {
+      const tasks = group.tasks.slice(0, 3).join(', ');
+      const ticket = group.ticket === 'No ticket' ? '' : `${group.ticket}: `;
+      return `${ticket}${tasks} (${formatDuration(group.minutes)})`;
+    });
+  };
+
+  lines.push('Yesterday I worked on:');
+  lines.push(bullets(descriptions(yesterday, false), 'No development tasks logged'));
+  lines.push('');
+  lines.push('I also had meetings / training:');
+  lines.push(bullets(descriptions(yesterday, true), 'No meetings or training logged'));
+  lines.push('');
+  lines.push("Today I'll be working on:");
+  const todayDevelopment = descriptions(today, false);
+  const planned = today.planned.map(item => {
+    const summary = String(item.summary || '').trim();
+    return summary ? `${item.ticket_id}: ${summary}` : item.ticket_id;
+  });
+  const plannedKeys = new Set(today.planned.map(item => item.ticket_id));
+  const currentKeys = new Set(today.entries.filter(entry => !entry.from_calendar && entry.ticket_id).map(entry => entry.ticket_id));
+  const proposed = [...todayDevelopment, ...planned.filter(item => ![...currentKeys].some(key => item.startsWith(`${key}:`)))];
+  lines.push(bullets(proposed, 'No development work planned yet'));
+  lines.push('');
+  lines.push('I also have meetings / training:');
+  lines.push(bullets(descriptions(today, true), 'No meetings or training scheduled/logged today'));
+  lines.push('');
+  lines.push('Blockers:');
+  lines.push(blockers.length ? bullets(blockers.map(b => `${b.ticket_id ? `${b.ticket_id}: ` : ''}${String(b.title || b.note).trim()}`), 'No blockers') : '- No blockers');
+  return lines.join('\n');
+}
     if (groups.length === 0) return null;
     return groups
       .map(group => {
