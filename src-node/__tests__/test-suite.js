@@ -1440,9 +1440,23 @@ async function runTests() {
     assert.strictEqual(result.yesterday.date, previousWorkingDay('2026-09-08'));
     assert(Array.isArray(result.today.entries) && Array.isArray(result.yesterday.entries));
     assert(Array.isArray(result.blockers), 'Blockers should always be a list');
-    assert(typeof result.summary === 'string' && result.summary.length > 0, 'A paragraph is always produced');
+    assert(typeof result.summary === 'string' && result.summary.length > 0, 'A summary is always produced');
+    assert(result.summary.includes('Yesterday I worked on:'), 'Development work should lead the summary');
+    assert(result.summary.includes('I also had meetings / training:'), 'Meetings should have a separate section');
+    assert(result.summary.includes("Today I'll be working on:"), 'Today plan should have its own section');
+    assert(result.summary.includes('Blockers:'), 'Blockers should remain in the summary');
+    assert(result.summary.indexOf('Yesterday I worked on:') < result.summary.indexOf('I also had meetings / training:'), 'Development tasks should precede meetings');
   });
 
+  await testAsync('future calendar meetings are not returned for ticket prompts', async () => {
+    const result = await executeTool('sprint_get_unticketed_meetings', {
+      startDate: '2999-01-01',
+      endDate: '2999-01-31'
+    });
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.count, 0, 'Future appointments should stay in the calendar without prompting for a ticket');
+    assert.deepStrictEqual(result.unmappedMeetings, []);
+  });
   await testAsync('an open blocker reaches the scrum summary text', async () => {
     const created = await executeTool('create_note', {
       title: 'Blocked on review',
