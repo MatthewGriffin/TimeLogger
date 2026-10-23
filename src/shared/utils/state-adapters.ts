@@ -142,7 +142,6 @@ export function normalizeConfig(value: unknown): AppConfig {
       email: String(j.email ?? ''),
       apiToken: String(j.apiToken ?? j.api_token ?? ''),
       tempoToken: j.tempoToken != null ? String(j.tempoToken) : (j.tempo_token != null ? String(j.tempo_token) : undefined),
-      defaultIssueMapping: j.defaultIssueMapping != null ? String(j.defaultIssueMapping) : undefined
     } : undefined,
     microsoft: m ? {
       tenantId: String(m.tenantId ?? m.tenant_id ?? ''),
@@ -168,7 +167,6 @@ export function normalizeConfig(value: unknown): AppConfig {
     } : undefined,
     calendar: c ? {
       includeAllDayEvents: c.includeAllDayEvents === true,
-      filterLabel: c.filterLabel != null ? String(c.filterLabel) : undefined,
       enabled: c.enabled == null ? undefined : Boolean(c.enabled),
       refreshInterval: c.refreshInterval != null ? String(c.refreshInterval) : undefined,
       syncOnStartup: c.syncOnStartup == null ? undefined : Boolean(c.syncOnStartup)
