@@ -455,7 +455,7 @@ const categorizeInBackground = async (note: Note) => {
     const suggestion = await notesStore.suggestTopic(note.content, note.ticketId, note.title)
     // The user may have deleted or edited the note while the AI was thinking.
     const current = notesStore.notes.find(existing => existing.id === note.id)
-    if (!current || suggestion.topic === current.topic) return
+    if (!current || current.title !== note.title || current.content !== note.content || suggestion.topic === current.topic) return
 
     // Always ask before changing a category, whether the AI chose an existing
     // category or proposed a new one.
