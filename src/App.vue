@@ -59,13 +59,13 @@ const pollGitHubActivity = async () => {
     for (const event of result.events || []) {
       const outcome = event.kind === 'approval'
         ? 'approved'
-         : event.kind === 'inline-comment'
+        : event.kind === 'inline-comment'
           ? 'left an inline review comment on'
           : event.kind === 'discussion-comment'
             ? 'left a comment on'
-          : event.outcome === 'CHANGES_REQUESTED'
-            ? 'requested changes on'
-            : 'left review feedback on'
+            : event.outcome === 'CHANGES_REQUESTED'
+              ? 'requested changes on'
+              : 'left review feedback on'
       const message = `@${event.reviewer} ${outcome} “${event.title}” (${event.repository}#${event.number}).`
       uiStore.addNotification({ type: 'info', message, duration: 0, url: event.url })
       try {
