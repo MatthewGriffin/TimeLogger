@@ -5,7 +5,7 @@
         v-for="notif in notifications"
         :key="notif.id"
         :class="['notification', `notification-${notif.type}`]"
-        @click="removeNotification(notif.id)"
+        @click="activateNotification(notif)"
       >
         <div class="notification-icon">{{ getIcon(notif.type) }}</div>
         <div class="notification-content">{{ notif.message }}</div>
@@ -17,10 +17,22 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 import { useUiStore } from '@/shared/stores/ui'
 
 const uiStore = useUiStore()
 const notifications = computed(() => uiStore.notifications)
+
+const activateNotification = async (notif: { id: string; url?: string }) => {
+  if (notif.url) {
+    try {
+      await invoke('open_external_url', { url: notif.url })
+    } catch (error) {
+      uiStore.showError(error instanceof Error ? error.message : 'Could not open link.')
+    }
+  }
+  removeNotification(notif.id)
+}
 
 const removeNotification = (id: string) => {
   uiStore.removeNotification(id)
