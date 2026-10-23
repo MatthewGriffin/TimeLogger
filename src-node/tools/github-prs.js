@@ -81,7 +81,7 @@ function safePr(pr, ticketKeys = []) {
     createdAt: pr.created_at || null,
     mergedAt: pr.merged_at || null,
     ticketKeys: keys,
-    matchedTicketKeys: keys.filter(key => ticketKeys.includes(key)),
+    matchedTicketKeys: ticketKeys.length ? keys.filter(key => ticketKeys.includes(key)) : keys,
     requestedReviewer: (pr.requested_reviewers || []).some(r => String(r.login).toLowerCase() === String(pr.__linkedLogin || '').toLowerCase())
   };
 }
