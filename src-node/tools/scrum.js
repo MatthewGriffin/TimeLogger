@@ -134,7 +134,9 @@ function groupByTicket(entries) {
  */
 function fallbackSummary(yesterday, today, blockers) {
   const lines = [];
-  const bullets = (items, emptyText) => items.length ? items.map(item => `- ${item}`).join('\n') : `- ${emptyText}`;
+  const bullets = (items, emptyText) => items.length
+    ? items.map(item => `- ${item}`).join('\n')
+    : `- ${emptyText}`;
   const descriptions = (day, meetings) => {
     const entries = day.entries.filter(entry => Boolean(entry.from_calendar) === meetings);
     return groupByTicket(entries).map(group => {
@@ -143,13 +145,17 @@ function fallbackSummary(yesterday, today, blockers) {
       return `${ticket}${tasks} (${formatDuration(group.minutes)})`;
     });
   };
-  const plannedDescriptions = today.planned.map(item => {
-    const summary = String(item.summary || '').trim();
-    return summary ? `${item.ticket_id}: ${summary}` : item.ticket_id;
-  });
+
   const loggedToday = descriptions(today, false);
-  const loggedTodayTickets = new Set(today.entries.filter(entry => !entry.from_calendar && entry.ticket_id).map(entry => entry.ticket_id));
-  const proposedToday = [...loggedToday, ...plannedDescriptions.filter(item => ![...loggedTodayTickets].some(key => item.startsWith(`${key}:`)))];
+  const loggedTodayTickets = new Set(
+    today.entries.filter(entry => !entry.from_calendar && entry.ticket_id).map(entry => entry.ticket_id)
+  );
+  const plannedDescriptions = today.planned
+    .filter(item => !loggedTodayTickets.has(item.ticket_id))
+    .map(item => {
+      const summary = String(item.summary || '').trim();
+      return summary ? `${item.ticket_id}: ${summary}` : item.ticket_id;
+    });
 
   lines.push('Yesterday I worked on:');
   lines.push(bullets(descriptions(yesterday, false), 'No development tasks logged'));
@@ -157,14 +163,28 @@ function fallbackSummary(yesterday, today, blockers) {
   lines.push('I also had meetings / training:');
   lines.push(bullets(descriptions(yesterday, true), 'No meetings or training logged'));
   lines.push('');
-  lines.push("Today I'll be working on:");
-  lines.push(bullets(proposedToday, 'No development work planned yet'));
+
+  if (loggedToday.length) {
+    lines.push("Today I'll be working on:");
+    lines.push(bullets(loggedToday, 'No development work logged'));
+    if (plannedDescriptions.length) {
+      lines.push('');
+      lines.push('I plan to pick up:');
+      lines.push(bullets(plannedDescriptions, 'No additional work planned'));
+    }
+  } else {
+    lines.push('Today I plan to work on:');
+    lines.push(bullets(plannedDescriptions, 'No development work planned yet'));
+  }
+
   lines.push('');
   lines.push('I also have meetings / training:');
   lines.push(bullets(descriptions(today, true), 'No meetings or training scheduled/logged today'));
   lines.push('');
   lines.push('Blockers:');
-  lines.push(blockers.length ? bullets(blockers.map(b => `${b.ticket_id ? `${b.ticket_id}: ` : ''}${String(b.title || b.note).trim()}`), 'No blockers') : '- No blockers');
+  lines.push(blockers.length
+    ? bullets(blockers.map(b => `${b.ticket_id ? `${b.ticket_id}: ` : ''}${String(b.title || b.note).trim()}`), 'No blockers')
+    : '- No blockers');
   return lines.join('\n');
 }
 export const tools = [
