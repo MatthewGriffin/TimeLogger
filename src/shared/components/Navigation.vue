@@ -68,7 +68,8 @@ const navItems = [
   { path: '/scrum', label: 'Daily Scrum', icon: '📣' },
   { path: '/calendar', label: 'Calendar', icon: '📅' },
   { path: '/submit', label: 'Submit Time', icon: '✈️' },
-  { path: '/tempo', label: 'Tempo Status', icon: '🧾' }
+  { path: '/tempo', label: 'Tempo Status', icon: '🧾' },
+  { path: '/pull-requests', label: 'Pull Requests', icon: '🔀' }
 ]
 
 const isActive = (path: string) => {
