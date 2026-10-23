@@ -15,6 +15,7 @@ const PAGES = [
   { name: 'Daily Scrum', route: ROUTES.scrum, heading: 'Daily Scrum' },
   { name: 'Submit Time', route: ROUTES.submit, heading: 'Submit Time' },
   { name: 'Tempo Status', route: ROUTES.tempo, heading: 'Tempo Status' },
+  { name: 'Pull Requests', route: ROUTES.pullRequests, heading: 'Pull Requests' },
   { name: 'Settings', route: ROUTES.settings, heading: 'Settings' },
 ] as const;
 
@@ -40,6 +41,7 @@ test.describe('Navigation sidebar', () => {
     { label: 'Calendar', path: '/calendar' },
     { label: 'Submit Time', path: '/submit' },
     { label: 'Tempo Status', path: '/tempo' },
+    { label: 'Pull Requests', path: '/pull-requests' },
     { label: 'Settings', path: '/settings' },
   ];
 
