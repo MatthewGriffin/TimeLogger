@@ -443,6 +443,7 @@ export const tools = [
         // picked, so ticket notes stay grouped under their ticket number.
         const topic = ticketId || args.topic || null;
 
+        if (!ticketId && topic) db.prepare('INSERT OR IGNORE INTO note_topics (name) VALUES (?)').run(topic);
         db.prepare(`
           UPDATE notes 
           SET note = ?, topic = ?, title = COALESCE(?, title), ticket_id = ?, updated_at = CURRENT_TIMESTAMP
