@@ -119,9 +119,28 @@ const loadPullRequests = async () => {
   loadingPrs.value = true
   failed.value = false
   try {
-    const result = await executeApi<{ prs?: PullRequest[] }>('github_pr_list', {})
+    const result = await executeApi<{
+      success?: boolean; message?: string; prs?: PullRequest[]
+      diagnostics?: { searches?: Array<{ name: string; count: number }>; candidateCount?: number
+        detailFailures?: Array<{ repository: string; number: number; endpoint: string; message: string }> }
+    }>('github_pr_list', {})
+    if (result.success === false) {
+      failed.value = true
+      message.value = result.message || 'GitHub could not search pull requests.'
+      return
+    }
     prs.value = Array.isArray(result.prs) ? result.prs : []
     prsLoaded.value = true
+    const diagnostics = result.diagnostics
+    const failures = diagnostics?.detailFailures || []
+    if (failures.length) {
+      failed.value = true
+      const first = failures[0]
+      message.value = `GitHub found ${diagnostics?.candidateCount || 0} candidate PR(s), but ${failures.length} detail request(s) failed. First failure: ${first.repository}#${first.number} (${first.endpoint}) — ${first.message}`
+    } else if (!prs.value.length && diagnostics) {
+      const counts = (diagnostics.searches || []).map(search => `${search.name}: ${search.count}`).join(', ')
+      message.value = `No relevant pull requests returned. Search results — ${counts || 'none'}; candidates: ${diagnostics.candidateCount || 0}.`
+    }
   } catch (error) {
     failed.value = true
     message.value = error instanceof Error ? error.message : 'Could not load pull request history.'
