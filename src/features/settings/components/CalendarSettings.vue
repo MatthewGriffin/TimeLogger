@@ -26,7 +26,7 @@
         <input v-model="props.formData.syncOnStartup" type="checkbox" id="calendar-startup" />
         <label for="calendar-startup">Add meetings to time entries automatically</label>
       </div>
-\n      </div>
+
 
       <div class="info-box">
         <span class="info-icon">ℹ️</span>
