@@ -1,4 +1,5 @@
 <template>
+  <>
   <div class="settings-section">
     <h2>OneNote Configuration</h2>
     <div class="settings-form">
@@ -78,13 +79,34 @@
       </div>
     </div>
   </div>
+  <MicrosoftSettings
+    :form-data="props.microsoftFormData"
+    :microsoft-connected="props.microsoftConnected"
+    :microsoft-account="props.microsoftAccount"
+    :graph-blockers="props.graphBlockers"
+    :can-connect-microsoft="props.canConnectMicrosoft"
+    :is-connecting-microsoft="props.isConnectingMicrosoft"
+    :microsoft-connect-message="props.microsoftConnectMessage"
+    :microsoft-connect-failed="props.microsoftConnectFailed"
+    @connect-microsoft="$emit('connect-microsoft')"
+  />
+  </>
 </template>
 
 <script setup lang="ts">
-import type { OneNoteNotebook, OneNoteSection, OneNoteSettingsForm } from '@/features/settings/models/settings'
+import MicrosoftSettings from '@/features/settings/components/MicrosoftSettings.vue'
+import type { GraphBlocker, MicrosoftSettingsForm, OneNoteNotebook, OneNoteSection, OneNoteSettingsForm } from '@/features/settings/models/settings'
 
 const props = defineProps<{
   formData: OneNoteSettingsForm
+  microsoftFormData: MicrosoftSettingsForm
+  microsoftConnected: boolean
+  microsoftAccount: string
+  graphBlockers: GraphBlocker[]
+  canConnectMicrosoft: boolean
+  isConnectingMicrosoft: boolean
+  microsoftConnectMessage: string
+  microsoftConnectFailed: boolean
   notebooks: OneNoteNotebook[]
   availableSections: OneNoteSection[]
   isLoadingNotebooks: boolean
@@ -94,6 +116,7 @@ const props = defineProps<{
 defineEmits<{
   'load-notebooks': []
   'notebook-changed': []
+  'connect-microsoft': []
 }>()
 </script>
 
