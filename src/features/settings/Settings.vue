@@ -36,18 +36,7 @@
           :lookup-ok="sprintLookupOk"
           @lookup-pi-tickets="lookupPiTickets"
         />
-        <MicrosoftSettings
-          v-if="activeTab === 'Microsoft'"
-          :form-data="formData.microsoft"
-          :microsoft-connected="microsoftConnected"
-          :microsoft-account="microsoftAccount"
-          :graph-blockers="graphBlockers"
-          :can-connect-microsoft="canConnectMicrosoft"
-          :is-connecting-microsoft="isConnectingMicrosoft"
-          :microsoft-connect-message="microsoftConnectMessage"
-          :microsoft-connect-failed="microsoftConnectFailed"
-          @connect-microsoft="connectMicrosoft"
-        />
+
         <OneNoteSettings
           v-if="activeTab === 'OneNote'"
           :form-data="formData.oneNote"
