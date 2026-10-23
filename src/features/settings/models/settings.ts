@@ -3,7 +3,6 @@ import type { JiraConfig, MicrosoftConfig, OllamaConfig, OneNoteConfig } from '@
 export type SettingsTabName =
   | 'Jira & Tempo'
   | 'Current Sprint'
-  | 'Microsoft'
   | 'OneNote'
   | 'Calendar'
   | 'Ollama'
@@ -23,18 +22,12 @@ export interface CurrentSprintSettingsForm {
   piNumber: string
   projectKey: string
   teamLabel: string
-  defaultMeetingTicket: string
   mappings: SprintMappingForm[]
 }
 
-export interface SprintTestResult {
-  matched: boolean
-  text: string
-}
 
-export interface JiraTempoSettingsForm extends Omit<JiraConfig, 'tempoToken' | 'defaultIssueMapping'> {
+export interface JiraTempoSettingsForm extends Omit<JiraConfig, 'tempoToken'> {
   tempoToken: string
-  defaultIssueMapping: string
 }
 
 export interface MicrosoftSettingsForm extends Omit<MicrosoftConfig, 'clientSecret'> {
@@ -59,7 +52,6 @@ export interface OneNoteSettingsForm extends Omit<OneNoteConfig, 'notebookId' | 
 
 export interface CalendarSettingsForm {
   includeAllDayEvents: boolean
-  filterLabel: string
   enabled: boolean
   refreshInterval: string
   syncOnStartup: boolean
