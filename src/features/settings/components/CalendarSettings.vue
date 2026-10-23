@@ -26,12 +26,7 @@
         <input v-model="props.formData.syncOnStartup" type="checkbox" id="calendar-startup" />
         <label for="calendar-startup">Add meetings to time entries automatically</label>
       </div>
-
-      <div class="form-group" v-if="props.formData.enabled">
-        <label>Only sync events with category (optional)</label>
-        <input v-model="props.formData.filterLabel" type="text" placeholder="e.g. Billable" />
-        <div class="form-hint">Leave blank to sync every meeting.</div>
-      </div>
+\n      </div>
 
       <div class="info-box">
         <span class="info-icon">ℹ️</span>
