@@ -45,6 +45,7 @@ export interface ScrumPullRequest {
   state: 'open' | 'draft' | 'merged' | 'closed' | string
   isDraft: boolean
   requestedReviewer: boolean
+  reviewedByAccount?: boolean
   isAuthoredByAccount: boolean
   ticketKeys: string[]
   matchedTicketKeys: string[]
