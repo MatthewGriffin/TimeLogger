@@ -45,6 +45,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: 'Tempo Status' }
   },
   {
+    path: '/pull-requests',
+    name: 'PullRequests',
+    component: () => import('@/features/pull-requests/PullRequests.vue'),
+    meta: { title: 'Pull Requests' }
+  },
+  {
     path: '/settings',
     name: 'Settings',
     component: () => import('@/features/settings/Settings.vue'),
