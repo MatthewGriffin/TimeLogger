@@ -3,6 +3,7 @@ export interface Notification {
   type: 'success' | 'error' | 'info' | 'warning'
   message: string
   duration?: number
+  url?: string
 }
 
 export type ModalPayload = {
