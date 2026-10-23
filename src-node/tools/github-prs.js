@@ -1,0 +1,263 @@
+/**
+ * Read-only GitHub pull-request integration.
+ *
+ * Every GitHub request in this module is GET-only. The token is stored locally
+ * in the app database and is never returned to the frontend.
+ */
+import { db } from '../index.js';
+import { makeHttpRequest } from '../api/http-client.js';
+
+const API = 'https://api.github.com';
+const PAGE_SIZE = 30;
+const MAX_PRS = 60;
+const EVENT_PR_LIMIT = 20;
+
+export function extractTicketKeys(...values) {
+  const keys = new Set();
+  for (const value of values) {
+    const text = String(value || '');
+    for (const match of text.matchAll(/\b([A-Z][A-Z0-9]{1,15}-\d+)\b/g)) keys.add(match[1].toUpperCase());
+  }
+  return [...keys];
+}
+
+export function classifyPullRequest(pr) {
+  if (pr.merged || pr.merged_at) return 'merged';
+  if (pr.state === 'closed') return 'closed';
+  if (pr.draft) return 'draft';
+  return 'open';
+}
+
+function readConfig() {
+  try {
+    const row = db.prepare("SELECT value FROM settings WHERE key = 'github_config'").get();
+    return row?.value ? JSON.parse(row.value) : {};
+  } catch {
+    return {};
+  }
+}
+
+async function githubGet(path, token) {
+  if (!path.startsWith('/')) throw new Error('Invalid GitHub API path');
+  const response = await makeHttpRequest(`${API}${path}`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${token}`,
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'TimeLogger-ReadOnly-GitHub-Integration'
+    },
+    timeoutMs: 12000
+  });
+  return response.data;
+}
+
+function requireToken() {
+  const token = String(readConfig().token || '');
+  if (!token) throw new Error('GitHub is not connected. Add a read-only GitHub token in Settings → GitHub.');
+  return token;
+}
+
+async function account(token) {
+  const user = await githubGet('/user', token);
+  if (!user?.login) throw new Error('GitHub did not return the linked account.');
+  return user.login;
+}
+
+function safePr(pr, ticketKeys = []) {
+  const keys = extractTicketKeys(pr.title, pr.body, pr.head?.ref);
+  return {
+    id: String(pr.id),
+    number: pr.number,
+    repository: pr.base?.repo?.full_name || pr.repository?.full_name || '',
+    title: String(pr.title || ''),
+    description: String(pr.body || ''),
+    url: String(pr.html_url || ''),
+    author: String(pr.user?.login || ''),
+    branch: String(pr.head?.ref || ''),
+    state: classifyPullRequest(pr),
+    isDraft: Boolean(pr.draft),
+    updatedAt: pr.updated_at || null,
+    createdAt: pr.created_at || null,
+    mergedAt: pr.merged_at || null,
+    ticketKeys: keys,
+    matchedTicketKeys: keys.filter(key => ticketKeys.includes(key)),
+    requestedReviewer: (pr.requested_reviewers || []).some(r => String(r.login).toLowerCase() === String(pr.__linkedLogin || '').toLowerCase())
+  };
+}
+
+async function searchPrs(token, login, query) {
+  const all = [];
+  for (let page = 1; page <= 3; page++) {
+    const result = await githubGet(`/search/issues?q=${encodeURIComponent(query)}&per_page=${PAGE_SIZE}&page=${page}&sort=updated&order=desc`, token);
+    const items = Array.isArray(result.items) ? result.items : [];
+    all.push(...items);
+    if (items.length < PAGE_SIZE || all.length >= MAX_PRS) break;
+  }
+  return all;
+}
+
+async function listRelevantPullRequests(token, ticketKeys = []) {
+  const login = await account(token);
+  const [authored, reviewRequested] = await Promise.all([
+    searchPrs(token, login, `is:pr author:${login}`),
+    searchPrs(token, login, `is:pr review-requested:${login} is:open`)
+  ]);
+  const candidates = new Map();
+  for (const item of [...authored, ...reviewRequested]) {
+    const repoUrl = String(item.repository_url || '');
+    const match = repoUrl.match(/\/repos\/([^/]+\/[^/]+)$/);
+    const number = Number(item.number);
+    if (!match || !Number.isInteger(number)) continue;
+    const repository = match[1];
+    candidates.set(`${repository}#${number}`, { repository, number });
+  }
+
+  const details = await Promise.all([...candidates.values()].slice(0, MAX_PRS).map(async item => {
+    try {
+      const pr = await githubGet(`/repos/${item.repository}/pulls/${item.number}`, token);
+      const authoredByAccount = String(pr.user?.login || '').toLowerCase() === login.toLowerCase();
+      const requested = (pr.requested_reviewers || []).some(r => String(r.login || '').toLowerCase() === login.toLowerCase());
+      // This second check is deliberate: search results alone are not trusted
+      // to decide account relevance.
+      if (!authoredByAccount && !requested) return null;
+      const shaped = safePr({ ...pr, __linkedLogin: login }, ticketKeys);
+      return { ...shaped, requestedReviewer: requested, isAuthoredByAccount: authoredByAccount };
+    } catch {
+      return null;
+    }
+  }));
+  return details.filter(Boolean).sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+}
+
+function ensureEventTable() {
+  db.exec(`CREATE TABLE IF NOT EXISTS github_pr_seen_events (
+    event_id TEXT PRIMARY KEY,
+    seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+}
+
+async function pollReviewEvents(token, prs) {
+  ensureEventTable();
+  const known = new Set(db.prepare('SELECT event_id FROM github_pr_seen_events').all().map(row => row.event_id));
+  const firstRun = known.size === 0;
+  const events = [];
+  const discovered = [];
+  for (const pr of prs.slice(0, EVENT_PR_LIMIT)) {
+    const base = `/repos/${pr.repository}/pulls/${pr.number}`;
+    const [reviews, comments] = await Promise.all([
+      githubGet(`${base}/reviews?per_page=100`, token).catch(() => []),
+      githubGet(`${base}/comments?per_page=100`, token).catch(() => [])
+    ]);
+    for (const review of Array.isArray(reviews) ? reviews : []) {
+      const state = String(review.state || '').toUpperCase();
+      if (!['APPROVED', 'COMMENTED', 'CHANGES_REQUESTED'].includes(state)) continue;
+      const eventId = `review:${pr.repository}:${review.id}`;
+      if (known.has(eventId)) continue;
+      discovered.push(eventId);
+      if (!firstRun && String(review.user?.login || '').toLowerCase() !== pr.author.toLowerCase()) {
+        events.push({
+          id: eventId, kind: state === 'APPROVED' ? 'approval' : 'review',
+          reviewer: review.user?.login || 'A reviewer', outcome: state,
+          title: pr.title, url: pr.url, repository: pr.repository, number: pr.number,
+          body: String(review.body || '').trim().slice(0, 240)
+        });
+      }
+    }
+    for (const comment of Array.isArray(comments) ? comments : []) {
+      const eventId = `comment:${pr.repository}:${comment.id}`;
+      if (known.has(eventId)) continue;
+      discovered.push(eventId);
+      if (!firstRun && String(comment.user?.login || '').toLowerCase() !== pr.author.toLowerCase()) {
+        events.push({
+          id: eventId, kind: 'inline-comment', reviewer: comment.user?.login || 'A reviewer',
+          outcome: 'COMMENTED', title: pr.title, url: pr.url, repository: pr.repository,
+          number: pr.number, body: String(comment.body || '').trim().slice(0, 240)
+        });
+      }
+    }
+  }
+  const insert = db.prepare('INSERT OR IGNORE INTO github_pr_seen_events (event_id) VALUES (?)');
+  db.transaction(() => discovered.forEach(id => insert.run(id)))();
+  return events;
+}
+
+export async function getPullRequestsForTickets(ticketValues = []) {
+  const token = String(readConfig().token || '');
+  if (!token) return [];
+  const keys = extractTicketKeys(...ticketValues);
+  if (!keys.length) return [];
+  const prs = await listRelevantPullRequests(token, keys);
+  return prs.filter(pr => pr.matchedTicketKeys.length > 0);
+}
+
+export const tools = [
+  {
+    name: 'github_pr_connection_status',
+    description: 'Get GitHub read-only integration connection status without returning the stored token',
+    parameters: { type: 'object', properties: {}, required: [] },
+    handler: async () => {
+      try {
+        const config = readConfig();
+        if (!config.token) return { connected: false, login: '', message: 'No GitHub token configured.' };
+        const login = await account(config.token);
+        return { connected: true, login, message: `Connected to GitHub as @${login} (read-only)` };
+      } catch (error) {
+        return { connected: false, login: '', message: error.message };
+      }
+    }
+  },
+  {
+    name: 'github_pr_save_token',
+    description: 'Store or clear the local GitHub read-only token. This integration uses only GitHub GET endpoints.',
+    parameters: {
+      type: 'object',
+      properties: { token: { type: 'string', description: 'GitHub token with read-only metadata/pull-request access; empty clears it' } },
+      required: ['token']
+    },
+    handler: async ({ token }) => {
+      const value = String(token || '').trim();
+      if (value) {
+        const login = await account(value);
+        db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('github_config', ?, CURRENT_TIMESTAMP)")
+          .run(JSON.stringify({ token: value, login }));
+        return { success: true, connected: true, login, message: `Connected as @${login}. Only read-only GET requests are used.` };
+      }
+      db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
+      db.prepare('DELETE FROM github_pr_seen_events').run();
+      return { success: true, connected: false, login: '', message: 'GitHub disconnected.' };
+    }
+  },
+  {
+    name: 'github_pr_list',
+    description: 'List pull requests authored by the linked GitHub account or where it is currently requested as reviewer; includes state and ticket-key matches.',
+    parameters: {
+      type: 'object',
+      properties: { ticketKeys: { type: 'array', items: { type: 'string' } } },
+      required: []
+    },
+    handler: async ({ ticketKeys = [] }) => {
+      try {
+        const prs = await listRelevantPullRequests(requireToken(), extractTicketKeys(...ticketKeys));
+        return { success: true, prs };
+      } catch (error) {
+        return { success: false, message: error.message };
+      }
+    }
+  },
+  {
+    name: 'github_pr_poll_activity',
+    description: 'Poll review submissions and inline review comments for relevant pull requests, returning only newly discovered events after the initial baseline.',
+    parameters: { type: 'object', properties: {}, required: [] },
+    handler: async () => {
+      try {
+        const token = requireToken();
+        const prs = await listRelevantPullRequests(token);
+        const events = await pollReviewEvents(token, prs);
+        return { success: true, events };
+      } catch (error) {
+        return { success: false, message: error.message };
+      }
+    }
+  }
+];
