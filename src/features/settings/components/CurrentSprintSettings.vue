@@ -66,56 +66,24 @@
         </div>
       </div>
 
-      <div class="form-group">
-        <label>Fallback Ticket for Unmatched Meetings</label>
-        <input v-model="props.formData.defaultMeetingTicket" type="text" placeholder="Optional, e.g. TIME-449" />
-        <small>Used when a meeting matches none of the keywords above. Leave blank to require a manual ticket.</small>
-      </div>
-
-      <h3>Test a Meeting Name</h3>
-      <div class="form-row">
-        <div class="form-group grow">
-          <input
-            :value="props.testSubject"
-            type="text"
-            placeholder="Paste a meeting name to see which ticket it would use"
-            @input="updateTestSubject"
-            @keyup.enter="$emit('test-meeting-match')"
-          />
-        </div>
-        <div class="form-group">
-          <button class="btn-test" @click="$emit('test-meeting-match')" :disabled="!props.testSubject">Test</button>
-        </div>
-      </div>
-      <div v-if="props.testResult" :class="['test-result', props.testResult.matched ? 'ok' : 'bad']">
-        {{ props.testResult.text }}
-      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import type { CurrentSprintSettingsForm, SprintTestResult } from '@/features/settings/models/settings'
+import type { CurrentSprintSettingsForm } from '@/features/settings/models/settings'
 
 const props = defineProps<{
   formData: CurrentSprintSettingsForm
   lookupBusy: boolean
   lookupMessage: string
   lookupOk: boolean
-  testSubject: string
-  testResult: SprintTestResult | null
 }>()
 
 const emit = defineEmits<{
   'lookup-pi-tickets': []
-  'test-meeting-match': []
-  'update:test-subject': [value: string]
 }>()
 
-const updateTestSubject = (event: Event) => {
-  const target = event.target as HTMLInputElement | null
-  emit('update:test-subject', target?.value ?? '')
-}
 
 </script>
 
@@ -128,8 +96,7 @@ const updateTestSubject = (event: Event) => {
   margin: 0 0 1rem;
 }
 
-.btn-lookup,
-.btn-test {
+.btn-lookup {
   padding: 0.75rem 1.25rem;
   background: rgba(6, 182, 212, 0.15);
   border: 1px solid rgba(6, 182, 212, 0.4);
@@ -143,13 +110,11 @@ const updateTestSubject = (event: Event) => {
   align-self: flex-start;
 }
 
-.btn-lookup:hover:not(:disabled),
-.btn-test:hover:not(:disabled) {
+.btn-lookup:hover:not(:disabled) {
   background: rgba(6, 182, 212, 0.25);
 }
 
-.btn-lookup:disabled,
-.btn-test:disabled {
+.btn-lookup:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -216,15 +181,4 @@ const updateTestSubject = (event: Event) => {
   border-color: rgba(248, 113, 113, 0.5);
 }
 
-.test-result {
-  padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
-  font-size: 0.9rem;
-}
-
-.test-result.ok {
-  background: rgba(34, 197, 94, 0.12);
-  border: 1px solid rgba(34, 197, 94, 0.3);
-  color: #86efac;
-}
 </style>
