@@ -3,7 +3,7 @@
     <h2>GitHub Pull Requests</h2>
     <p class="description">
       Connect the GitHub account you want TimeLogger to track. Pull requests are shown only when
-      that account authored them or is currently requested as a reviewer. The integration is read-only.
+      that account authored them, is currently requested as a reviewer, or has reviewed them before. The integration is read-only.
     </p>
 
     <div class="connection-state" :class="{ connected: status.connected }">
