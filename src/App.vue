@@ -51,21 +51,38 @@ const pollGitHubActivity = async () => {
       body?: string
     }> }>('github_pr_poll_activity')
     for (const event of result.events || []) {
-      const outcome = event.kind === 'approval'
-        ? 'approved'
-        : event.kind === 'inline-comment'
-          ? 'left an inline review comment on'
-          : event.kind === 'discussion-comment'
-            ? 'left a comment on'
-            : event.outcome === 'CHANGES_REQUESTED'
-              ? 'requested changes on'
-              : 'left review feedback on'
-      const message = `@${event.reviewer} ${outcome} “${event.title}” (${event.repository}#${event.number}).`
+      const outcome = event.kind === 'added'
+        ? 'added you to'
+        : event.kind === 'merged'
+          ? 'merged'
+          : event.kind === 'approval'
+            ? 'approved'
+            : event.kind === 'inline-comment'
+              ? 'left an inline review comment on'
+              : event.kind === 'discussion-comment'
+                ? 'left a comment on'
+                : event.outcome === 'CHANGES_REQUESTED'
+                  ? 'requested changes on'
+                  : 'left review feedback on'
+      const message = event.kind === 'added'
+        ? `You were added to “${event.title}” (${event.repository}#${event.number}).`
+        : event.kind === 'merged'
+          ? `“${event.title}” (${event.repository}#${event.number}) was merged.`
+          : `@${event.reviewer} ${outcome} “${event.title}” (${event.repository}#${event.number}).`
       uiStore.addNotification({ type: 'info', message, duration: 0, url: event.url })
       try {
         await invoke('show_notification', {
-          title: event.kind === 'approval' ? 'GitHub PR approved' : event.kind.includes('comment') ? 'GitHub PR comment' : 'GitHub review activity',
-          message
+          title: event.kind === 'added'
+            ? 'Added to GitHub PR'
+            : event.kind === 'merged'
+              ? 'GitHub PR merged'
+              : event.kind === 'approval'
+                ? 'GitHub PR approved'
+                : event.kind.includes('comment')
+                  ? 'GitHub PR comment'
+                  : 'GitHub review activity',
+          message,
+          url: event.url
         })
       } catch (error) {
         console.warn('Could not show GitHub review notification:', error)
