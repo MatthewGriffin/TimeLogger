@@ -83,9 +83,24 @@ const copy = async () => {
 }
 
 .summary-text {
-  margin: 0;
-  font-size: 1.05rem;
-  line-height: 1.6;
+  font-size: .95rem;
+  line-height: 1.5;
   user-select: text;
+  overflow-wrap: anywhere;
+}
+
+.summary-line {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.summary-line + .summary-line {
+  margin-top: .2rem;
+}
+
+.ticket-link {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 </style>
