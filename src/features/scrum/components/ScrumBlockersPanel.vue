@@ -12,7 +12,14 @@
     <ul v-else class="blockers-list">
       <li v-for="blocker in blockers" :key="blocker.id" class="blocker">
         <div class="blocker-body">
-          <span v-if="blocker.ticketId" class="blocker-ticket">{{ blocker.ticketId }}</span>
+          <a
+            v-if="blocker.ticketId && jiraBaseUrl"
+            class="blocker-ticket"
+            :href="jiraBaseUrl + '/browse/' + blocker.ticketId"
+            target="_blank"
+            rel="noopener noreferrer"
+          >{{ blocker.ticketId }}</a>
+          <span v-else-if="blocker.ticketId" class="blocker-ticket">{{ blocker.ticketId }}</span>
           <span class="blocker-text">{{ blocker.title || blocker.note }}</span>
           <span class="blocker-age">{{ ageLabel(blocker.date) }}</span>
         </div>
@@ -25,9 +32,9 @@
 </template>
 
 <script setup lang="ts">
-import type { ScrumBlocker } from '@/features/scrum/models/scrum'
+import { computed } from 'vue'\nimport { useConfigStore } from '@/shared/stores/config'\nimport type { ScrumBlocker } from '@/features/scrum/models/scrum'
 
-defineProps<{ blockers: ScrumBlocker[] }>()
+defineProps<{ blockers: ScrumBlocker[] }>()\nconst configStore = useConfigStore()\nconst jiraBaseUrl = computed(() => String(configStore.config.jira?.baseUrl || '').replace(/\\/$/, ''))
 const emit = defineEmits<{ resolve: [id: number] }>()
 
 /**
