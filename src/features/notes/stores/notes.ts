@@ -22,7 +22,22 @@ export const useNotesStore = defineStore('notes', () => {
   const isLoading = ref(false)
   const isSuggestingTopic = ref(false)
   const categorizingNoteIds = ref<string[]>([])
-  const pendingTopicSuggestions = ref<Record<string, TopicSuggestion>>({})
+  const readPendingSuggestions = (): Record<string, TopicSuggestion> => {
+    try {
+      const stored = localStorage.getItem('timelogger_pending_topic_suggestions')
+      return stored ? JSON.parse(stored) as Record<string, TopicSuggestion> : {}
+    } catch {
+      return {}
+    }
+  }
+  const pendingTopicSuggestions = ref<Record<string, TopicSuggestion>>(readPendingSuggestions())
+  watch(pendingTopicSuggestions, value => {
+    try {
+      localStorage.setItem('timelogger_pending_topic_suggestions', JSON.stringify(value))
+    } catch {
+      // Pending suggestions still work for this session if storage is unavailable.
+    }
+  }, { deep: true })
   const error = ref('')
   // Saved categories persist even when no notes are currently filed under them.
   const topics = computed<NoteTopic[]>(() => {
@@ -72,6 +87,11 @@ export const useNotesStore = defineStore('notes', () => {
     try {
       const result = await executeApi('get_notes', { ...(topic ? { topic } : {}), ...(date ? { date } : {}) })
       notes.value = normalizeNotes(result)
+      const liveIds = new Set(notes.value.map(note => note.id))
+      const retainedSuggestions = Object.fromEntries(
+        Object.entries(pendingTopicSuggestions.value).filter(([id]) => liveIds.has(id))
+      )
+      pendingTopicSuggestions.value = retainedSuggestions
       await loadNoteTopics()
     } catch (err) {
       error.value = err instanceof ApiError ? err.message : 'Failed to load notes'
@@ -157,7 +177,7 @@ export const useNotesStore = defineStore('notes', () => {
       await executeApi('update_note', { id: Number(id), note: content, topic: resolvedTopic, title: title || undefined, ticket_id: resolvedTicketId || undefined, ...(isBlocker !== undefined ? { is_blocker: isBlocker } : {}) })
       const updated = { ...existing, title, content, topic: resolvedTopic, ticketId: resolvedTicketId || undefined, isBlocker: resolvedBlocker, updatedAt: new Date().toISOString() }
       const index = notes.value.findIndex(note => note.id === id)
-      notes.value[index] = updated; syncNotesPersist()
+      notes.value[index] = updated; clearPendingTopicSuggestion(id); syncNotesPersist()
       return updated
     } catch (err) {
       error.value = err instanceof ApiError ? err.message : String(err); throw err
@@ -168,7 +188,10 @@ export const useNotesStore = defineStore('notes', () => {
     isLoading.value = true; error.value = ''
     try {
       await executeApi('delete_note', { id: Number(id) })
-      notes.value = notes.value.filter(note => note.id !== id); syncNotesPersist()
+      notes.value = notes.value.filter(note => note.id !== id)
+      clearPendingTopicSuggestion(id)
+      setCategorizing(id, false)
+      syncNotesPersist()
     } catch (err) {
       error.value = err instanceof ApiError ? err.message : String(err); throw err
     } finally { isLoading.value = false }
