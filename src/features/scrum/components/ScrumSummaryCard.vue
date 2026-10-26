@@ -33,8 +33,7 @@ const props = defineProps<{ summary: string }>()
 const copied = ref(false)
 const configStore = useConfigStore()
 const jiraBaseUrl = computed(() => String(configStore.config.jira?.baseUrl || '').replace(/\/$/, ''))
-const summaryLines = computed(() => props.summary.split(/\r?\
-/))
+const summaryLines = computed(() => props.summary.split(/\r?\n/))
 
 const linkedParts = (line: string) => {
   const parts: Array<{ text: string; ticket: boolean }> = []
