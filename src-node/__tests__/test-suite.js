@@ -1670,7 +1670,7 @@ async function runTests() {
   log(colors.cyan, '\n╔════════════════════════════════════════════╗');
   log(colors.cyan, '║  Test Results Summary                      ║');
   log(colors.cyan, '╚════════════════════════════════════════════╝\n');
-
+
   // Fixtures live in the real application database, so they are removed rather
   // than left behind as junk in the user's own data.
   cleanTestFixtures();
