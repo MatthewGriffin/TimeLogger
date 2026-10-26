@@ -21,8 +21,8 @@ export const useAiModelStatusStore = defineStore('ai-model-status', () => {
   const label = computed(() => {
     if (status.value === 'checking') return 'Checking AI model…'
     if (status.value === 'unavailable') return 'AI model unavailable'
-    if (status.value === 'loaded') return model.value ? `AI model loaded: ${model.value}` : 'AI model loaded'
-    return model.value ? `AI model not loaded: ${model.value}` : 'AI model not loaded'
+    if (status.value === 'loaded') return 'AI model loaded'
+    return 'AI model not loaded'
   })
 
   const refresh = async () => {
