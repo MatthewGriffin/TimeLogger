@@ -27,7 +27,14 @@
         <h4>Ticket notes</h4>
         <ul>
           <li v-for="note in ticketNotes" :key="note.id">
-            <span class="note-ticket">{{ note.ticketId }}</span>
+            <a
+              v-if="jiraBaseUrl"
+              class="note-ticket"
+              :href="jiraBaseUrl + '/browse/' + note.ticketId"
+              target="_blank"
+              rel="noopener noreferrer"
+            >{{ note.ticketId }}</a>
+            <span v-else class="note-ticket">{{ note.ticketId }}</span>
             <strong v-if="note.title">{{ note.title }}: </strong>{{ note.note }}
           </li>
         </ul>
@@ -37,11 +44,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed } from 'vue'\nimport { useConfigStore } from '@/shared/stores/config'
 import ScrumEntryRow from '@/features/scrum/components/ScrumEntryRow.vue'
 import type { ScrumDay } from '@/features/scrum/models/scrum'
 
-const props = defineProps<{ day: ScrumDay; label: string }>()
+const props = defineProps<{ day: ScrumDay; label: string }>()\nconst configStore = useConfigStore()\nconst jiraBaseUrl = computed(() => String(configStore.config.jira?.baseUrl || '').replace(/\\/$/, ''))
 
 const generalNotes = computed(() => props.day.notes.filter(note => !note.ticketId))
 const ticketNotes = computed(() => props.day.notes.filter(note => Boolean(note.ticketId)))
