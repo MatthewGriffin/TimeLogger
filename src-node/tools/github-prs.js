@@ -206,15 +206,51 @@ function ensureEventTable() {
     event_id TEXT PRIMARY KEY,
     seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS github_pr_lifecycle (
+    pr_key TEXT PRIMARY KEY,
+    state TEXT NOT NULL,
+    requested_reviewer INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT
+  )`);
 }
 
 async function pollReviewEvents(token, prs) {
   ensureEventTable();
   const known = new Set(db.prepare('SELECT event_id FROM github_pr_seen_events').all().map(row => row.event_id));
   const initialized = db.prepare("SELECT value FROM settings WHERE key = 'github_pr_poll_initialized'").get()?.value === 'true';
+  const lifecycleHasBaseline = Number(db.prepare('SELECT COUNT(*) AS count FROM github_pr_lifecycle').get()?.count || 0) > 0;
   const linkedLogin = String(readConfig().login || await account(token)).toLowerCase();
-  // Filter before applying the cap so old closed/merged PRs cannot crowd out
-  // active PRs or generate comment/review notifications.
+  const lifecycleEvents = [];
+
+  // Track lifecycle separately from comments/reviews. The first run seeds a
+  // quiet baseline, so enabling notifications doesn't announce every old PR.
+  const upsertLifecycle = db.prepare(`INSERT INTO github_pr_lifecycle
+    (pr_key, state, requested_reviewer, updated_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT(pr_key) DO UPDATE SET state = excluded.state,
+      requested_reviewer = excluded.requested_reviewer, updated_at = excluded.updated_at`);
+  db.transaction(() => {
+    for (const pr of prs) {
+      const key = `${pr.repository}#${pr.number}`;
+      const prior = db.prepare('SELECT state, requested_reviewer FROM github_pr_lifecycle WHERE pr_key = ?').get(key);
+      const state = pr.state === 'merged' ? 'merged' : pr.state === 'closed' ? 'closed' : 'open';
+      const requestedReviewer = Boolean(pr.requestedReviewer);
+      if (lifecycleHasBaseline && !prior && requestedReviewer && isOpenUnmergedPullRequest(pr)) {
+        lifecycleEvents.push({
+          id: `pr-added:${key}`, kind: 'added', reviewer: linkedLogin,
+          title: pr.title, url: pr.url, repository: pr.repository, number: pr.number
+        });
+      } else if (lifecycleHasBaseline && prior?.state === 'open' && state === 'merged') {
+        lifecycleEvents.push({
+          id: `pr-merged:${key}`, kind: 'merged', reviewer: pr.author || 'A contributor',
+          title: pr.title, url: pr.url, repository: pr.repository, number: pr.number
+        });
+      }
+      upsertLifecycle.run(key, state, requestedReviewer ? 1 : 0, pr.updatedAt || null);
+    }
+  })();
+
+  // Only open, unmerged PRs are eligible for comment/review alerts. Merged PRs
+  // are still inspected above so the transition to merged can be announced.
   const activePrs = prs.filter(isOpenUnmergedPullRequest);
   const results = await Promise.all(activePrs.slice(0, EVENT_PR_LIMIT).map(async pr => {
     const base = `/repos/${pr.repository}/pulls/${pr.number}`;
@@ -267,10 +303,11 @@ async function pollReviewEvents(token, prs) {
     return { discovered, events };
   }));
   const discovered = results.flatMap(result => result.discovered);
-  const events = results.flatMap(result => result.events);
+  const events = [...lifecycleEvents, ...results.flatMap(result => result.events)];
   const insert = db.prepare('INSERT OR IGNORE INTO github_pr_seen_events (event_id) VALUES (?)');
   db.transaction(() => {
     discovered.forEach(id => insert.run(id));
+    lifecycleEvents.forEach(event => insert.run(event.id));
     db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('github_pr_poll_initialized', 'true', CURRENT_TIMESTAMP)").run();
   })();
   return events;
@@ -348,7 +385,7 @@ export const tools = [
     handler: async () => {
       try {
         const token = requireToken();
-        const prs = await listRelevantPullRequests(token, [], EVENT_PR_LIMIT, null, true);
+        const prs = await listRelevantPullRequests(token, [], MAX_PRS, null, false);
         const events = await pollReviewEvents(token, prs);
         return { success: true, events };
       } catch (error) {
