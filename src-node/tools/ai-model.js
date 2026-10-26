@@ -11,6 +11,7 @@
  */
 
 import { db } from '../index.js';
+import axios from 'axios';
 import { ollamaClient, RECOMMENDED_MODEL, RECOMMENDED_MODEL_SIZE } from '../api/ollama-client.js';
 
 const DISMISSED_KEY = 'ai_model_prompt_dismissed';
@@ -39,6 +40,32 @@ function writeDismissed(dismissed) {
 }
 
 export const tools = [
+  {
+    name: 'get_ai_runtime_status',
+    description: 'Report whether the configured Ollama model is currently loaded in memory',
+    parameters: { type: 'object', properties: {} },
+    handler: async () => {
+      const available = await ollamaClient.initialize();
+      if (!available) {
+        return { success: true, ollamaAvailable: false, loaded: false, model: null };
+      }
+      const model = ollamaClient.getAvailableModel();
+      if (!model) {
+        return { success: true, ollamaAvailable: true, loaded: false, model: null };
+      }
+      try {
+        const response = await axios.get(`${ollamaClient.baseUrl}/api/ps`, { timeout: 3000 });
+        const running = Array.isArray(response.data?.models) ? response.data.models : [];
+        const loaded = running.some(item => {
+          const name = String(item.name || item.model || '');
+          return name === model || name.split(':')[0] === model.split(':')[0];
+        });
+        return { success: true, ollamaAvailable: true, loaded, model };
+      } catch {
+        return { success: true, ollamaAvailable: true, loaded: false, model };
+      }
+    }
+  },
   {
     name: 'get_ai_model_status',
     description: 'Check whether the recommended local AI model is installed and whether the user should be offered it',
