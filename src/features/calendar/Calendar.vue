@@ -300,6 +300,7 @@ const loadCalendarEvents = async (skipCache = false) => {
   const startDate = toLocalDateString(new Date(year, month, 1))
   const endDate = toLocalDateString(new Date(year, month + 1, 0))
   const storageKey = `timelogger_calendar_events_${monthKey}`
+  calendarEvents.value = []
 
   // Render the last successful month immediately; the network refresh runs
   // afterwards so opening Calendar does not leave an empty grid while Outlook
