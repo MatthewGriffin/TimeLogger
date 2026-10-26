@@ -157,7 +157,7 @@ function fallbackSummary(yesterday, today, blockers) {
     });
 
   const todayIntent = todayWork.length
-    ? `I'm working on ${sentenceList(todayWork, 'no development work logged yet')}`
+    ? `I am working on ${sentenceList(todayWork, 'no development work logged yet')}`
     : planned.length
       ? `I plan to work on ${sentenceList(planned, 'the planned work')}`
       : 'I have no development work logged yet';
