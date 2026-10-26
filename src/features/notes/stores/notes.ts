@@ -21,6 +21,8 @@ export const useNotesStore = defineStore('notes', () => {
   const isSyncing = ref(false)
   const isLoading = ref(false)
   const isSuggestingTopic = ref(false)
+  const categorizingNoteIds = ref<string[]>([])
+  const pendingTopicSuggestions = ref<Record<string, TopicSuggestion>>({})
   const error = ref('')
   // Saved categories persist even when no notes are currently filed under them.
   const topics = computed<NoteTopic[]>(() => {
@@ -87,6 +89,21 @@ export const useNotesStore = defineStore('notes', () => {
    * with the user before the topic is actually used. A ticket-linked note
    * always resolves to its ticket number without involving the AI.
    */
+  const isCategorizing = (id: string) => categorizingNoteIds.value.includes(id)
+  const setCategorizing = (id: string, value: boolean) => {
+    categorizingNoteIds.value = value
+      ? [...new Set([...categorizingNoteIds.value, id])]
+      : categorizingNoteIds.value.filter(existing => existing !== id)
+  }
+  const setPendingTopicSuggestion = (id: string, suggestion: TopicSuggestion) => {
+    pendingTopicSuggestions.value = { ...pendingTopicSuggestions.value, [id]: suggestion }
+  }
+  const clearPendingTopicSuggestion = (id: string) => {
+    const next = { ...pendingTopicSuggestions.value }
+    delete next[id]
+    pendingTopicSuggestions.value = next
+  }
+
   const suggestTopic = async (note: string, ticketId?: string, title?: string): Promise<TopicSuggestion> => {
     const ticket = (ticketId || '').trim()
     if (ticket) return { topic: ticket, isNew: false }
@@ -200,9 +217,9 @@ export const useNotesStore = defineStore('notes', () => {
   const syncNotesPersist = () => localStorage.setItem('timelogger_notes', JSON.stringify(notes.value))
 
   return {
-    notes, savedTopics, selectedTopic, editingNote, showNoteEditor, isSyncing, isLoading, isSuggestingTopic, error, topics, notesByTopic, notesCount,
+    notes, savedTopics, selectedTopic, editingNote, showNoteEditor, isSyncing, isLoading, isSuggestingTopic, categorizingNoteIds, pendingTopicSuggestions, error, topics, notesByTopic, notesCount,
     loadNotes, loadNoteTopics, createNoteTopic, createNote, updateNote, deleteNote, setEditingNote, setSelectedTopic, searchNotes, syncToOneNote,
-    syncAllToOneNote, suggestTopic,
+    syncAllToOneNote, suggestTopic, isCategorizing, setCategorizing, setPendingTopicSuggestion, clearPendingTopicSuggestion,
     loadNotesFromBackend, syncNotesPersist
   }
 })
