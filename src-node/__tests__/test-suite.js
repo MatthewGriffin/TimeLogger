@@ -15,7 +15,7 @@ import { ukBankHolidays, isUkBankHoliday } from '../utils/uk-holidays.js';
 import { previousWorkingDay, isWorkingDay } from '../utils/working-days.js';
 import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, microsoftAuthorityUrl, escapeHtml } from '../utils/safe-url.js';
 import { backendPort } from '../utils/backend-port.js';
-import { extractTicketKeys, classifyPullRequest } from '../tools/github-prs.js';
+import { extractTicketKeys, classifyPullRequest, isOpenUnmergedPullRequest } from '../tools/github-prs.js';
 
 // Color codes for output
 const colors = {
@@ -176,6 +176,14 @@ async function runTests() {
     assert.strictEqual(classifyPullRequest({ state: 'closed', merged: false }), 'closed');
     assert.strictEqual(classifyPullRequest({ state: 'open', draft: true }), 'draft');
     assert.strictEqual(classifyPullRequest({ state: 'open', draft: false }), 'open');
+  });
+
+  test('GitHub notifications only target open, unmerged pull requests', () => {
+    assert.strictEqual(isOpenUnmergedPullRequest({ state: 'open', merged: false, merged_at: null }), true);
+    assert.strictEqual(isOpenUnmergedPullRequest({ state: 'draft', merged: false, mergedAt: null }), true);
+    assert.strictEqual(isOpenUnmergedPullRequest({ state: 'closed', merged: false }), false);
+    assert.strictEqual(isOpenUnmergedPullRequest({ state: 'merged', merged: true }), false);
+    assert.strictEqual(isOpenUnmergedPullRequest({ state: 'open', merged_at: '2026-10-20T12:00:00Z' }), false);
   });
 
   test('GitHub integration exposes only read-oriented PR operations', () => {
@@ -1662,7 +1670,7 @@ async function runTests() {
   log(colors.cyan, '\n╔════════════════════════════════════════════╗');
   log(colors.cyan, '║  Test Results Summary                      ║');
   log(colors.cyan, '╚════════════════════════════════════════════╝\n');
-
+
   // Fixtures live in the real application database, so they are removed rather
   // than left behind as junk in the user's own data.
   cleanTestFixtures();
