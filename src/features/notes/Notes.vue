@@ -394,6 +394,7 @@ const saveNote = async () => {
       const original = originalEditingNote.value
       const contentChanged = Boolean(original && (note.content !== original.content || note.title !== original.title))
       const categoryChanged = Boolean(original && note.topic !== original.topic)
+      if (contentChanged || categoryChanged || note.ticketId) notesStore.clearPendingTopicSuggestion(note.id)
       const updated = await notesStore.updateNote(
         note.id,
         note.title,
