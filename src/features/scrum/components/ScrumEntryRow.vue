@@ -16,10 +16,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'\nimport { useConfigStore } from '@/shared/stores/config'
+import { computed } from 'vue'
+import { useConfigStore } from '@/shared/stores/config'
 import type { ScrumEntry } from '@/features/scrum/models/scrum'
 
-const props = defineProps<{ entry: ScrumEntry }>()\nconst configStore = useConfigStore()\nconst jiraBaseUrl = computed(() => String(configStore.config.jira?.baseUrl || '').replace(/\\/$/, ''))
+const props = defineProps<{ entry: ScrumEntry }>()
+const configStore = useConfigStore()
+const jiraBaseUrl = computed(() => String(configStore.config.jira?.baseUrl || '').replace(/\/$/, ''))
 
 const formattedDuration = computed(() => {
   const total = props.entry.durationMins
