@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { executeApi } from '@/shared/utils/api'
 
 type ModelState = 'checking' | 'loaded' | 'not-loaded' | 'unavailable'
@@ -18,12 +18,12 @@ export const useAiModelStatusStore = defineStore('ai-model-status', () => {
   const isRefreshing = ref(false)
   let requestInFlight: Promise<void> | null = null
 
-  const label = () => {
+  const label = computed(() => {
     if (status.value === 'checking') return 'Checking AI model…'
     if (status.value === 'unavailable') return 'AI model unavailable'
     if (status.value === 'loaded') return model.value ? `AI model loaded: ${model.value}` : 'AI model loaded'
     return model.value ? `AI model not loaded: ${model.value}` : 'AI model not loaded'
-  }
+  })
 
   const refresh = async () => {
     if (requestInFlight) return requestInFlight
