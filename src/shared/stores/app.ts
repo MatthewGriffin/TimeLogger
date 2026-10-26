@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+import { defineStore } from 'pinia'\nimport { invoke } from '@tauri-apps/api/core'
 import { ref } from 'vue'
 import { useConfigStore } from '@/shared/stores/config'
 import { useEntriesStore } from '@/shared/stores/entries'
@@ -10,12 +10,33 @@ export const useAppStore = defineStore('app', () => {
   const startupError = ref('')
   let initializationPromise: Promise<void> | null = null
 
+const waitForBackend = async () => {
+  // The app and its initial route can mount in the same render cycle. Keep
+  // backend startup inside the shared initialization promise so no page can
+  // call API tools before the sidecar is listening.
+  for (let attempt = 0; attempt < 60; attempt++) {
+    try {
+      if (await invoke<boolean>('backend_health')) return
+    } catch {
+      // Not ready yet.
+    }
+    await new Promise(resolve => setTimeout(resolve, 250))
+  }
+  throw new Error('The TimeLogger backend did not start. Check that Node.js is installed and see backend_output.log.')
+}
+
   const initializeApp = async () => {
     if (isInitialized.value) return
     if (initializationPromise) return initializationPromise
     isInitializing.value = true
     startupError.value = ''
     initializationPromise = (async () => {
+      // Start the sidecar before the first route is allowed to initialize
+      // config or entries. App.vue and the Dashboard can both request startup;
+      // this promise guarantees only one start/health-check sequence runs.
+      await invoke<string>('start_backend')
+      await waitForBackend()
+
       const configStore = useConfigStore()
       const entriesStore = useEntriesStore()
       const date = today()
