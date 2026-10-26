@@ -25,11 +25,30 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'\nimport { useConfigStore } from '@/shared/stores/config'
+import { computed, ref } from 'vue'
+import { useConfigStore } from '@/shared/stores/config'
 
 const props = defineProps<{ summary: string }>()
 
-const copied = ref(false)\nconst configStore = useConfigStore()\nconst jiraBaseUrl = computed(() => String(configStore.config.jira?.baseUrl || '').replace(/\\/$/, ''))\nconst summaryLines = computed(() => props.summary.split(/\\r?\\n/))\n\nconst linkedParts = (line: string) => {\n  const parts: Array<{ text: string; ticket: boolean }> = []\n  const pattern = /\\b[A-Z][A-Z0-9]{1,15}-\\d+\\b/g\n  let lastIndex = 0\n  for (const match of line.matchAll(pattern)) {\n    const index = match.index ?? 0\n    if (index > lastIndex) parts.push({ text: line.slice(lastIndex, index), ticket: false })\n    parts.push({ text: match[0], ticket: true })\n    lastIndex = index + match[0].length\n  }\n  if (lastIndex < line.length || parts.length === 0) parts.push({ text: line.slice(lastIndex), ticket: false })\n  return parts\n}
+const copied = ref(false)
+const configStore = useConfigStore()
+const jiraBaseUrl = computed(() => String(configStore.config.jira?.baseUrl || '').replace(/\/$/, ''))
+const summaryLines = computed(() => props.summary.split(/\r?\
+/))
+
+const linkedParts = (line: string) => {
+  const parts: Array<{ text: string; ticket: boolean }> = []
+  const pattern = /\b[A-Z][A-Z0-9]{1,15}-\d+\b/g
+  let lastIndex = 0
+  for (const match of line.matchAll(pattern)) {
+    const index = match.index ?? 0
+    if (index > lastIndex) parts.push({ text: line.slice(lastIndex, index), ticket: false })
+    parts.push({ text: match[0], ticket: true })
+    lastIndex = index + match[0].length
+  }
+  if (lastIndex < line.length || parts.length === 0) parts.push({ text: line.slice(lastIndex), ticket: false })
+  return parts
+}
 
 const copy = async () => {
   try {
