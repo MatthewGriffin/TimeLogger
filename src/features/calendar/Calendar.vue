@@ -5,6 +5,10 @@
       <div class="header-content">
         <h1>Calendar</h1>
         <div class="month-display">{{ currentMonthYear }}</div>
+        <div v-if="isLoadingEvents" class="calendar-refresh-status" role="status" aria-live="polite">
+          <span class="refresh-spinner" aria-hidden="true"></span>
+          Updating calendar events…
+        </div>
       </div>
       <div class="header-actions">
         <button class="btn-nav" @click="previousMonth">← Previous</button>
@@ -290,21 +294,35 @@ const autoSyncDisplayedMonth = async () => {
 }
 
 const loadCalendarEvents = async (skipCache = false) => {
+  const year = currentDate.value.getFullYear()
+  const month = currentDate.value.getMonth()
+  const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`
+  const startDate = toLocalDateString(new Date(year, month, 1))
+  const endDate = toLocalDateString(new Date(year, month + 1, 0))
+  const storageKey = `timelogger_calendar_events_${monthKey}`
+
+  // Render the last successful month immediately; the network refresh runs
+  // afterwards so opening Calendar does not leave an empty grid while Outlook
+  // is starting or responding.
+  try {
+    const cached = localStorage.getItem(storageKey)
+    if (cached) {
+      const parsed = JSON.parse(cached)
+      if (Array.isArray(parsed)) calendarEvents.value = parsed
+    }
+  } catch {
+    // Ignore a stale or malformed local cache and continue with the refresh.
+  }
+
   isLoadingEvents.value = true
   try {
-    const year = currentDate.value.getFullYear()
-    const month = currentDate.value.getMonth()
-    const startDate = toLocalDateString(new Date(year, month, 1))
-    const endDate = toLocalDateString(new Date(year, month + 1, 0))
-
     const result = await executeApi<{ events?: any[] }>('get_outlook_events', {
       startDate,
       endDate,
       skipCache
     })
 
-    const events = asList<Record<string, any>>(result, 'events')
-    calendarEvents.value = events.map(event => ({
+    const events = asList<Record<string, any>>(result, 'events').map(event => ({
       id: String(event.id ?? `${event.date}_${event.startTime}_${event.subject}`),
       date: event.date,
       title: event.subject || event.title || 'Untitled',
@@ -316,11 +334,16 @@ const loadCalendarEvents = async (skipCache = false) => {
       isAllDay: Boolean(event.isAllDay),
       priority: event.isReminderOn ? 'high' : 'normal'
     }))
+
+    // Ignore late responses from a month the user has already navigated away
+    // from, while still saving that response for the next visit.
+    try { localStorage.setItem(storageKey, JSON.stringify(events)) } catch { /* cache is best-effort */ }
+    if (currentMonthKey.value === monthKey) calendarEvents.value = events
   } catch (error) {
     console.error('Failed to load calendar events:', error)
-    calendarEvents.value = []
+    // Keep cached events visible when Outlook is offline or the refresh fails.
   } finally {
-    isLoadingEvents.value = false
+    if (currentMonthKey.value === monthKey) isLoadingEvents.value = false
   }
 }
 
@@ -424,6 +447,32 @@ onMounted(async () => {
   font-size: 1.1rem;
   color: var(--color-accent);
   font-weight: 600;
+}
+
+.calendar-refresh-status {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-top: .4rem;
+  color: var(--color-text-muted);
+  font-size: .8rem;
+}
+
+.refresh-spinner {
+  width: .75rem;
+  height: .75rem;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: calendar-spin .8s linear infinite;
+}
+
+@keyframes calendar-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refresh-spinner { animation: none; }
 }
 
 .header-actions {
