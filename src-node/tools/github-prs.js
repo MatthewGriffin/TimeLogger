@@ -142,7 +142,11 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS,
   }
 
   if (diagnostics) diagnostics.candidateCount = candidates.size;
-  const details = await Promise.all([...candidates.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, limit).map(async item => {
+  const selected = [...candidates.values()]
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, limit);
+  const details = [];
+  const fetchDetail = async (item) => {
     try {
       const pr = await githubGet(`/repos/${item.repository}/pulls/${item.number}`, token);
       const authoredByAccount = String(pr.user?.login || '').toLowerCase() === login.toLowerCase();
@@ -170,7 +174,17 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS,
       });
       return null;
     }
-  }));
+  };
+
+  // Keep the number of in-flight detail/review requests bounded. Launching up
+  // to 60 requests at once can trigger GitHub secondary rate limits, which
+  // made otherwise valid pull requests disappear from the returned list.
+  const DETAIL_CONCURRENCY = 6;
+  for (let index = 0; index < selected.length; index += DETAIL_CONCURRENCY) {
+    const batch = selected.slice(index, index + DETAIL_CONCURRENCY);
+    details.push(...await Promise.all(batch.map(fetchDetail)));
+  }
+
   return details.filter(Boolean).sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 }
 
