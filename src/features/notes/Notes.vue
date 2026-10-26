@@ -228,7 +228,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useNotesStore, DEFAULT_TOPIC } from '@/features/notes/stores/notes'
-import type { Note, TopicSuggestion } from '@/features/notes/stores/notes'
+import type { Note } from '@/features/notes/stores/notes'
 import { useUiStore } from '@/shared/stores/ui'
 import { useConfigStore } from '@/shared/stores/config'
 import { useJiraStore } from '@/shared/stores/jira'
