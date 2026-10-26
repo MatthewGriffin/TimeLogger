@@ -150,7 +150,7 @@ const loadPullRequests = async () => {
       success?: boolean
       message?: string
       prs?: PullRequest[]
-      diagnostics?: { searches?: Array<{ name: string; count: number }>; candidateCount?: number
+      diagnostics?: { searches?: Array<{ name: string; count: number; error?: string }>; candidateCount?: number
         detailFailures?: Array<{ repository: string; number: number; endpoint: string; message: string }> }
     }>('github_pr_list', {})
     if (result.success === false) {
@@ -166,6 +166,13 @@ const loadPullRequests = async () => {
       hasError.value = true
       const first = failures[0]
       message.value = `GitHub found ${diagnostics?.candidateCount || 0} candidate PR(s), but ${failures.length} detail request(s) failed. First failure: ${first.repository}#${first.number} (${first.endpoint}) — ${first.message}`
+    } else if (diagnostics && (diagnostics.searches || []).some(search => 'error' in search && search.error)) {
+      const failed = (diagnostics.searches || []).filter(search => 'error' in search && search.error)
+      const counts = (diagnostics.searches || []).map(search => `${search.name}: ${search.count}`).join(', ')
+      hasError.value = true
+      message.value = prs.value.length
+        ? `Loaded ${prs.value.length} pull request(s), but some GitHub searches failed (${failed.map(search => search.name).join(', ')}). ${counts}`
+        : `Some GitHub searches failed (${failed.map(search => search.name).join(', ')}). ${counts}`
     } else if (!prs.value.length && diagnostics) {
       const counts = (diagnostics.searches || []).map(search => `${search.name}: ${search.count}`).join(', ')
       message.value = `No relevant pull requests returned. Search results — ${counts || 'none'}; candidates: ${diagnostics.candidateCount || 0}.`
