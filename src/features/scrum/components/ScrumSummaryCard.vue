@@ -7,16 +7,29 @@
       </button>
     </header>
 
-    <p class="summary-text">{{ summary }}</p>
+    <div class="summary-text">
+      <p v-for="(line, lineIndex) in summaryLines" :key="lineIndex" class="summary-line">
+        <template v-for="(part, partIndex) in linkedParts(line)" :key="partIndex">
+          <a
+            v-if="part.ticket && jiraBaseUrl"
+            :href="jiraBaseUrl + '/browse/' + part.text"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="ticket-link"
+          >{{ part.text }}</a>
+          <span v-else>{{ part.text }}</span>
+        </template>
+      </p>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'\nimport { useConfigStore } from '@/shared/stores/config'
 
 const props = defineProps<{ summary: string }>()
 
-const copied = ref(false)
+const copied = ref(false)\nconst configStore = useConfigStore()\nconst jiraBaseUrl = computed(() => String(configStore.config.jira?.baseUrl || '').replace(/\\/$/, ''))\nconst summaryLines = computed(() => props.summary.split(/\\r?\\n/))\n\nconst linkedParts = (line: string) => {\n  const parts: Array<{ text: string; ticket: boolean }> = []\n  const pattern = /\\b[A-Z][A-Z0-9]{1,15}-\\d+\\b/g\n  let lastIndex = 0\n  for (const match of line.matchAll(pattern)) {\n    const index = match.index ?? 0\n    if (index > lastIndex) parts.push({ text: line.slice(lastIndex, index), ticket: false })\n    parts.push({ text: match[0], ticket: true })\n    lastIndex = index + match[0].length\n  }\n  if (lastIndex < line.length || parts.length === 0) parts.push({ text: line.slice(lastIndex), ticket: false })\n  return parts\n}
 
 const copy = async () => {
   try {
