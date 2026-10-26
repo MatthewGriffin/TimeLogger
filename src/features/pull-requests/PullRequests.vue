@@ -232,10 +232,6 @@ onMounted(refresh)
 .pull-requests-body > .connect-card { margin: 0; }
 .pull-requests-body > .pr-toolbar { margin: 0; padding: 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
 .pull-requests-body > .summary-row { margin: 0; }
-.pr-list { grid-template-columns: 1fr; gap: var(--space-md); }
-.pr-card { padding: 1.25rem; }
-.pr-card h2 { margin: .5rem 0; }
-.pr-description { margin: .5rem 0 .75rem; }
 .btn-refresh { padding: .65rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-control); color: var(--color-text); cursor: pointer; }
 .btn-refresh:disabled { opacity: .6; cursor: wait; }
 .notice { margin: 1rem 0; padding: .85rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text-muted); overflow-wrap: anywhere; }
@@ -249,8 +245,8 @@ onMounted(refresh)
 .pr-toolbar .search-field { flex: 1 1 18rem; }
 .pr-toolbar .search-field input { width: 100%; box-sizing: border-box; }
 .summary-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem; color: var(--color-text-muted); font-size: .9rem; margin-bottom: 1rem; }
-.pr-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr)); gap: 1rem; }
-.pr-card { min-width: 0; padding: 1.1rem 1.2rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-raised); }
+.pr-list { display: grid; grid-template-columns: 1fr; gap: var(--space-md); }
+.pr-card { min-width: 0; padding: 1.25rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-raised); }
 .pr-card-top { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; font-size: .82rem; }
 .state-pill { padding: .2rem .55rem; border-radius: 999px; border: 1px solid var(--color-border); font-weight: 600; }
 .state-open { color: var(--color-success); }
@@ -258,10 +254,10 @@ onMounted(refresh)
 .state-merged { color: var(--color-accent); }
 .state-closed { color: var(--color-danger); }
 .pr-number, .pr-relationship { color: var(--color-text-muted); }
-.pr-card h2 { font-size: 1.08rem; line-height: 1.4; margin: .75rem 0 .5rem; overflow-wrap: anywhere; }
+.pr-card h2 { font-size: 1.08rem; line-height: 1.4; margin: .5rem 0; overflow-wrap: anywhere; }
 .pr-card h2 a, .pr-card-footer a { color: var(--color-accent); text-decoration: none; }
 .pr-card h2 a:hover, .pr-card-footer a:hover { text-decoration: underline; }
-.pr-description { color: var(--color-text-muted); line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
+.pr-description { color: var(--color-text-muted); line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; margin: .5rem 0 .75rem; }
 .pr-meta { display: flex; flex-wrap: wrap; gap: .5rem 1rem; font-size: .83rem; color: var(--color-text-muted); }
 .ticket-keys { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .75rem; }
 .ticket-chip { border-radius: .3rem; padding: .15rem .4rem; background: var(--color-control); font-size: .8rem; }
