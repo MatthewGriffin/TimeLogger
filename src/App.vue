@@ -18,6 +18,15 @@ const uiStore = useUiStore()
 const router = useRouter()
 const route = useRoute()
 const aiModelPrompt = ref<InstanceType<typeof AiModelPrompt> | null>(null)
+const startupReady = ref(false)
+const startupFailure = ref('')
+const startupPromise = appStore.initializeApp()
+void startupPromise.catch(error => {
+  startupFailure.value = error instanceof Error ? error.message : 'Failed to start the TimeLogger backend.'
+  uiStore.reportError(error, 'Failed to initialize application')
+}).finally(() => {
+  startupReady.value = true
+})
 let unlistenTrayNavigate: (() => void) | undefined
 let githubPollingTimer: ReturnType<typeof setInterval> | undefined
 let githubPollInFlight = false
@@ -72,10 +81,10 @@ const pollGitHubActivity = async () => {
 
 onMounted(async () => {
   try {
-    await appStore.initializeApp()
+    await startupPromise
     if (appStore.startupError) uiStore.reportError(appStore.startupError, 'Failed to initialize application')
-  } catch (error) {
-    uiStore.reportError(error, 'Failed to initialize application')
+  } catch {
+    // The startup promise already reports its error and exposes it in the app.
   }
 
   // Checked last and never awaited into the startup path: an optional model
@@ -179,7 +188,16 @@ declare global {
            it also contains the nav, and a navigation landmark nested inside
            main is not exposed as a sibling of it. -->
       <main class="app-content">
-        <router-view />
+        <div v-if="!startupReady" class="startup-state" role="status" aria-live="polite">
+          <span class="startup-spinner" aria-hidden="true"></span>
+          Starting TimeLogger…
+        </div>
+        <div v-else-if="startupFailure" class="startup-state startup-failed" role="alert">
+          <h1>TimeLogger couldn't start</h1>
+          <p>{{ startupFailure }}</p>
+          <p>Check the backend log, then restart the app.</p>
+        </div>
+        <router-view v-else />
       </main>
       <NotificationCenter />
       <AiModelPrompt ref="aiModelPrompt" />
@@ -208,5 +226,41 @@ declare global {
      content column refuses to shrink, so collapsing the nav frees no space. */
   min-width: 0;
   overflow-y: auto;
+}
+
+.startup-state {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .75rem;
+  padding: 2rem;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.startup-state h1 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 1.35rem;
+}
+
+.startup-state p { margin: 0; max-width: 42rem; }
+.startup-failed { color: var(--color-danger); }
+
+.startup-spinner {
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: startup-spin .8s linear infinite;
+}
+
+@keyframes startup-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .startup-spinner { animation: none; }
 }
 </style>
