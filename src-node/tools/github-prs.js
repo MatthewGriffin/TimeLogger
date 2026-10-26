@@ -218,18 +218,33 @@ async function pollReviewEvents(token, prs) {
   ensureEventTable();
   const known = new Set(db.prepare('SELECT event_id FROM github_pr_seen_events').all().map(row => row.event_id));
   const initialized = db.prepare("SELECT value FROM settings WHERE key = 'github_pr_poll_initialized'").get()?.value === 'true';
-  const lifecycleHasBaseline = Number(db.prepare('SELECT COUNT(*) AS count FROM github_pr_lifecycle').get()?.count || 0) > 0;
+  const lifecycleHasBaseline = db.prepare("SELECT value FROM settings WHERE key = 'github_pr_lifecycle_initialized'").get()?.value === 'true';
   const linkedLogin = String(readConfig().login || await account(token)).toLowerCase();
   const lifecycleEvents = [];
 
-  // Track lifecycle separately from comments/reviews. The first run seeds a
-  // quiet baseline, so enabling notifications doesn't announce every old PR.
+  // Include previously tracked open review requests even if GitHub drops them
+  // from the review-requested search after the PR is closed or merged.
+  const currentKeys = new Set(prs.map(pr => `${pr.repository}#${pr.number}`));
+  const previouslyRequested = db.prepare(
+    "SELECT pr_key FROM github_pr_lifecycle WHERE state = 'open' AND requested_reviewer = 1"
+  ).all().map(row => row.pr_key).filter(key => !currentKeys.has(key)).slice(0, EVENT_PR_LIMIT);
+  const priorDetails = await Promise.all(previouslyRequested.map(async key => {
+    const match = key.match(/^(.+)#(\\d+)$/);
+    if (!match) return null;
+    try {
+      const raw = await githubGet(`/repos/${match[1]}/pulls/${match[2]}`, token);
+      return safePr({ ...raw, __linkedLogin: linkedLogin });
+    } catch {
+      return null;
+    }
+  }));
+  const lifecyclePrs = [...prs, ...priorDetails.filter(Boolean)];
   const upsertLifecycle = db.prepare(`INSERT INTO github_pr_lifecycle
     (pr_key, state, requested_reviewer, updated_at) VALUES (?, ?, ?, ?)
     ON CONFLICT(pr_key) DO UPDATE SET state = excluded.state,
       requested_reviewer = excluded.requested_reviewer, updated_at = excluded.updated_at`);
   db.transaction(() => {
-    for (const pr of prs) {
+    for (const pr of lifecyclePrs) {
       const key = `${pr.repository}#${pr.number}`;
       const prior = db.prepare('SELECT state, requested_reviewer FROM github_pr_lifecycle WHERE pr_key = ?').get(key);
       const state = pr.state === 'merged' ? 'merged' : pr.state === 'closed' ? 'closed' : 'open';
@@ -309,6 +324,7 @@ async function pollReviewEvents(token, prs) {
     discovered.forEach(id => insert.run(id));
     lifecycleEvents.forEach(event => insert.run(event.id));
     db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('github_pr_poll_initialized', 'true', CURRENT_TIMESTAMP)").run();
+    db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('github_pr_lifecycle_initialized', 'true', CURRENT_TIMESTAMP)").run();
   })();
   return events;
 }
@@ -357,6 +373,8 @@ export const tools = [
       db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
       try { db.prepare('DELETE FROM github_pr_seen_events').run(); } catch { /* table is created on first poll */ }
       db.prepare("DELETE FROM settings WHERE key = 'github_pr_poll_initialized'").run();
+      db.prepare("DELETE FROM settings WHERE key = 'github_pr_lifecycle_initialized'").run();
+      try { db.prepare('DELETE FROM github_pr_lifecycle').run(); } catch { /* table is created on first poll */ }
       return { success: true, connected: false, login: '', message: 'GitHub disconnected.' };
     }
   },
