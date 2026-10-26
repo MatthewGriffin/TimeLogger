@@ -5,7 +5,10 @@
       <p>Pull requests matching ticket keys from logged or planned work.</p>
     </header>
     <div v-for="group in groups" :key="group.ticket" class="ticket-group">
-      <h3>{{ group.ticket }}</h3>
+      <h3>
+        <a v-if="jiraBaseUrl" :href="jiraBaseUrl + '/browse/' + group.ticket" target="_blank" rel="noopener noreferrer">{{ group.ticket }}</a>
+        <span v-else>{{ group.ticket }}</span>
+      </h3>
       <article v-for="pr in group.items" :key="pr.id" class="pr-row">
         <div class="pr-main">
           <a class="pr-title" :href="pr.url" @click.prevent="openPr(pr.url)">{{ pr.title }}</a>
@@ -29,9 +32,12 @@ import { computed } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import type { ScrumPullRequest } from '@/features/scrum/models/scrum'
 import { useUiStore } from '@/shared/stores/ui'
+import { useConfigStore } from '@/shared/stores/config'
 
 const props = defineProps<{ pullRequests: ScrumPullRequest[] }>()
 const uiStore = useUiStore()
+const configStore = useConfigStore()
+const jiraBaseUrl = computed(() => String(configStore.config.jira?.baseUrl || '').replace(/\/$/, ''))
 
 const groups = computed(() => {
   const grouped = new Map<string, ScrumPullRequest[]>()
@@ -72,6 +78,8 @@ header p, .pr-meta, .pr-description { color: var(--color-text-muted); }
 header p { margin: 0 0 1rem; }
 .ticket-group + .ticket-group { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--color-border); }
 .ticket-group h3 { margin: 0 0 .6rem; font-size: 1rem; }
+.ticket-group h3 a { color: var(--color-accent); text-decoration: none; }
+.ticket-group h3 a:hover { text-decoration: underline; }
 .pr-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; padding: .8rem 0; border-top: 1px solid var(--color-border); }
 .pr-main { min-width: 0; }
 .pr-title { color: var(--color-accent); font-weight: 650; text-decoration: none; }
