@@ -70,6 +70,27 @@
               <span v-if="note.oneNoteSynced" class="sync-badge">📤</span>
             </div>
             <span v-if="note.ticketId" class="note-ticket">{{ note.ticketId }}</span>
+            <div v-if="notesStore.isCategorizing(note.id)" class="note-ai-status" role="status" aria-live="polite">
+              <span class="note-ai-spinner" aria-hidden="true"></span>
+              AI is deciding this note's category…
+            </div>
+            <div v-if="notesStore.pendingTopicSuggestions[note.id]" class="pending-topic">
+              <div class="pending-topic-copy">
+                <strong>AI category suggestion</strong>
+                <span>Suggested: <strong>{{ notesStore.pendingTopicSuggestions[note.id].topic }}</strong>{{ notesStore.pendingTopicSuggestions[note.id].isNew ? ' (new category)' : '' }}</span>
+              </div>
+              <div class="pending-topic-actions">
+                <button class="btn-primary btn-topic-accept" @click.stop="applyPendingTopic(note.id, notesStore.pendingTopicSuggestions[note.id].topic, true)">Accept suggestion</button>
+                <select
+                  :aria-label="`Choose category for ${note.title}`"
+                  :value="pendingCategoryChoices[note.id] || note.topic"
+                  @change="setPendingCategoryChoice(note.id, ($event.target as HTMLSelectElement).value)"
+                >
+                  <option v-for="topic in notesStore.topics" :key="topic" :value="topic">{{ topic }}</option>
+                </select>
+                <button class="btn-secondary" @click.stop="applyPendingTopic(note.id, pendingCategoryChoices[note.id] || note.topic)">Use selected</button>
+              </div>
+            </div>
             <p class="note-preview">{{ truncate(note.content, 100) }}</p>
             <div class="note-footer">
               <span class="note-time">{{ formatDate(note.updatedAt) }}</span>
@@ -201,32 +222,6 @@
       </div>
     </div>
 
-    <!-- New Topic Confirmation Modal -->
-    <div v-if="pendingTopicSuggestion" class="modal-overlay" @click.self="useExistingTopic">
-      <div class="modal modal-small">
-        <div class="modal-header">
-          <h2>🤖 AI Category Suggestion</h2>
-          <button class="modal-close" @click="useExistingTopic">✕</button>
-        </div>
-        <p class="new-topic-copy">
-          <strong>"{{ pendingNoteSave?.title || 'Your note' }}"</strong> has been saved. The AI suggests the category
-          <strong>"{{ pendingTopicSuggestion.topic }}"</strong>{{ pendingTopicSuggestion.isNew ? ', which is new.' : '.' }}
-          Nothing will change unless you approve it. You can accept the suggestion or keep/select another category.
-        </p>
-        <div class="form-group">
-          <label for="fallback-topic">Existing topic</label>
-          <select id="fallback-topic" v-model="fallbackTopic">
-            <option v-for="topic in notesStore.topics" :key="topic" :value="topic">
-              {{ topic }}
-            </option>
-          </select>
-        </div>
-        <div class="modal-footer">
-          <button class="btn-secondary" @click="useExistingTopic">Keep "{{ fallbackTopic }}"</button>
-          <button class="btn-primary" @click="confirmNewTopic">✓ {{ pendingTopicSuggestion.isNew ? 'Create and use' : 'Move to' }} "{{ pendingTopicSuggestion.topic }}"</button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -246,21 +241,8 @@ const configStore = useConfigStore()
 const jiraStore = useJiraStore()
 const entriesStore = useEntriesStore()
 
-const pendingTopicSuggestion = ref<TopicSuggestion | null>(null)
-const pendingNoteSave = ref<{ id: string; title: string } | null>(null)
+const pendingCategoryChoices = ref<Record<string, string>>({})
 const originalEditingNote = ref<{ id: string; title: string; content: string; topic: string } | null>(null)
-// Which existing topic to use if the user declines the AI suggestion.
-const fallbackTopic = ref<string>(DEFAULT_TOPIC)
-
-/** Move an already-saved note into the chosen topic. */
-const applyTopicToPendingNote = async (id: string, topic: string) => {
-  const note = notesStore.notes.find(existing => existing.id === id)
-  if (!note) return
-  await notesStore.updateNote(id, note.title, note.content, topic, note.ticketId)
-}
-
-// The ticket currently typed into the editor, if any. A note linked to a
-// ticket is always filed under that ticket number rather than a topic.
 const editorTicketId = computed(() => (notesStore.editingNote?.ticketId || '').trim())
 
 const recentTickets = computed(() => {
@@ -451,51 +433,42 @@ const saveNote = async () => {
  * out of the default topic - it never delays the save itself.
  */
 const categorizeInBackground = async (note: Note) => {
+  notesStore.setCategorizing(note.id, true)
   try {
     const suggestion = await notesStore.suggestTopic(note.content, note.ticketId, note.title)
     // The user may have deleted or edited the note while the AI was thinking.
     const current = notesStore.notes.find(existing => existing.id === note.id)
     if (!current || current.title !== note.title || current.content !== note.content || suggestion.topic === current.topic) return
-
-    // Always ask before changing a category, whether the AI chose an existing
-    // category or proposed a new one.
-    pendingTopicSuggestion.value = suggestion
-    pendingNoteSave.value = { id: note.id, title: current.title }
-    fallbackTopic.value = current.topic || DEFAULT_TOPIC
+    notesStore.setPendingTopicSuggestion(note.id, suggestion)
+    pendingCategoryChoices.value = { ...pendingCategoryChoices.value, [note.id]: current.topic || DEFAULT_TOPIC }
   } catch {
-    // Categorisation is best-effort: the note keeps the default topic.
+    // Categorisation is best-effort: the note keeps its current category.
+  } finally {
+    notesStore.setCategorizing(note.id, false)
   }
 }
 
-const confirmNewTopic = async () => {
-  const suggestion = pendingTopicSuggestion.value
-  const pending = pendingNoteSave.value
-  if (!suggestion || !pending) return
+const setPendingCategoryChoice = (id: string, topic: string) => {
+  pendingCategoryChoices.value = { ...pendingCategoryChoices.value, [id]: topic }
+}
+
+const applyPendingTopic = async (id: string, topic: string, acceptSuggestion = false) => {
+  const suggestion = notesStore.pendingTopicSuggestions[id]
+  const note = notesStore.notes.find(existing => existing.id === id)
+  if (!suggestion || !note || !topic.trim()) return
   try {
-    await applyTopicToPendingNote(pending.id, suggestion.topic)
-    uiStore.showSuccess(`Note filed under new topic "${suggestion.topic}"`)
-  } catch (error) {
+    let resolvedTopic = topic.trim()
+    if (acceptSuggestion && suggestion.isNew) {
+      resolvedTopic = await notesStore.createNoteTopic(resolvedTopic)
+    }
+    await notesStore.updateNote(id, note.title, note.content, resolvedTopic, note.ticketId, note.isBlocker)
+    notesStore.clearPendingTopicSuggestion(id)
+    const nextChoices = { ...pendingCategoryChoices.value }
+    delete nextChoices[id]
+    pendingCategoryChoices.value = nextChoices
+    uiStore.showSuccess(`Note filed under "${resolvedTopic}"`)
+  } catch {
     uiStore.showError(notesStore.error || 'Failed to set topic')
-  } finally {
-    pendingTopicSuggestion.value = null
-    pendingNoteSave.value = null
-  }
-}
-
-// Declining the AI's new topic files the note under whichever existing topic
-// the user picked in the dropdown rather than always falling back to General.
-const useExistingTopic = async () => {
-  const pending = pendingNoteSave.value
-  if (!pending) { pendingTopicSuggestion.value = null; return }
-  const topic = fallbackTopic.value || DEFAULT_TOPIC
-  try {
-    await applyTopicToPendingNote(pending.id, topic)
-    uiStore.showInfo(`Note remains filed under "${topic}"`)
-  } catch (error) {
-    uiStore.showError(notesStore.error || 'Failed to save note')
-  } finally {
-    pendingTopicSuggestion.value = null
-    pendingNoteSave.value = null
   }
 }
 
@@ -795,6 +768,36 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 .blocker-toggle .field-hint {
   flex-basis: 100%;
 }
+
+.note-ai-status {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.4rem 0;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+.note-ai-spinner {
+  width: 0.8rem;
+  height: 0.8rem;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: note-ai-spin .8s linear infinite;
+}
+.pending-topic {
+  margin: 0.55rem 0;
+  padding: 0.75rem;
+  border: 1px solid var(--color-accent-ring);
+  border-radius: 0.5rem;
+  background: var(--color-accent-muted);
+}
+.pending-topic-copy { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.82rem; }
+.pending-topic-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; margin-top: 0.6rem; }
+.pending-topic-actions select { flex: 1 1 8rem; min-width: 8rem; }
+.btn-topic-accept { white-space: nowrap; }
+@keyframes note-ai-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .note-ai-spinner { animation: none; } }
 
 .note-preview {
   color: var(--color-text-muted);
