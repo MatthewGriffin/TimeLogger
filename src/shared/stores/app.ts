@@ -1,4 +1,5 @@
-import { defineStore } from 'pinia'\nimport { invoke } from '@tauri-apps/api/core'
+import { defineStore } from 'pinia'
+import { invoke } from '@tauri-apps/api/core'
 import { ref } from 'vue'
 import { useConfigStore } from '@/shared/stores/config'
 import { useEntriesStore } from '@/shared/stores/entries'
