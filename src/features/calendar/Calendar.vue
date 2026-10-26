@@ -333,7 +333,7 @@ const loadCalendarEvents = async (skipCache = false) => {
       location: event.location || undefined,
       description: event.bodyPreview || event.description,
       isAllDay: Boolean(event.isAllDay),
-      priority: event.isReminderOn ? 'high' : 'normal'
+      priority: event.isReminderOn ? 'high' as const : 'normal' as const
     }))
 
     // Ignore late responses from a month the user has already navigated away
