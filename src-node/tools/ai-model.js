@@ -58,7 +58,7 @@ export const tools = [
         const running = Array.isArray(response.data?.models) ? response.data.models : [];
         const loaded = running.some(item => {
           const name = String(item.name || item.model || '');
-          return name === model || name.split(':')[0] === model.split(':')[0];
+          return name === model || name === `${model}:latest` || `${name}:latest` === model;
         });
         return { success: true, ollamaAvailable: true, loaded, model };
       } catch {
