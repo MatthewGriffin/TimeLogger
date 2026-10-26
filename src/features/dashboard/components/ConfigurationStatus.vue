@@ -1,5 +1,5 @@
 <template>
-  <div v-if="missingConfigs.length > 0" class="config-banner">
+  <div v-if="configStore.hasLoaded && missingConfigs.length > 0" class="config-banner">
     <div class="banner-content">
       <span class="banner-icon">⚠️</span>
       <div class="banner-text">
