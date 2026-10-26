@@ -109,9 +109,18 @@ async function searchPrs(token, login, query) {
 async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS, diagnostics = null) {
   const login = await account(token);
   const searchAndRecord = async (name, query) => {
-    const results = await searchPrs(token, login, query);
-    if (diagnostics) diagnostics.searches.push({ name, count: results.length });
-    return results;
+    try {
+      const results = await searchPrs(token, login, query);
+      if (diagnostics) diagnostics.searches.push({ name, count: results.length });
+      return results;
+    } catch (error) {
+      // A failure in one search should not discard valid results from the
+      // other independent searches (for example, if GitHub rejects a query).
+      if (diagnostics) {
+        diagnostics.searches.push({ name, count: 0, error: error instanceof Error ? error.message : String(error) });
+      }
+      return [];
+    }
   };
   const [authored, reviewRequested, reviewedByAccount] = await Promise.all([
     searchAndRecord('authored', `is:pr author:${login}`),
