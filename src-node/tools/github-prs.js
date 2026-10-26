@@ -118,7 +118,7 @@ async function searchPrs(token, login, query) {
   return all;
 }
 
-async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS, diagnostics = null) {
+async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS, diagnostics = null, openOnly = false) {
   const login = await account(token);
   const searchAndRecord = async (name, query) => {
     try {
@@ -134,10 +134,11 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS,
       return [];
     }
   };
+  const openQualifier = openOnly ? ' is:open' : '';
   const [authored, reviewRequested, reviewedByAccount] = await Promise.all([
-    searchAndRecord('authored', `is:pr author:${login}`),
+    searchAndRecord('authored', `is:pr author:${login}${openQualifier}`),
     searchAndRecord('review-requested', `is:pr review-requested:${login} is:open`),
-    searchAndRecord('reviewed-by-account', `is:pr reviewed-by:${login}`)
+    searchAndRecord('reviewed-by-account', `is:pr reviewed-by:${login}${openQualifier}`)
   ]);
   const candidates = new Map();
   for (const item of [...authored, ...reviewRequested, ...reviewedByAccount]) {
@@ -347,7 +348,7 @@ export const tools = [
     handler: async () => {
       try {
         const token = requireToken();
-        const prs = await listRelevantPullRequests(token, [], EVENT_PR_LIMIT);
+        const prs = await listRelevantPullRequests(token, [], EVENT_PR_LIMIT, null, true);
         const events = await pollReviewEvents(token, prs);
         return { success: true, events };
       } catch (error) {
