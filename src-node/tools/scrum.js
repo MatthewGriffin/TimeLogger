@@ -133,10 +133,6 @@ function groupByTicket(entries) {
  * the app, so the tab has to be useful with it switched off.
  */
 function fallbackSummary(yesterday, today, blockers) {
-  const lines = [];
-  const bullets = (items, emptyText) => items.length
-    ? items.map(item => `- ${item}`).join('\n')
-    : `- ${emptyText}`;
   const descriptions = (day, meetings) => {
     const entries = day.entries.filter(entry => Boolean(entry.from_calendar) === meetings);
     return groupByTicket(entries).map(group => {
@@ -145,37 +141,40 @@ function fallbackSummary(yesterday, today, blockers) {
       return `${ticket}${tasks} · ${formatDuration(group.minutes)}`;
     });
   };
-
-  const loggedToday = descriptions(today, false);
+  const sentenceList = (items, emptyText) => items.length ? items.join('; ') : emptyText;
+  const yesterdayWork = descriptions(yesterday, false);
+  const yesterdayMeetings = descriptions(yesterday, true);
+  const todayWork = descriptions(today, false);
+  const todayMeetings = descriptions(today, true);
   const loggedTodayTickets = new Set(
     today.entries.filter(entry => !entry.from_calendar && entry.ticket_id).map(entry => entry.ticket_id)
   );
-  const plannedDescriptions = today.planned
+  const planned = today.planned
     .filter(item => !loggedTodayTickets.has(item.ticket_id))
     .map(item => {
       const summary = String(item.summary || '').trim();
       return summary ? `${item.ticket_id}: ${summary}` : item.ticket_id;
     });
 
-  lines.push('Yesterday');
-  lines.push(bullets(descriptions(yesterday, false), 'No development tasks logged'));
-  lines.push('Meetings / training');
-  lines.push(bullets(descriptions(yesterday, true), 'None logged'));
-  lines.push('');
-  lines.push('Today');
-  lines.push(bullets(loggedToday, 'No development work logged yet'));
-  if (plannedDescriptions.length) {
-    lines.push('Planned');
-    lines.push(bullets(plannedDescriptions, 'Nothing else planned'));
-  }
-  lines.push('Meetings / training');
-  lines.push(bullets(descriptions(today, true), 'None scheduled/logged'));
-  lines.push('Blockers');
-  lines.push(bullets(
-    blockers.map(b => `${b.ticket_id ? `${b.ticket_id}: ` : ''}${String(b.title || b.note).trim()}`),
-    'None'
-  ));
-  return lines.join('\n');
+  const todayIntent = todayWork.length
+    ? `I'm working on ${sentenceList(todayWork, 'no development work logged yet')}`
+    : planned.length
+      ? `I plan to work on ${sentenceList(planned, 'the planned work')}`
+      : 'I have no development work logged yet';
+  const plannedFollowUp = todayWork.length && planned.length
+    ? ` I plan to pick up ${sentenceList(planned, 'the remaining planned work')} next.`
+    : '';
+  const blockerText = blockers.length
+    ? blockers.map(b => `${b.ticket_id ? `${b.ticket_id}: ` : ''}${String(b.title || b.note).trim()}`).join('; ')
+    : 'No blockers';
+
+  return [
+    `Yesterday I worked on: ${sentenceList(yesterdayWork, 'no development tasks logged')}.`,
+    `I also had meetings / training: ${sentenceList(yesterdayMeetings, 'none logged')}.`,
+    `Today I'll be working on: ${todayIntent}.${plannedFollowUp}`,
+    `Meetings / training today: ${sentenceList(todayMeetings, 'none scheduled or logged')}.`,
+    `Blockers: ${blockerText}.`
+  ].join(' ');
 }
 export const tools = [
   {
