@@ -22,21 +22,6 @@ let unlistenTrayNavigate: (() => void) | undefined
 let githubPollingTimer: ReturnType<typeof setInterval> | undefined
 let githubPollInFlight = false
 
-const waitForBackend = async () => {
-  // Health polling goes through Rust for the same reason API calls do: the
-  // webview origin cannot reliably reach 127.0.0.1 in the packaged app.
-  for (let attempt = 0; attempt < 60; attempt++) {
-    try {
-      if (await invoke<boolean>('backend_health')) return
-    } catch {
-      // Treat probe errors as "not ready yet" and keep polling.
-    }
-    await new Promise(resolve => setTimeout(resolve, 250))
-  }
-  throw new Error('The TimeLogger backend did not start. Check that Node.js is installed and see backend_output.log.')
-}
-
-
 /**
  * Check read-only GitHub review activity. The backend persists seen event IDs,
  * so repeated polling and app restarts do not repeat the same alert.
@@ -87,8 +72,6 @@ const pollGitHubActivity = async () => {
 
 onMounted(async () => {
   try {
-    await invoke<string>('start_backend')
-    await waitForBackend()
     await appStore.initializeApp()
     if (appStore.startupError) uiStore.reportError(appStore.startupError, 'Failed to initialize application')
   } catch (error) {
