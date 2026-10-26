@@ -50,6 +50,7 @@ fn escape_ps_single(text: &str) -> String {
 pub struct Notification {
     pub title: String,
     pub body: String,
+    pub url: Option<String>,
 }
 
 impl Notification {
@@ -57,15 +58,29 @@ impl Notification {
         Self {
             title: title.into(),
             body: body.into(),
+            url: None,
         }
+    }
+
+    pub fn with_url(mut self, url: impl Into<String>) -> Self {
+        let value = url.into();
+        if value.starts_with("https://github.com/") {
+            self.url = Some(value);
+        }
+        self
     }
 
     #[cfg(target_os = "windows")]
     pub fn show(&self) -> Result<(), String> {
+        let actions = self.url.as_ref().map(|url| format!(
+            "<actions><action content=\"Open pull request\" arguments=\"{}\" activationType=\"protocol\"/></actions>",
+            escape_xml(url),
+        )).unwrap_or_default();
         let toast_xml = format!(
-            "<toast><visual><binding template=\"ToastText02\"><text id=\"1\">{}</text><text id=\"2\">{}</text></binding></visual></toast>",
+            "<toast><visual><binding template=\"ToastGeneric\"><text>{}</text><text>{}</text></binding></visual>{}</toast>",
             escape_xml(&self.title),
             escape_xml(&self.body),
+            actions,
         );
 
         // Both WinRT assemblies must be loaded explicitly. Loading only
@@ -187,7 +202,14 @@ pub fn show_calendar_reminder(event_title: &str, time_until: &str) -> Result<(),
 }
 
 pub fn show_generic(title: &str, message: &str) -> Result<(), String> {
-    let notif = Notification::new(title, message);
+    Notification::new(title, message).show()
+}
+
+pub fn show_generic_with_url(title: &str, message: &str, url: Option<&str>) -> Result<(), String> {
+    let notif = match url {
+        Some(value) => Notification::new(title, message).with_url(value),
+        None => Notification::new(title, message),
+    };
     notif.show()
 }
 
@@ -197,8 +219,8 @@ pub fn show_generic(title: &str, message: &str) -> Result<(), String> {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn show_notification(title: String, message: String) -> Result<String, String> {
-  show_generic(&title, &message)?;
+pub fn show_notification(title: String, message: String, url: Option<String>) -> Result<String, String> {
+  show_generic_with_url(&title, &message, url.as_deref())?;
   Ok("Notification shown".to_string())
 }
 
