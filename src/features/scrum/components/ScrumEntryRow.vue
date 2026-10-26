@@ -1,7 +1,14 @@
 <template>
   <div class="scrum-entry">
     <div class="entry-main">
-      <span v-if="entry.ticketId" class="entry-ticket">{{ entry.ticketId }}</span>
+      <a
+        v-if="entry.ticketId && jiraBaseUrl"
+        class="entry-ticket"
+        :href="jiraBaseUrl + '/browse/' + entry.ticketId"
+        target="_blank"
+        rel="noopener noreferrer"
+      >{{ entry.ticketId }}</a>
+      <span v-else-if="entry.ticketId" class="entry-ticket">{{ entry.ticketId }}</span>
       <span class="entry-name">{{ entry.name }}</span>
     </div>
     <span class="entry-duration">{{ formattedDuration }}</span>
@@ -9,10 +16,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed } from 'vue'\nimport { useConfigStore } from '@/shared/stores/config'
 import type { ScrumEntry } from '@/features/scrum/models/scrum'
 
-const props = defineProps<{ entry: ScrumEntry }>()
+const props = defineProps<{ entry: ScrumEntry }>()\nconst configStore = useConfigStore()\nconst jiraBaseUrl = computed(() => String(configStore.config.jira?.baseUrl || '').replace(/\\/$/, ''))
 
 const formattedDuration = computed(() => {
   const total = props.entry.durationMins
