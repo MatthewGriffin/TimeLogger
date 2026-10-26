@@ -28,6 +28,18 @@ export function classifyPullRequest(pr) {
   return 'open';
 }
 
+/**
+ * Notifications are only relevant while a pull request is open and unmerged.
+ * Draft PRs are still open on GitHub, so they remain eligible.
+ */
+export function isOpenUnmergedPullRequest(pr) {
+  const state = String(pr?.state || '').toLowerCase();
+  return (state === 'open' || state === 'draft')
+    && !pr?.merged
+    && !pr?.merged_at
+    && !pr?.mergedAt;
+}
+
 function readConfig() {
   try {
     const row = db.prepare("SELECT value FROM settings WHERE key = 'github_config'").get();
@@ -200,7 +212,10 @@ async function pollReviewEvents(token, prs) {
   const known = new Set(db.prepare('SELECT event_id FROM github_pr_seen_events').all().map(row => row.event_id));
   const initialized = db.prepare("SELECT value FROM settings WHERE key = 'github_pr_poll_initialized'").get()?.value === 'true';
   const linkedLogin = String(readConfig().login || await account(token)).toLowerCase();
-  const results = await Promise.all(prs.slice(0, EVENT_PR_LIMIT).map(async pr => {
+  // Filter before applying the cap so old closed/merged PRs cannot crowd out
+  // active PRs or generate comment/review notifications.
+  const activePrs = prs.filter(isOpenUnmergedPullRequest);
+  const results = await Promise.all(activePrs.slice(0, EVENT_PR_LIMIT).map(async pr => {
     const base = `/repos/${pr.repository}/pulls/${pr.number}`;
     const [reviews, comments, discussionComments] = await Promise.all([
       githubGet(`${base}/reviews?per_page=100`, token).catch(() => []),
