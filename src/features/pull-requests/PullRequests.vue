@@ -10,6 +10,7 @@
       </button>
     </div>
 
+    <div class="page-body pull-requests-body">
     <div v-if="message" class="notice" :class="{ error: hasError }" role="status">{{ message }}</div>
 
     <section v-if="!connected && !checkingConnection" class="connect-card">
@@ -77,6 +78,7 @@
         <p>Try changing the search or filters. Pull requests are limited to those authored by you or connected to your review activity.</p>
       </div>
     </template>
+    </div>
   </div>
 </template>
 
@@ -225,6 +227,15 @@ onMounted(refresh)
 
 <style scoped>
 .page-sub { margin: .35rem 0 0; color: var(--color-text-muted); }
+.pull-requests-body { display: flex; flex-direction: column; gap: var(--space-lg); }
+.pull-requests-body > .notice { margin: 0; }
+.pull-requests-body > .connect-card { margin: 0; }
+.pull-requests-body > .pr-toolbar { margin: 0; padding: 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+.pull-requests-body > .summary-row { margin: 0; }
+.pr-list { grid-template-columns: 1fr; gap: var(--space-md); }
+.pr-card { padding: 1.25rem; }
+.pr-card h2 { margin: .5rem 0; }
+.pr-description { margin: .5rem 0 .75rem; }
 .btn-refresh { padding: .65rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-control); color: var(--color-text); cursor: pointer; }
 .btn-refresh:disabled { opacity: .6; cursor: wait; }
 .notice { margin: 1rem 0; padding: .85rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text-muted); overflow-wrap: anywhere; }
