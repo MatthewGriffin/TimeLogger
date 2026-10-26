@@ -44,11 +44,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'\nimport { useConfigStore } from '@/shared/stores/config'
+import { computed } from 'vue'
+import { useConfigStore } from '@/shared/stores/config'
 import ScrumEntryRow from '@/features/scrum/components/ScrumEntryRow.vue'
 import type { ScrumDay } from '@/features/scrum/models/scrum'
 
-const props = defineProps<{ day: ScrumDay; label: string }>()\nconst configStore = useConfigStore()\nconst jiraBaseUrl = computed(() => String(configStore.config.jira?.baseUrl || '').replace(/\\/$/, ''))
+const props = defineProps<{ day: ScrumDay; label: string }>()
+const configStore = useConfigStore()
+const jiraBaseUrl = computed(() => String(configStore.config.jira?.baseUrl || '').replace(/\/$/, ''))
 
 const generalNotes = computed(() => props.day.notes.filter(note => !note.ticketId))
 const ticketNotes = computed(() => props.day.notes.filter(note => Boolean(note.ticketId)))
