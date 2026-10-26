@@ -42,9 +42,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'\nimport { useConfigStore } from '@/shared/stores/config'\nimport type { ScrumPlanItem } from '@/features/scrum/models/scrumPlanItem'
+import { computed } from 'vue'
+import { useConfigStore } from '@/shared/stores/config'
+import type { ScrumPlanItem } from '@/features/scrum/models/scrumPlanItem'
 
-defineProps<{ planned: ScrumPlanItem[] }>()\nconst configStore = useConfigStore()\nconst jiraBaseUrl = computed(() => String(configStore.config.jira?.baseUrl || '').replace(/\\/$/, ''))
+defineProps<{ planned: ScrumPlanItem[] }>()
+const configStore = useConfigStore()
+const jiraBaseUrl = computed(() => String(configStore.config.jira?.baseUrl || '').replace(/\/$/, ''))
 const emit = defineEmits<{ 'open-search': []; remove: [id: number] }>()
 </script>
 
