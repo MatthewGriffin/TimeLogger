@@ -498,6 +498,26 @@ async function runTests() {
         'The matched Tempo worklog should be consumed exactly once');
     });
 
+    test('does not match a stale ID to a different Tempo time slot when durations differ', () => {
+      const shortEntry = en({
+        id: 103, date: '2026-10-27', start_time: '08:00', duration_mins: 15,
+        tempo_worklog_id: 'tempo-later',
+      });
+      const laterEntry = en({
+        id: 104, date: '2026-10-27', start_time: '10:00', duration_mins: 150,
+        name: 'Later task', tempo_worklog_id: null,
+      });
+      const laterWorklog = wl({
+        worklogId: 'tempo-later', date: '2026-10-27', startTime: '10:00',
+        durationMins: 150, description: 'Later task',
+      });
+      const result = reconcileTempoWorklogs([shortEntry, laterEntry], [laterWorklog]);
+      assert.strictEqual(result.matchesByEntryId.has(103), false,
+        'The 15-minute entry must not claim a 2-hour-30-minute worklog from a later slot');
+      assert.strictEqual(result.matchesByEntryId.get(104), laterWorklog,
+        'The later entry should receive the worklog matching its duration, description and start time');
+    });
+
     test('still prefers a known Tempo ID when the worklog shape also matches', () => {
       const first = en({ id: 201, date: '2026-09-07', tempo_worklog_id: 'tempo-1' });
       const second = en({ id: 202, date: '2026-09-07', start_time: '10:00', tempo_worklog_id: 'tempo-2' });
