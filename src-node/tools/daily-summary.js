@@ -526,7 +526,7 @@ export const tools = [
           return timeToMinutes(row.start_time) < lunchEnd && timeToMinutes(row.end_time) > lunchStart;
         });
 
-        if (conflicts.length > 0 && !args.force) {
+        if (conflicts.length > 0) {
           // Lunch can move anywhere in a window either side of its usual
           // slot, so the next free gap is suggested instead of just handing
           // back the same clashing default time for the user to fix by hand.
