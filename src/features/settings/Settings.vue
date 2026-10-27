@@ -905,7 +905,13 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
-.settings-tab-icon {\n  width: 18px;\n  height: 18px;\n  flex-shrink: 0;\n}\n\n.tab-button:hover {
+.settings-tab-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.tab-button:hover {
   background: var(--color-control);
   color: var(--color-text);
 }
