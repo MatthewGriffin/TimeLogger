@@ -10,4 +10,5 @@ export interface TimeEntry {
   submittedAt?: string
   activityType?: string
   fromCalendar?: boolean
+  isLunch?: boolean
 }

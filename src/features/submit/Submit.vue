@@ -386,7 +386,7 @@ const entriesInRange = computed(() => {
   const resolved = activeRange.value
   if (!resolved) return []
   const today = localDate(new Date())
-  return entriesStore.entries.filter(e => e.date >= resolved.start && e.date <= resolved.end && e.date <= today)
+  return entriesStore.entries.filter(e => !e.isLunch && e.date >= resolved.start && e.date <= resolved.end && e.date <= today)
 })
 
 /**

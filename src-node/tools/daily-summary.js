@@ -467,7 +467,8 @@ export const tools = [
         date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
         startTime: { type: 'string', description: 'Override lunch start time (HH:MM), used to resolve a reported conflict' },
         endTime: { type: 'string', description: 'Override lunch end time (HH:MM), used to resolve a reported conflict' },
-        force: { type: 'boolean', description: 'Create the entry even if the window overlaps an existing entry' }
+        force: { type: 'boolean', description: 'Confirm a previously reported lunch conflict' },
+        updateExisting: { type: 'boolean', description: 'Update this date’s existing lunch placeholder rather than creating another' }
       },
       required: ['date']
     },
