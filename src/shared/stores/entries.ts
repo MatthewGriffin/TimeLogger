@@ -54,7 +54,7 @@ export const useEntriesStore = defineStore('entries', () => {
   }
   const getTodayEntries = () => getEntriesByDate(localDate())
   const getEntriesByDate = (date: string) => cache.value[date] || entries.value.filter(entry => entry.date === date)
-  const getTodayHours = computed(() => (getTodayEntries().reduce((sum, e) => sum + e.duration, 0) / 60).toFixed(1))
+  const getTodayHours = computed(() => (getTodayEntries().filter(e => !e.isLunch).reduce((sum, e) => sum + e.duration, 0) / 60).toFixed(1))
   // Only covers dates already in the cache. Callers that need a guaranteed
   // complete week must load the range first (see `loadEntriesRange`), or an
   // unvisited day counts as zero hours.
@@ -64,7 +64,7 @@ export const useEntriesStore = defineStore('entries', () => {
     return (entries.value.filter(e => {
       const date = new Date(`${e.date}T00:00:00`)
       return date >= start && date <= today
-    }).reduce((sum, e) => sum + e.duration, 0) / 60).toFixed(1)
+    }).filter(e => !e.isLunch).reduce((sum, e) => sum + e.duration, 0) / 60).toFixed(1)
   })
   // Populated from the backend rather than computed here. The frontend only
   // caches dates the user has visited, so any local calculation treats an
