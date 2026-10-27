@@ -99,6 +99,7 @@ function safePr(pr, ticketKeys = []) {
     state: classifyPullRequest(pr),
     isDraft: Boolean(pr.draft),
     updatedAt: pr.updated_at || null,
+    commentCount: Number(pr.comments || 0) + Number(pr.review_comments || 0),
     createdAt: pr.created_at || null,
     mergedAt: pr.merged_at || null,
     ticketKeys: keys,
@@ -179,7 +180,7 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS,
       // actually reviewed the PR; search results alone are not trusted.
       if (!authoredByAccount && !requested && !reviewedByAccount) return null;
       const shaped = safePr({ ...pr, __linkedLogin: login }, ticketKeys);
-      return { ...shaped, requestedReviewer: requested, isAuthoredByAccount: authoredByAccount, reviewedByAccount };
+      return { ...shaped, requestedReviewer: requested, isAuthoredByAccount: authoredByAccount, reviewedByAccount, pendingReview: requested }
     } catch (error) {
       if (diagnostics) diagnostics.detailFailures.push({
         repository: item.repository, number: item.number, endpoint: 'pull-request',
