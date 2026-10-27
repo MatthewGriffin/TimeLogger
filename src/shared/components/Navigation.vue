@@ -7,15 +7,6 @@
              and a second one here made every page report two top-level
              headings to assistive tech. -->
         <span v-if="sidebarOpen" class="nav-title">TimeLogger</span>
-        <span
-          :class="['model-status', `model-status-${modelStatus.status}`]"
-          :title="modelStatus.label"
-          role="status"
-          aria-live="polite"
-        >
-          <span class="model-status-dot" aria-hidden="true"></span>
-          <span v-if="sidebarOpen" class="model-status-label">{{ modelStatus.label }}</span>
-        </span>
       </div>
       <button
         class="nav-toggle"
@@ -58,23 +49,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUiStore } from '@/shared/stores/ui'
-import { useAiModelStatusStore } from '@/shared/stores/ai-model-status'
 
 const router = useRouter()
 const uiStore = useUiStore()
-const modelStatusStore = useAiModelStatusStore()
-const modelStatus = computed(() => modelStatusStore)
-let modelStatusTimer: ReturnType<typeof setInterval> | undefined
-onMounted(() => {
-  void modelStatusStore.refresh()
-  modelStatusTimer = setInterval(() => void modelStatusStore.refresh(), 15000)
-})
-onUnmounted(() => {
-  if (modelStatusTimer) clearInterval(modelStatusTimer)
-})
 const sidebarOpen = computed(() => uiStore.sidebarOpen)
 
 const toggleSidebar = () => {
@@ -163,32 +143,6 @@ const isActive = (path: string) => {
   min-width: 0;
 }
 
-.model-status {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  min-width: 0;
-  color: var(--color-text-muted);
-  font-size: 0.72rem;
-  line-height: 1.2;
-}
-.model-status-dot {
-  width: 0.5rem;
-  height: 0.5rem;
-  flex: 0 0 0.5rem;
-  border-radius: 50%;
-  background: var(--color-text-subtle);
-}
-.model-status-loaded .model-status-dot { background: #22c55e; }
-.model-status-not-loaded .model-status-dot { background: #f59e0b; }
-.model-status-unavailable .model-status-dot { background: #ef4444; }
-.model-status-checking .model-status-dot { background: #94a3b8; animation: model-status-pulse 1.2s ease-in-out infinite; }
-.model-status-label { white-space: nowrap; }
-@keyframes model-status-pulse { 50% { opacity: .35; } }
-.navigation.collapsed .model-status { justify-content: center; }
-@media (prefers-reduced-motion: reduce) {
-  .model-status-checking .model-status-dot { animation: none; }
-}
 
 .nav-logo {
   font-size: 1.5rem;
