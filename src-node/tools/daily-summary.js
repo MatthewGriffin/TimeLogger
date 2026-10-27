@@ -505,7 +505,7 @@ export const tools = [
         // a previously chosen time) means this call is a no-op repeat of an
         // earlier sync, not a new conflict to report.
         const alreadyExists = db.prepare(
-          'SELECT id, start_time, end_time FROM daily_summary WHERE date = ? AND name = ? LIMIT 1'
+          'SELECT id, start_time, end_time FROM daily_summary WHERE date = ? AND is_lunch = 1 LIMIT 1'
         ).get(args.date, name);
         if (alreadyExists && !args.updateExisting && !args.force) {
           return { success: true, created: false, message: 'Lunch entry already exists for this day' };
@@ -553,7 +553,7 @@ export const tools = [
         }
 
         const result = alreadyExists
-          ? (db.prepare('UPDATE daily_summary SET start_time = ?, end_time = ?, duration_mins = ?, is_lunch = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(startTime, endTime, lunchEnd - lunchStart, alreadyExists.id), { lastInsertRowid: alreadyExists.id })
+          ? (db.prepare('UPDATE daily_summary SET name = ?, start_time = ?, end_time = ?, duration_mins = ?, is_lunch = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(name, startTime, endTime, lunchEnd - lunchStart, alreadyExists.id), { lastInsertRowid: alreadyExists.id })
           : db.prepare(`
               INSERT INTO daily_summary (date, name, ticket_id, start_time, end_time, duration_mins, is_lunch)
               VALUES (?, ?, NULL, ?, ?, ?, 1)

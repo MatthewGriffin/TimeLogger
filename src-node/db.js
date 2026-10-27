@@ -93,7 +93,16 @@ const columns = (table) => db.prepare(`PRAGMA table_info(${table})`).all().map(c
 const dailySummaryColumns = columns('daily_summary');
 if (!dailySummaryColumns.includes('calendar_event_id')) db.exec('ALTER TABLE daily_summary ADD COLUMN calendar_event_id TEXT');
 if (!dailySummaryColumns.includes('is_holiday')) db.exec('ALTER TABLE daily_summary ADD COLUMN is_holiday INTEGER DEFAULT 0');
-if (!dailySummaryColumns.includes('is_lunch')) db.exec('ALTER TABLE daily_summary ADD COLUMN is_lunch INTEGER DEFAULT 0');
+if (!dailySummaryColumns.includes('is_lunch')) {
+  db.exec('ALTER TABLE daily_summary ADD COLUMN is_lunch INTEGER DEFAULT 0');
+  // Older app versions stored lunch as an ordinary row; tag the configured lunch name on upgrade.
+  let lunchName = 'Lunch';
+  try {
+    const config = db.prepare("SELECT value FROM settings WHERE key = 'app_config'").get();
+    lunchName = JSON.parse(config?.value || '{}').lunch?.name || lunchName;
+  } catch { /* keep the default label */ }
+  db.prepare('UPDATE daily_summary SET is_lunch = 1 WHERE name = ? AND ticket_id IS NULL').run(lunchName);
+}
 if (!dailySummaryColumns.includes('tempo_worklog_id')) db.exec('ALTER TABLE daily_summary ADD COLUMN tempo_worklog_id TEXT');
 db.exec('CREATE INDEX IF NOT EXISTS idx_daily_summary_tempo_worklog ON daily_summary(tempo_worklog_id)');
 db.exec(`
