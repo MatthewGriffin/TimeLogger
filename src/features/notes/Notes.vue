@@ -816,7 +816,8 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 }
 .pending-topic-copy { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.82rem; }
 .pending-topic-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; margin-top: 0.6rem; }
-.pending-topic-actions select { flex: 1 1 8rem; min-width: 8rem; }
+.pending-topic-actions select,
+.pending-topic-actions input { flex: 1 1 12rem; min-width: 12rem; }
 .btn-topic-accept { white-space: nowrap; }
 @keyframes note-ai-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .note-ai-spinner { animation: none; } }
