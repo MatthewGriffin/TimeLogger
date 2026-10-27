@@ -8,7 +8,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import { db } from '../index.js';
-import { graphClient, readMicrosoftConfig, GRAPH_SCOPE_STRING, buildTokenEndpoint } from './graph-client.js';
+import { graphClient, readMicrosoftConfig, hasStoredGraphToken, GRAPH_SCOPE_STRING, buildTokenEndpoint } from './graph-client.js';
 import { ollamaClient } from './ollama-client.js';
 import { setupLimiter } from './rate-limit.js';
 import { backendPort } from '../utils/backend-port.js';
@@ -748,21 +748,26 @@ router.get('/setup/oauth-status', async (req, res) => {
     `).get();
 
     const state = row ? JSON.parse(row.value) : null;
-    const connected = !!db.prepare("SELECT value FROM settings WHERE key = 'graph_refresh_token'").get();
 
-    // Surfacing the account makes a wrong-account sign-in obvious: signing in
-    // to an org tenant with a personal address yields a guest with no mailbox.
+    // A saved access token can remain usable even when no refresh-token row is
+    // present. Conversely, an expired access token should be refreshed from
+    // the persisted refresh token before the UI is told to sign in again.
+    // Let GraphClient restore/refresh the saved session before deciding its
+    // connection state; token presence alone is not proof of a live session.
+    let connected = false;
     let account = null;
     let capabilities = null;
-    if (connected) {
+    if (hasStoredGraphToken()) {
       try {
-        if (await graphClient.initialize()) {
+        connected = await graphClient.initialize();
+        if (connected) {
           const user = await graphClient.getUserInfo();
           account = user?.mail || user?.userPrincipalName || user?.displayName || null;
           capabilities = await graphClient.getCapabilities();
         }
       } catch {
         // Advisory only; never fail the status check because of it.
+        connected = false;
       }
     }
 
