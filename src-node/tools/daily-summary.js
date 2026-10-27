@@ -186,12 +186,12 @@ export const tools = [
         const entries = db.prepare(`
           SELECT * FROM daily_summary
           WHERE date >= ? AND date <= ?
-          ${args?.unsubmittedOnly ? 'AND submitted = 0' : ''}
+          ${args?.unsubmittedOnly ? 'AND submitted = 0 AND COALESCE(is_lunch, 0) = 0' : ''}
           ORDER BY date ASC, start_time ASC
         `).all(start, end);
 
-        const totalMins = entries.reduce((sum, e) => sum + (e.duration_mins || 0), 0);
-        const submitted = entries.filter(e => e.submitted).length;
+        const totalMins = entries.filter(e => !e.is_lunch).reduce((sum, e) => sum + (e.duration_mins || 0), 0);
+        const submitted = entries.filter(e => e.submitted && !e.is_lunch).length;
 
         return {
           success: true,
@@ -202,7 +202,7 @@ export const tools = [
           totalHours: (totalMins / 60).toFixed(2),
           entriesCount: entries.length,
           submittedCount: submitted,
-          unsubmittedCount: entries.length - submitted
+          unsubmittedCount: entries.filter(e => !e.submitted && !e.is_lunch).length
         };
       } catch (error) {
         return {
@@ -688,22 +688,24 @@ export const tools = [
         
         for (const entry of entries) {
           const mins = entry.duration_mins || 0;
-          totalMins += mins;
-          if (entry.submitted) submittedCount++;
+          if (!entry.is_lunch) {
+            totalMins += mins;
+            if (entry.submitted) submittedCount++;
+          }
           
           // Daily totals
-          if (!dailyTotals[entry.date]) {
-            dailyTotals[entry.date] = 0;
+          if (!entry.is_lunch) {
+            if (!dailyTotals[entry.date]) dailyTotals[entry.date] = 0;
+            dailyTotals[entry.date] += mins;
           }
-          dailyTotals[entry.date] += mins;
           
           // Week totals
           const date = new Date(entry.date + 'T00:00:00Z');
           const dayOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getUTCDay()];
-          if (!weekTotals[dayOfWeek]) {
-            weekTotals[dayOfWeek] = 0;
+          if (!entry.is_lunch) {
+            if (!weekTotals[dayOfWeek]) weekTotals[dayOfWeek] = 0;
+            weekTotals[dayOfWeek] += mins;
           }
-          weekTotals[dayOfWeek] += mins;
         }
         
         // Convert to hours
