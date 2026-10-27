@@ -77,18 +77,27 @@
             <div v-if="notesStore.pendingTopicSuggestions[note.id]" class="pending-topic">
               <div class="pending-topic-copy">
                 <strong>AI category suggestion</strong>
-                <span>Suggested: <strong>{{ notesStore.pendingTopicSuggestions[note.id].topic }}</strong>{{ notesStore.pendingTopicSuggestions[note.id].isNew ? ' (new category)' : '' }}</span>
+                <span>Review or edit the suggested category before filing this note.</span>
               </div>
               <div class="pending-topic-actions">
-                <button class="btn-primary btn-topic-accept" @click.stop="applyPendingTopic(note.id, notesStore.pendingTopicSuggestions[note.id].topic, true)">Accept suggestion</button>
-                <select
-                  :aria-label="`Choose category for ${note.title}`"
-                  :value="pendingCategoryChoices[note.id] || note.topic"
-                  @change="setPendingCategoryChoice(note.id, ($event.target as HTMLSelectElement).value)"
-                >
-                  <option v-for="topic in notesStore.topics" :key="topic" :value="topic">{{ topic }}</option>
-                </select>
-                <button class="btn-secondary" @click.stop="applyPendingTopic(note.id, pendingCategoryChoices[note.id] || note.topic)">Use selected</button>
+                <input
+                  type="text"
+                  :aria-label="`Edit suggested category for ${note.title}`"
+                  :list="`note-categories-${note.id}`"
+                  :value="pendingCategoryChoices[note.id] ?? notesStore.pendingTopicSuggestions[note.id].topic"
+                  maxlength="30"
+                  placeholder="Category name"
+                  @input="setPendingCategoryChoice(note.id, ($event.target as HTMLInputElement).value)"
+                  @keydown.enter.prevent="applyPendingTopic(note.id, pendingCategoryChoices[note.id] ?? notesStore.pendingTopicSuggestions[note.id].topic)"
+                />
+                <datalist :id="`note-categories-${note.id}`">
+                  <option v-for="topic in notesStore.topics" :key="topic" :value="topic" />
+                </datalist>
+                <button
+                  class="btn-primary btn-topic-accept"
+                  :disabled="!(pendingCategoryChoices[note.id] ?? notesStore.pendingTopicSuggestions[note.id].topic).trim()"
+                  @click.stop="applyPendingTopic(note.id, pendingCategoryChoices[note.id] ?? notesStore.pendingTopicSuggestions[note.id].topic)"
+                >Use category</button>
               </div>
             </div>
             <p class="note-preview">{{ truncate(note.content, 100) }}</p>
@@ -446,7 +455,7 @@ const categorizeInBackground = async (note: Note) => {
     const current = notesStore.notes.find(existing => existing.id === note.id)
     if (!current || current.title !== note.title || current.content !== note.content || suggestion.topic === current.topic) return
     notesStore.setPendingTopicSuggestion(note.id, suggestion)
-    pendingCategoryChoices.value = { ...pendingCategoryChoices.value, [note.id]: current.topic || DEFAULT_TOPIC }
+    pendingCategoryChoices.value = { ...pendingCategoryChoices.value, [note.id]: suggestion.topic }
   } catch {
     // Categorisation is best-effort: the note keeps its current category.
   } finally {
@@ -458,15 +467,19 @@ const setPendingCategoryChoice = (id: string, topic: string) => {
   pendingCategoryChoices.value = { ...pendingCategoryChoices.value, [id]: topic }
 }
 
-const applyPendingTopic = async (id: string, topic: string, acceptSuggestion = false) => {
+const applyPendingTopic = async (id: string, topic: string) => {
   const suggestion = notesStore.pendingTopicSuggestions[id]
   const note = notesStore.notes.find(existing => existing.id === id)
-  if (!suggestion || !note || !topic.trim()) return
+  const requestedTopic = topic.trim().replace(/\\s+/g, ' ')
+  if (!suggestion || !note || !requestedTopic) return
+  if (requestedTopic.length > 30) {
+    uiStore.showError('Category names must be 30 characters or fewer')
+    return
+  }
   try {
-    let resolvedTopic = topic.trim()
-    if (acceptSuggestion && suggestion.isNew) {
-      resolvedTopic = await notesStore.createNoteTopic(resolvedTopic)
-    }
+    // Resolve existing names case-insensitively or create a reusable category
+    // before saving, whether the user accepted or edited the AI suggestion.
+    const resolvedTopic = await notesStore.createNoteTopic(requestedTopic)
     await notesStore.updateNote(id, note.title, note.content, resolvedTopic, note.ticketId, note.isBlocker)
     notesStore.clearPendingTopicSuggestion(id)
     const nextChoices = { ...pendingCategoryChoices.value }
