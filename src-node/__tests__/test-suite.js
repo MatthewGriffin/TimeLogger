@@ -148,7 +148,7 @@ async function runTests() {
   });
 
   test('Notes tools are present', () => {
-    const toolsList = ['get_notes', 'get_note_topics', 'create_note_topic', 'create_note', 'update_note', 'delete_note'];
+    const toolsList = ['get_notes', 'get_note_topics', 'create_note_topic', 'delete_note_topic', 'create_note', 'update_note', 'delete_note'];
     toolsList.forEach((name) => {
       const tool = tools.find((t) => t.name === name);
       assert(tool, `Missing tool: ${name}`);
@@ -311,7 +311,30 @@ async function runTests() {
 
   // SECTION 6: Setup Tool Tests
   // ============================================================
-  log(colors.yellow, '\n⚙️  SECTION 6: Setup Tools\n');
+  log(colors.yellow, '\n⚙️    await testAsync('Deleting a note category can move notes and removes the old category', async () => {
+    const source = '__TimeLogger_Delete_Source__';
+    const destination = '__TimeLogger_Delete_Destination__';
+    try {
+      await executeTool('create_note_topic', { topic: source });
+      await executeTool('create_note_topic', { topic: destination });
+      const created = await executeTool('create_note', { date: TEST_DATE, note: 'Category deletion fixture', title: 'Category deletion fixture', topic: source });
+      assert(created.success !== false, 'Fixture note should be created');
+      const moved = await executeTool('delete_note_topic', { topic: source, move_to: destination });
+      assert.strictEqual(moved.success, true, 'Category deletion should succeed');
+      assert.strictEqual(moved.affectedNotes, 1, 'One note should be moved');
+      const row = db.prepare('SELECT topic FROM notes WHERE id = ?').get(created.noteId);
+      assert.strictEqual(row.topic, destination, 'Note should be retained in destination category');
+      const topics = await executeTool('get_note_topics', {});
+      assert(!topics.topics.includes(source), 'Deleted category should no longer exist');
+      const general = await executeTool('delete_note_topic', { topic: 'General' });
+      assert.strictEqual(general.success, false, 'General must be protected');
+    } finally {
+      db.prepare('DELETE FROM notes WHERE title = ?').run('Category deletion fixture');
+      db.prepare('DELETE FROM note_topics WHERE name IN (?, ?)').run(source, destination);
+    }
+  });
+
+  SECTION 6: Setup Tools\n');
 
   await testAsync('tempo_verify_connection completes', async () => {
     try {

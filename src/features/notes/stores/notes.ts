@@ -196,6 +196,24 @@ export const useNotesStore = defineStore('notes', () => {
       error.value = err instanceof ApiError ? err.message : String(err); throw err
     } finally { isLoading.value = false }
   }
+
+  const deleteNoteTopic = async (topic: NoteTopic, moveTo?: NoteTopic) => {
+    isLoading.value = true; error.value = ''
+    try {
+      const result = await executeApi<{ success?: boolean; message?: string; affectedNotes?: number }>('delete_note_topic', { topic, ...(moveTo ? { move_to: moveTo } : {}) })
+      if (result?.success === false) throw new Error(result.message || 'Failed to delete category')
+      if (moveTo) notes.value = notes.value.map(note => note.topic.toLowerCase() === topic.toLowerCase() ? { ...note, topic: moveTo, updatedAt: new Date().toISOString() } : note)
+      else notes.value = notes.value.filter(note => note.topic.toLowerCase() !== topic.toLowerCase())
+      savedTopics.value = savedTopics.value.filter(existing => existing.toLowerCase() !== topic.toLowerCase())
+      if (selectedTopic.value.toLowerCase() === topic.toLowerCase()) selectedTopic.value = moveTo || DEFAULT_TOPIC
+      syncNotesPersist()
+      await loadNoteTopics()
+      return Number(result?.affectedNotes || 0)
+    } catch (err) {
+      error.value = err instanceof ApiError ? err.message : String(err); throw err
+    } finally { isLoading.value = false }
+  }
+
   const setEditingNote = (note: Note | null) => { editingNote.value = note }
   const setSelectedTopic = (topic: NoteTopic) => { selectedTopic.value = topic }
   const searchNotes = (query: string) => notes.value.filter(note => `${note.title}\n${note.content}`.toLowerCase().includes(query.toLowerCase()))
@@ -241,7 +259,7 @@ export const useNotesStore = defineStore('notes', () => {
 
   return {
     notes, savedTopics, selectedTopic, editingNote, showNoteEditor, isSyncing, isLoading, isSuggestingTopic, categorizingNoteIds, pendingTopicSuggestions, error, topics, notesByTopic, notesCount,
-    loadNotes, loadNoteTopics, createNoteTopic, createNote, updateNote, deleteNote, setEditingNote, setSelectedTopic, searchNotes, syncToOneNote,
+    loadNotes, loadNoteTopics, createNoteTopic, deleteNoteTopic, createNote, updateNote, deleteNote, setEditingNote, setSelectedTopic, searchNotes, syncToOneNote,
     syncAllToOneNote, suggestTopic, isCategorizing, setCategorizing, setPendingTopicSuggestion, clearPendingTopicSuggestion,
     loadNotesFromBackend, syncNotesPersist
   }

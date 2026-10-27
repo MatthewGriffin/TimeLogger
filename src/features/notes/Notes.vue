@@ -41,6 +41,7 @@
           >
             <span class="topic-name">{{ topic }}</span>
             <span class="topic-count">{{ notesStore.notesCount[topic] }}</span>
+            <button v-if="topic.toLowerCase() !== DEFAULT_TOPIC.toLowerCase()" type="button" class="btn-delete-topic" :aria-label="`Delete category ${topic}`" title="Delete category" @click.stop="deleteCategory(topic)">×</button>
           </div>
         </div>
       </div>
@@ -378,6 +379,31 @@ const createCategory = async () => {
   }
 }
 
+const deleteCategory = async (topic: string) => {
+  const count = notesStore.notesCount[topic] || 0
+  let moveTo: string | undefined
+  if (count > 0) {
+    const moveInstead = window.confirm(`Category "${topic}" contains ${count} note${count === 1 ? '' : 's'}. Press OK to move these notes to another category, or Cancel to choose whether to delete them.`)
+    if (moveInstead) {
+      const destination = window.prompt(`Move ${count} note${count === 1 ? '' : 's'} from "${topic}" to which category? Enter an existing category name or a new name.`, DEFAULT_TOPIC)
+      if (destination == null) return
+      moveTo = destination.trim().replace(/\\s+/g, ' ')
+      if (!moveTo) { uiStore.showError('Enter a destination category'); return }
+      if (moveTo.toLowerCase() === topic.toLowerCase()) { uiStore.showError('Choose a different destination category'); return }
+    } else if (!window.confirm(`Permanently delete category "${topic}" and all ${count} note${count === 1 ? '' : 's'} in it? This cannot be undone.`)) {
+      return
+    }
+  } else if (!window.confirm(`Delete the empty category "${topic}"?`)) {
+    return
+  }
+  try {
+    const affected = await notesStore.deleteNoteTopic(topic, moveTo)
+    uiStore.showSuccess(moveTo ? `Moved ${affected} note${affected === 1 ? '' : 's'} to "${moveTo}" and deleted "${topic}"` : `Deleted category "${topic}" and ${affected} note${affected === 1 ? '' : 's'}`)
+  } catch {
+    uiStore.showError(notesStore.error || 'Failed to delete category')
+  }
+}
+
 const deleteNote = async (noteId: string) => {
   try {
     await notesStore.deleteNote(noteId)
@@ -680,6 +706,18 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   border-bottom: 2px solid var(--color-accent);
   padding-bottom: calc(0.75rem - 2px);
 }
+
+.btn-delete-topic {
+  border: 0;
+  border-radius: 0.3rem;
+  background: transparent;
+  color: var(--color-text-subtle);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0.15rem 0.35rem;
+}
+.btn-delete-topic:hover { background: var(--color-control-hover); color: var(--color-danger, #dc2626); }
 
 .topic-count {
   font-size: 0.85rem;
