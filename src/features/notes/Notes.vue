@@ -407,9 +407,10 @@ const saveNote = async () => {
         note.ticketId,
         note.isBlocker
       )
-      uiStore.showSuccess('Note updated')
+      const shouldCategorize = contentChanged && !categoryChanged && !note.ticketId
+      uiStore.showSuccess(shouldCategorize ? 'Note updated — AI is categorizing the note' : 'Note updated')
       closeEditor()
-      if (contentChanged && !categoryChanged && !note.ticketId) categorizeInBackground(updated)
+      if (shouldCategorize) categorizeInBackground(updated)
     } else {
       // New note: save it straight away so writing a note is never held up
       // by the local model, then work out the topic in the background. A
