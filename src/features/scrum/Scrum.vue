@@ -3,7 +3,7 @@
     <header class="page-header">
       <div class="header-titles">
         <h1>Daily Scrum</h1>
-        <p class="page-subtitle">Your update for stand-up, built from your logged time and notes.</p>
+        <p class="page-subtitle">Your stand-up overview of yesterday's work, today's plan, blockers and related pull requests.</p>
       </div>
     </header>
 
@@ -13,22 +13,18 @@
       <div v-if="isLoading" class="loading-state">Building your update...</div>
 
       <template v-else-if="report">
-        <ScrumSummaryCard :summary="report.summary" />
-
-        <GitHubPullRequestsPanel :pull-requests="report.pullRequests" />
-
         <div class="scrum-days">
           <ScrumDayPanel :day="report.yesterday" label="Yesterday" />
-          <ScrumDayPanel :day="report.today" label="Today" />
+          <ScrumPlannedPanel
+            :planned="report.today.planned"
+            @open-search="openSearch"
+            @remove="removePlanned"
+          />
         </div>
 
-        <ScrumPlannedPanel
-          :planned="report.today.planned"
-          @open-search="openSearch"
-          @remove="removePlanned"
-        />
-
         <ScrumBlockersPanel :blockers="report.blockers" @resolve="resolveBlocker" />
+
+        <GitHubPullRequestsPanel :pull-requests="report.pullRequests" />
       </template>
     </div>
 
@@ -49,7 +45,6 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import ScrumSummaryCard from '@/features/scrum/components/ScrumSummaryCard.vue'
 import ScrumDayPanel from '@/features/scrum/components/ScrumDayPanel.vue'
 import ScrumBlockersPanel from '@/features/scrum/components/ScrumBlockersPanel.vue'
 import ScrumPlannedPanel from '@/features/scrum/components/ScrumPlannedPanel.vue'
