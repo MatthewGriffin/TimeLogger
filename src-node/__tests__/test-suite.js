@@ -467,8 +467,8 @@ async function runTests() {
     });
 
     test('still prefers a known Tempo ID when the worklog shape also matches', () => {
-      const first = en({ id: 201, tempo_worklog_id: 'tempo-1' });
-      const second = en({ id: 202, start_time: '10:00', tempo_worklog_id: 'tempo-2' });
+      const first = en({ id: 201, date: '2026-09-07', tempo_worklog_id: 'tempo-1' });
+      const second = en({ id: 202, date: '2026-09-07', start_time: '10:00', tempo_worklog_id: 'tempo-2' });
       const firstLog = wl({ worklogId: 'tempo-1' });
       const secondLog = wl({ worklogId: 'tempo-2', startTime: '10:00' });
       const result = reconcileTempoWorklogs([first, second], [firstLog, secondLog]);
