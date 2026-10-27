@@ -52,28 +52,7 @@
 
       <div v-if="loading && !prsLoaded" class="empty-state" aria-live="polite">Loading pull requests…</div>
       <section v-else-if="prsLoaded && filteredPrs.length" class="pr-list" aria-label="Pull requests">
-        <article v-for="pr in paginatedPrs" :key="pr.id" class="pr-card">
-          <div class="pr-card-top">
-            <span class="state-pill" :class="'state-' + pr.state">{{ statusLabel(pr.state) }}</span>
-            <span class="pr-number">{{ pr.repository }}#{{ pr.number }}</span>
-            <span class="pr-relationship">{{ relationshipLabel(pr) }}</span>
-          </div>
-          <h2><a :href="pr.url" @click.prevent="openPr(pr.url)">{{ pr.title }}</a></h2>
-          <p class="pr-description">{{ pr.description || 'No description provided.' }}</p>
-          <div class="pr-meta">
-            <span>Author: @{{ pr.author || 'unknown' }}</span>
-            <span v-if="pr.branch">Branch: {{ pr.branch }}</span>
-            <span v-if="pr.updatedAt">Updated {{ formatDate(pr.updatedAt) }}</span>
-            <span class="pr-comment-count" :title="`${pr.commentCount || 0} comments`">💬 {{ pr.commentCount || 0 }}</span>
-            <span v-if="pr.pendingReview" class="pr-pending-review" title="Review requested" aria-label="Review requested">⚑ Review needed</span>
-          </div>
-          <div v-if="pr.matchedTicketKeys.length" class="ticket-keys">
-            <span v-for="ticket in pr.matchedTicketKeys" :key="ticket" class="ticket-chip">{{ ticket }}</span>
-          </div>
-          <div class="pr-card-footer">
-            <a :href="pr.url" @click.prevent="openPr(pr.url)">View on GitHub ↗</a>
-          </div>
-        </article>
+        <PullRequestCard v-for="pr in paginatedPrs" :key="pr.id" :pr="pr" />
         <nav v-if="pageCount > 1" class="pagination" aria-label="Pull request pages">
           <button type="button" class="btn-refresh" :disabled="currentPage === 1" @click="currentPage--">Previous</button>
           <span>Page {{ currentPage }} of {{ pageCount }}</span>
@@ -91,8 +70,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { executeApi } from '@/shared/utils/api'
+import PullRequestCard from '@/features/pull-requests/components/PullRequestCard.vue'
 
 interface PullRequest {
   id: string
@@ -145,20 +124,6 @@ watch([searchText, relationshipFilter, stateFilter], () => { currentPage.value =
 
 const pageCount = computed(() => Math.max(1, Math.ceil(filteredPrs.value.length / pageSize)))
 const paginatedPrs = computed(() => filteredPrs.value.slice((currentPage.value - 1) * pageSize, currentPage.value * pageSize))
-
-const statusLabel = (state: string) =>
-  (({ open: 'Open', draft: 'Draft', merged: 'Merged', closed: 'Closed' }) as Record<string, string>)[state] || state
-
-const relationshipLabel = (pr: PullRequest) => pr.isAuthoredByAccount
-  ? 'Authored by you'
-  : pr.requestedReviewer
-    ? 'Review requested'
-    : 'Reviewed by you'
-
-const formatDate = (value: string) => {
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString()
-}
 
 const loadPullRequests = async () => {
   loading.value = true
@@ -229,16 +194,6 @@ const refresh = async () => {
   }
 }
 
-const openPr = async (url: string) => {
-  if (!/^https:\/\/github\.com\//i.test(url)) return
-  try {
-    await invoke('open_external_url', { url })
-  } catch (error) {
-    hasError.value = true
-    message.value = error instanceof Error ? error.message : 'Could not open the pull request.'
-  }
-}
-
 onMounted(refresh)
 </script>
 
@@ -263,25 +218,8 @@ onMounted(refresh)
 .pr-toolbar .search-field input { width: 100%; box-sizing: border-box; }
 .summary-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem; color: var(--color-text-muted); font-size: .9rem; margin-bottom: 1rem; }
 .pr-list { display: grid; grid-template-columns: 1fr; gap: var(--space-md); }
-.pr-card { min-width: 0; padding: 1.25rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-raised); }
-.pr-card-top { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; font-size: .82rem; }
-.state-pill { padding: .2rem .55rem; border-radius: 999px; border: 1px solid var(--color-border); font-weight: 600; }
-.state-open { color: var(--color-success); }
-.state-draft { color: var(--color-text-muted); }
-.state-merged { color: var(--color-accent); }
-.state-closed { color: var(--color-danger); }
-.pr-number, .pr-relationship { color: var(--color-text-muted); }
-.pr-card h2 { font-size: 1.08rem; line-height: 1.4; margin: .5rem 0; overflow-wrap: anywhere; }
-.pr-card h2 a, .pr-card-footer a { color: var(--color-accent); text-decoration: none; }
-.pr-card h2 a:hover, .pr-card-footer a:hover { text-decoration: underline; }
-.pr-description { color: var(--color-text-muted); line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; margin: .5rem 0 .75rem; }
-.pr-meta { display: flex; flex-wrap: wrap; gap: .5rem 1rem; font-size: .83rem; color: var(--color-text-muted); }
-.ticket-keys { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .75rem; }
-.ticket-chip { border-radius: .3rem; padding: .15rem .4rem; background: var(--color-control); font-size: .8rem; }
-.pr-card-footer { margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--color-border); font-size: .9rem; }
 .empty-state { margin-top: 1.5rem; padding: 2rem; text-align: center; border: 1px dashed var(--color-border); border-radius: var(--radius-md); color: var(--color-text-muted); }
 .empty-state h2 { font-size: 1.1rem; color: var(--color-text); }
 .pagination { display: flex; justify-content: center; align-items: center; gap: 1rem; margin-top: 1rem; color: var(--color-text-muted); }
-.pr-pending-review { color: var(--color-warning, #b7791f); font-weight: 600; }
 @media (max-width: 700px) { .pr-toolbar { align-items: stretch; } .pr-toolbar label, .pr-toolbar input, .pr-toolbar select { width: 100%; min-width: 0; box-sizing: border-box; } }
 </style>
