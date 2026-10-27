@@ -140,3 +140,13 @@ jobs:
             --title "TimeLogger ${{ steps.version.outputs.tag }}" `
             --generate-notes `
             --target "${{ github.event.workflow_run.head_sha }}"
+          if ($LASTEXITCODE -ne 0) {
+            # Another release run may have published this tag after our earlier
+            # existence check. Treat that race as success, but preserve real errors.
+            gh release view "${{ steps.version.outputs.tag }}" *> $null
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "::notice::${{ steps.version.outputs.tag }} was published by another run; skipping duplicate publication."
+              exit 0
+            }
+            exit 1
+          }
