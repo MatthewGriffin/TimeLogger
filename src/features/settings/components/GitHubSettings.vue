@@ -31,9 +31,6 @@
       <button class="btn-primary" type="button" :disabled="busy || !token.trim()" @click="save">
         {{ busy ? 'Connecting…' : 'Save token & test connection' }}
       </button>
-      <button v-if="status.connected" class="btn-secondary" type="button" :disabled="busy" @click="disconnect">
-        Disconnect
-      </button>
       <button class="btn-secondary" type="button" :disabled="busy" @click="refresh">
         Test connection
       </button>
@@ -41,17 +38,11 @@
 
     <p v-if="message" class="status-message" :class="{ error: failed }" role="status">{{ message }}</p>
 
-    <div class="info-box">
-      <strong>Read-only by design</strong>
-      <p>TimeLogger only makes GitHub GET requests for pull-request details and review activity. It cannot create, edit, approve, review, merge or close pull requests.</p>
-      <p>Review notifications are checked while TimeLogger is running. Alerts cannot be guaranteed while the app is closed.</p>
-    </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { invoke } from '@tauri-apps/api/core'
 import { executeApi } from '@/shared/utils/api'
 
 const token = ref('')
@@ -59,12 +50,6 @@ const busy = ref(false)
 const message = ref('')
 const failed = ref(false)
 const status = ref({ connected: false, login: '' })
-const openPr = async (url: string) => {
-  if (!/^https:\/\/github\.com\//i.test(url)) return
-  try { await invoke('open_external_url', { url }) }
-  catch (error) { failed.value = true; message.value = error instanceof Error ? error.message : 'Could not open pull request.' }
-}
-
 const refresh = async () => {
   busy.value = true
   failed.value = false
