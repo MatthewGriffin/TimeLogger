@@ -17,6 +17,7 @@ import { previousWorkingDay, isWorkingDay } from '../utils/working-days.js';
 import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, microsoftAuthorityUrl, escapeHtml } from '../utils/safe-url.js';
 import { backendPort } from '../utils/backend-port.js';
 import { extractTicketKeys, classifyPullRequest, isOpenUnmergedPullRequest } from '../tools/github-prs.js';
+import { hasStoredGraphToken } from '../api/graph-client.js';
 
 // Color codes for output
 const colors = {
@@ -200,6 +201,37 @@ async function runTests() {
 
   test('Database is initialized', () => {
     assert(db, 'Database should be initialized');
+  });
+
+  test('saved Microsoft access or refresh token counts as a restorable session candidate', () => {
+    const keys = ['graph_access_token', 'graph_refresh_token'];
+    const saved = new Map(keys.map(key => [
+      key,
+      db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? null
+    ]));
+    const removeTokens = () => db.prepare(
+      "DELETE FROM settings WHERE key IN ('graph_access_token', 'graph_refresh_token')"
+    ).run();
+    const setToken = (key, value) => db.prepare(
+      'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)'
+    ).run(key, value);
+
+    try {
+      removeTokens();
+      assert.strictEqual(hasStoredGraphToken(), false, 'No saved tokens means no session candidate');
+
+      setToken('graph_access_token', JSON.stringify({ token: 'test-access-token', expiry: Date.now() + 60000 }));
+      assert.strictEqual(hasStoredGraphToken(), true, 'A saved access token should be restored before asking for sign-in');
+
+      removeTokens();
+      setToken('graph_refresh_token', 'test-refresh-token');
+      assert.strictEqual(hasStoredGraphToken(), true, 'A saved refresh token should be used to obtain a new access token');
+    } finally {
+      removeTokens();
+      for (const [key, value] of saved) {
+        if (value !== null) setToken(key, value);
+      }
+    }
   });
 
   test('Database has daily_summary table', () => {
