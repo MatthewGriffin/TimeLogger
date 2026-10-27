@@ -42,8 +42,11 @@ test.describe('Navigation sidebar', () => {
     { label: 'Pull Requests', path: '/pull-requests' },
   ];
 
-  test('shows a link for every page', async ({ page }) => {
+  test('shows the primary sidebar links in the requested order', async ({ page }) => {
     await visit(page, ROUTES.dashboard);
+    const primaryLinks = page.locator('nav .nav-links > a');
+    await expect(primaryLinks).toHaveCount(NAV_ITEMS.length);
+    await expect(primaryLinks).toHaveText(NAV_ITEMS.map(item => item.label));
     for (const item of NAV_ITEMS) {
       await expect(page.locator(`nav a[aria-label="${item.label}"], nav a[href="#${item.path}"]`).first())
         .toBeVisible();
