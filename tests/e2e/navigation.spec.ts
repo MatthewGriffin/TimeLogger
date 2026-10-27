@@ -98,6 +98,7 @@ test.describe('Settings tabs', () => {
       await button.click();
 
       await expect(button).toHaveClass(/active/);
+      await expect(button.locator('svg')).toBeVisible();
       await expect(page.locator('h2', { hasText: heading }).first()).toBeVisible();
     });
   }
