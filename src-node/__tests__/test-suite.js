@@ -312,11 +312,13 @@ async function runTests() {
   // SECTION 6: Setup Tool Tests
   // ============================================================
   await testAsync('Deleting a note category can move notes and removes the old category', async () => {
-    const source = '__TimeLogger_Delete_Source__';
-    const destination = '__TimeLogger_Delete_Destination__';
+    const source = '__Delete_Source__';
+    const destination = '__Delete_Target__';
     try {
-      await executeTool('create_note_topic', { topic: source });
-      await executeTool('create_note_topic', { topic: destination });
+      const sourceCreated = await executeTool('create_note_topic', { topic: source });
+      const destinationCreated = await executeTool('create_note_topic', { topic: destination });
+      assert.strictEqual(sourceCreated.success, true, 'Source category should be created');
+      assert.strictEqual(destinationCreated.success, true, 'Destination category should be created');
       const created = await executeTool('create_note', { date: TEST_DATE, note: 'Category deletion fixture', title: 'Category deletion fixture', topic: source });
       assert(created.success !== false, 'Fixture note should be created');
       const moved = await executeTool('delete_note_topic', { topic: source, move_to: destination });
