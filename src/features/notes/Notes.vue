@@ -212,10 +212,14 @@
             </span>
           </div>
 
+          <div v-if="notesStore.isLoading" class="note-save-status" role="status" aria-live="polite">
+            <span class="note-save-spinner" aria-hidden="true"></span>
+            Saving note…
+          </div>
           <div class="modal-footer">
-            <button type="button" class="btn-secondary" @click="closeEditor">Cancel</button>
+            <button type="button" class="btn-secondary" :disabled="notesStore.isLoading" @click="closeEditor">Cancel</button>
             <button type="submit" class="btn-primary" :disabled="notesStore.isLoading">
-              {{ notesStore.editingNote?.id ? 'Update Note' : 'Create Note' }}
+              {{ notesStore.isLoading ? 'Saving…' : (notesStore.editingNote?.id ? 'Update Note' : 'Create Note') }}
             </button>
           </div>
         </form>
@@ -770,6 +774,9 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   flex-basis: 100%;
 }
 
+.note-save-status { display: flex; align-items: center; gap: .6rem; color: var(--color-text-muted); font-size: .9rem; padding: .5rem 0; }
+.note-save-spinner { width: .9rem; height: .9rem; border: 2px solid var(--color-border); border-top-color: var(--color-accent); border-radius: 50%; animation: note-save-spin .75s linear infinite; }
+@keyframes note-save-spin { to { transform: rotate(360deg); } }
 .note-ai-status {
   display: flex;
   align-items: center;
