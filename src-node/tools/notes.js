@@ -117,7 +117,9 @@ function matchKnownTopic(subject, knownTopics) {
   // "Copilot Usage" should still land in an existing "Copilot" topic.
   return candidates.find(topic => {
     const candidateKey = topicKey(topic);
-    return candidateKey.length >= 4 && (key.includes(candidateKey) || candidateKey.includes(key));
+    if (candidateKey.length < 4 || key.length < 4) return false;
+    // Match whole normalized phrases only, not arbitrary substrings.
+    return (` ${key} `).includes(` ${candidateKey} `) || (` ${candidateKey} `).includes(` ${key} `);
   }) || null;
 }
 
@@ -177,7 +179,7 @@ async function suggestTopic(note, knownTopics, title) {
   if (mentioned) return { topic: mentioned, isNew: false, available: true };
 
   try {
-    const subject = await withinBudget(deadline, timeoutMs => extractSubject(cleanTitle, body, timeoutMs, knownTopics));
+    const subject = await withinBudget(deadline, timeoutMs => extractSubject(cleanTitle, body, timeoutMs));
     if (!subject) return { topic: 'General', isNew: false, available: true };
 
     // A subject naming a topic that already exists reuses it as-is.
@@ -196,26 +198,12 @@ async function suggestTopic(note, knownTopics, title) {
  * candidate topics up front anchors a small model and it simply echoes one
  * back. The answer is capped at two words to keep topics broad.
  */
-async function extractSubject(title, body, timeoutMs, knownTopics = []) {
-  const categories = knownTopics.filter(topic => !isCatchAll(topic)).slice(0, 40);
-  const prompt = `Categorize this work note.
-
-Note title: ${title || '(none)'}
-Note content: ${body}
-
-Existing categories:
-${categories.length ? categories.join(', ') : '(none)'}
-
-If an existing category clearly fits the note's subject, answer with that category name exactly as listed.
-Otherwise suggest a reusable, broad category for the main product, system, technology, activity or area of work.
-Do not describe what happened in the note, and do not include names of people, ticket numbers or error messages.
-If suggesting a new category, answer with 1 or 2 words. Answer with the category name only.`;
+async function extractSubject(title, body, timeoutMs) {
+  const prompt = `Identify the main subject of this work note.\n\nNote title: ${title || '(none)'}\nNote content: ${body}\n\nName the product, application, system, technology, activity or broad area the note is about. Use the title as a strong clue when it names a subject directly. Do not choose a category based on unrelated words or invent a different product. Do not describe what happened in the note, and do not include names of people, ticket numbers or error messages. If the subject is a specific product or technology, use its proper name. Answer with a concise category name of 1 or 2 words only.`;
 
   const result = await ollamaClient.generate(prompt, null, { options: { temperature: 0 }, timeoutMs });
   const answer = normalizeTopicAnswer(result?.response);
   if (!answer) return null;
-  const exactCategory = knownTopics.find(topic => topic.toLowerCase() === answer.toLowerCase());
-  if (exactCategory) return exactCategory;
   // Small models sometimes still answer in a sentence; take the leading words.
   const words = answer.replace(/[^\w\s-]/g, ' ').trim().split(/\s+/).filter(Boolean);
   if (words.length === 0 || words.length > 6) return null;
