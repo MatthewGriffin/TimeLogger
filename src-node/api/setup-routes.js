@@ -766,8 +766,9 @@ router.get('/setup/oauth-status', async (req, res) => {
           capabilities = await graphClient.getCapabilities();
         }
       } catch {
-        // Advisory only; never fail the status check because of it.
-        connected = false;
+        // Account and capability details are advisory. A successful token
+        // restore/refresh still means the session is connected even if the
+        // profile or OneNote capability probe temporarily fails.
       }
     }
 
