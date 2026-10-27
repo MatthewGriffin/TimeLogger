@@ -506,7 +506,7 @@ export const tools = [
         // earlier sync, not a new conflict to report.
         const alreadyExists = db.prepare(
           'SELECT id, start_time, end_time FROM daily_summary WHERE date = ? AND is_lunch = 1 LIMIT 1'
-        ).get(args.date, name);
+        ).get(args.date);
         if (alreadyExists && !args.updateExisting && !args.force) {
           return { success: true, created: false, message: 'Lunch entry already exists for this day' };
         }
