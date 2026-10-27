@@ -18,7 +18,8 @@
           :class="['tab-button', { active: activeTab === tab }]"
           @click="activeTab = tab"
         >
-          {{ getTabIcon(tab) }} {{ tab }}
+          <component :is="tabIcons[tab]" class="settings-tab-icon" aria-hidden="true" />
+          <span>{{ tab }}</span>
         </button>
       </div>
 
@@ -108,8 +109,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, type Component } from 'vue'
 import { useRoute } from 'vue-router'
+import { Bot, CalendarDays, Database, Flag, Github, Info, Link, Notebook, Settings } from 'lucide-vue-next'
 import { invoke } from '@tauri-apps/api/core'
 import { executeApi, asList } from '@/shared/utils/api'
 import { asRecord, asString, asBoolean } from '@/shared/utils/schema'
@@ -330,19 +332,16 @@ const hasChanges = computed(() => {
     || JSON.stringify(sprintForm.value) !== originalSprint.value
 })
 
-const getTabIcon = (tab: SettingsTabName) => {
-  const icons: Record<SettingsTabName, string> = {
-    'Jira & Tempo': '🔗',
-    'GitHub': '🐙',
-    'Current Sprint': '🏃',
-    'OneNote': '📝',
-    'Calendar': '📆',
-    'Ollama': '🤖',
-    'App Settings': '⚙️',
-    'Database & Data': '💾',
-    'About': 'ℹ️'
-  }
-  return icons[tab] || '⚙️'
+const tabIcons: Record<SettingsTabName, Component> = {
+  'Jira & Tempo': Link,
+  'GitHub': Github,
+  'Current Sprint': Flag,
+  'OneNote': Notebook,
+  'Calendar': CalendarDays,
+  'Ollama': Bot,
+  'App Settings': Settings,
+  'Database & Data': Database,
+  'About': Info
 }
 
 const validateOllamaHost = () => {
@@ -906,7 +905,7 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
-.tab-button:hover {
+.settings-tab-icon {\n  width: 18px;\n  height: 18px;\n  flex-shrink: 0;\n}\n\n.tab-button:hover {
   background: var(--color-control);
   color: var(--color-text);
 }
