@@ -48,8 +48,8 @@ export const tools = [
           ORDER BY start_time ASC
         `).all(args.date);
         
-        const totalMins = entries.reduce((sum, e) => sum + (e.duration_mins || 0), 0);
-        const submitted = entries.filter(e => e.submitted).length;
+        const totalMins = entries.filter(e => !e.is_lunch).reduce((sum, e) => sum + (e.duration_mins || 0), 0);
+        const submitted = entries.filter(e => e.submitted && !e.is_lunch).length;
         
         return {
           success: true,
@@ -59,7 +59,7 @@ export const tools = [
           totalHours: (totalMins / 60).toFixed(2),
           entriesCount: entries.length,
           submittedCount: submitted,
-          unsubmittedCount: entries.length - submitted
+          unsubmittedCount: entries.filter(e => !e.submitted && !e.is_lunch).length
         };
       } catch (error) {
         return {
@@ -107,8 +107,8 @@ export const tools = [
         const rows = db.prepare(`
           SELECT date,
                  COUNT(*) AS entryCount,
-                 COALESCE(SUM(duration_mins), 0) AS totalMinutes,
-                 SUM(CASE WHEN submitted = 1 THEN 1 ELSE 0 END) AS submittedCount,
+                 COALESCE(SUM(CASE WHEN COALESCE(is_lunch, 0) = 0 THEN duration_mins ELSE 0 END), 0) AS totalMinutes,
+                 SUM(CASE WHEN submitted = 1 AND COALESCE(is_lunch, 0) = 0 THEN 1 ELSE 0 END) AS submittedCount,
                  SUM(CASE WHEN is_holiday = 1 THEN 1 ELSE 0 END) AS holidayCount
           FROM daily_summary
           WHERE date IN (${placeholders})
@@ -480,7 +480,7 @@ export const tools = [
           try { lunch = (JSON.parse(settings.value) || {}).lunch || {}; } catch { lunch = {}; }
         }
 
-        if (lunch.enabled === false) {
+        if (lunch.enabled === false && !args.startTime && !args.endTime) {
           return { success: true, created: false, message: 'Lunch auto-entry is disabled' };
         }
 
@@ -492,7 +492,7 @@ export const tools = [
         const configuredEnd = lunch.endTime || '13:00';
         const startTime = args.startTime || configuredStart;
         const endTime = args.endTime || configuredEnd;
-        const durationMins = timeToMinutes(configuredEnd) - timeToMinutes(configuredStart);
+        const durationMins = timeToMinutes(endTime) - timeToMinutes(startTime);
 
         // No lunch break is taken on a day off. Checked before the window test
         // because startup adds lunch before the calendar has been synced.
@@ -505,9 +505,12 @@ export const tools = [
         // a previously chosen time) means this call is a no-op repeat of an
         // earlier sync, not a new conflict to report.
         const alreadyExists = db.prepare(
-          'SELECT id FROM daily_summary WHERE date = ? AND name = ? LIMIT 1'
+          'SELECT id, start_time, end_time FROM daily_summary WHERE date = ? AND name = ? LIMIT 1'
         ).get(args.date, name);
-        if (alreadyExists && !args.force) {
+        if (alreadyExists && !args.updateExisting && !args.force) {
+          return { success: true, created: false, message: 'Lunch entry already exists for this day' };
+        }
+        if (alreadyExists && !args.startTime && !args.endTime) {
           return { success: true, created: false, message: 'Lunch entry already exists for this day' };
         }
 
@@ -516,7 +519,7 @@ export const tools = [
         // confirmation.
         const lunchStart = timeToMinutes(startTime);
         const lunchEnd = timeToMinutes(endTime);
-        const existing = db.prepare('SELECT * FROM daily_summary WHERE date = ?').all(args.date);
+        const existing = db.prepare('SELECT * FROM daily_summary WHERE date = ? AND id != ?').all(args.date, alreadyExists?.id || -1);
 
         const conflicts = existing.filter(row => {
           if (!row.start_time || !row.end_time) return false;
@@ -549,15 +552,18 @@ export const tools = [
           };
         }
 
-        const result = db.prepare(`
-          INSERT INTO daily_summary (date, name, ticket_id, start_time, end_time, duration_mins)
-          VALUES (?, ?, NULL, ?, ?, ?)
-        `).run(args.date, name, startTime, endTime, lunchEnd - lunchStart);
+        const result = alreadyExists
+          ? (db.prepare('UPDATE daily_summary SET start_time = ?, end_time = ?, duration_mins = ?, is_lunch = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(startTime, endTime, lunchEnd - lunchStart, alreadyExists.id), { lastInsertRowid: alreadyExists.id })
+          : db.prepare(`
+              INSERT INTO daily_summary (date, name, ticket_id, start_time, end_time, duration_mins, is_lunch)
+              VALUES (?, ?, NULL, ?, ?, ?, 1)
+            `).run(args.date, name, startTime, endTime, lunchEnd - lunchStart);
 
         return {
           success: true,
-          created: true,
-          message: 'Lunch entry created',
+          created: !alreadyExists,
+          updated: Boolean(alreadyExists),
+          message: alreadyExists ? 'Lunch time updated' : 'Lunch entry created',
           entryId: result.lastInsertRowid
         };
       } catch (error) {
