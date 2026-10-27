@@ -31,6 +31,12 @@
           <h2>Time Entries</h2>
           <div class="total-hours">Total: {{ totalHours }} hours</div>
         </div>
+        <div class="lunch-controls">
+          <span>Lunch for this day:</span>
+          <label>Start <input v-model="lunchStartTime" type="time" aria-label="Lunch start time" :disabled="entriesStore.isLoading" /></label>
+          <label>End <input v-model="lunchEndTime" type="time" aria-label="Lunch end time" :disabled="entriesStore.isLoading" /></label>
+          <button type="button" class="btn-nav" @click="setLunchBreak" :disabled="entriesStore.isLoading || !lunchStartTime || !lunchEndTime">Set lunch break</button>
+        </div>
 
         <div v-if="entriesByDate.length > 0" class="entries-table">
           <div class="table-header">
@@ -43,19 +49,17 @@
           </div>
           <div class="table-body">
             <div v-for="entry in entriesByDate" :key="entry.id" class="table-row">
-              <div class="col-task">{{ entry.taskName }}</div>
+              <div class="col-task">{{ entry.isLunch ? 'Lunch break' : entry.taskName }}</div>
               <div class="col-ticket">{{ entry.ticketId || '-' }}</div>
               <div class="col-time">{{ formatTime(entry.startTime) }}</div>
               <div class="col-time">{{ formatTime(entry.endTime) }}</div>
               <div class="col-duration">{{ formatDuration(entry.duration) }}</div>
               <div class="col-actions">
-                <button class="btn-icon" @click="editEntry(entry)" title="Edit">✏️</button>
-                <button 
-                  class="btn-icon delete" 
-                  @click="deleteEntry(entry.id)" 
-                  title="Delete"
-                  :disabled="entriesStore.isLoading"
-                >🗑️</button>
+                <template v-if="!entry.isLunch">
+                  <button class="btn-icon" @click="editEntry(entry)" title="Edit">✏️</button>
+                  <button class="btn-icon delete" @click="deleteEntry(entry.id)" title="Delete" :disabled="entriesStore.isLoading">🗑️</button>
+                </template>
+                <span v-else class="lunch-placeholder-label">Placeholder</span>
               </div>
             </div>
           </div>
@@ -293,6 +297,8 @@ const selectedDate = computed({
 })
 const editingEntry = ref<TimeEntry | null>(null)
 const taskNameInput = ref<HTMLInputElement | null>(null)
+const lunchStartTime = ref('12:00')
+const lunchEndTime = ref('13:00')
 
 const showTicketLookup = ref(false)
 
@@ -322,7 +328,7 @@ const entriesByDate = computed(() => {
 })
 
 const totalHours = computed(() => {
-  const minutes = entriesByDate.value.reduce((sum, e) => sum + (Number(e.duration) || 0), 0)
+  const minutes = entriesByDate.value.filter(e => !e.isLunch).reduce((sum, e) => sum + (Number(e.duration) || 0), 0)
   return (minutes / 60).toFixed(2)
 })
 
@@ -409,9 +415,31 @@ const nextDay = async () => {
   await loadEntriesForDate(selectedDate.value)
 }
 
+const syncLunchInputs = () => {
+  const lunch = entriesStore.getEntriesByDate(selectedDate.value).find(entry => entry.isLunch)
+  lunchStartTime.value = lunch?.startTime || '12:00'
+  lunchEndTime.value = lunch?.endTime || '13:00'
+}
+
+const setLunchBreak = async () => {
+  const [startHour, startMin] = lunchStartTime.value.split(':').map(Number)
+  const [endHour, endMin] = lunchEndTime.value.split(':').map(Number)
+  if (endHour * 60 + endMin <= startHour * 60 + startMin) {
+    uiStore.showError('Lunch end time must be after its start time')
+    return
+  }
+  const result = await entriesStore.ensureLunchEntry(selectedDate.value, lunchStartTime.value, lunchEndTime.value)
+  if (!result) { uiStore.showError(entriesStore.error || 'Failed to set lunch break'); return }
+  if ((result as { conflict?: boolean }).conflict) return
+  await entriesStore.loadEntries(selectedDate.value)
+  syncLunchInputs()
+  uiStore.showSuccess((result as { updated?: boolean }).updated ? 'Lunch time updated for this day' : (result as { created?: boolean }).created ? 'Lunch placeholder added for this day' : 'Lunch placeholder already exists')
+}
+
 const loadEntriesForDate = async (date: string) => {
   try {
     await entriesStore.loadEntries(date)
+    syncLunchInputs()
     await runAutoSync(date)
   } catch (error) {
     console.error('Daily entries fallback:', error)
@@ -614,6 +642,7 @@ onMounted(async () => {
     }
     // Load entries for selected date
     await entriesStore.loadEntries(selectedDate.value)
+    syncLunchInputs()
     // Load recent issues for ticket dropdown
     await entriesStore.loadRecentIssues()
     // A day with nothing from the calendar is pulled in on first view.
@@ -635,6 +664,12 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 </script>
 
 <style scoped>
+.lunch-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.65rem; margin: 0.5rem 0 1rem; color: var(--color-text-muted); font-size: 0.875rem; }
+.lunch-controls label { display: flex; align-items: center; gap: 0.35rem; }
+.lunch-controls input { padding: 0.4rem 0.5rem; }
+.lunch-placeholder-label { color: var(--color-text-subtle); font-size: 0.75rem; }
+
+
 
 /* Page Header */
 .page-header h1 {

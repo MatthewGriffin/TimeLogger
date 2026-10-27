@@ -45,7 +45,8 @@ export function normalizeTimeEntries(value: unknown): TimeEntry[] {
       activityType: entry.activity_type != null ? String(entry.activity_type) : undefined,
       // Needed to tell an untouched day apart from one already filled from the
       // calendar. The backend column is `from_calendar`; there is no `source`.
-      fromCalendar: Boolean(entry.from_calendar ?? entry.fromCalendar)
+      fromCalendar: Boolean(entry.from_calendar ?? entry.fromCalendar),
+      isLunch: Boolean(entry.is_lunch ?? entry.isLunch)
     }
   })
 }

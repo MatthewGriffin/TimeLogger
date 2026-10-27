@@ -709,7 +709,7 @@ export const tools = [
         // same as NULL: a whitespace-only value is just as unsubmittable.
         const dayEntries = db.prepare(`
           SELECT * FROM daily_summary
-          WHERE date = ? AND submitted = 0
+          WHERE date = ? AND submitted = 0 AND COALESCE(is_lunch, 0) = 0
           ORDER BY start_time ASC
         `).all(args.date);
 
@@ -1093,6 +1093,7 @@ export const tools = [
           WHERE date >= ? AND date <= ?
             AND ticket_id IS NOT NULL
             AND TRIM(ticket_id) <> ''
+            AND COALESCE(is_lunch, 0) = 0
           ORDER BY date ASC, start_time ASC
         `).all(args.from, args.to);
 
@@ -1289,6 +1290,7 @@ export const tools = [
           SELECT id, date, name, ticket_id, start_time, end_time, duration_mins, submitted
           FROM daily_summary
           WHERE date >= ? AND date <= ?
+            AND COALESCE(is_lunch, 0) = 0
         `).all(args.from, args.to);
 
         // The local log is authoritative. Remove remote-only worklogs that

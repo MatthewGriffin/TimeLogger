@@ -253,9 +253,9 @@ export const useEntriesStore = defineStore('entries', () => {
     } finally { isLoading.value = false }
   }
 
-  const ensureLunchEntry = async (date: string) => {
+  const ensureLunchEntry = async (date: string, startTime?: string, endTime?: string) => {
     try {
-      const record = asRecord(await executeApi('ensure_lunch_entry', { date }))
+      const record = asRecord(await executeApi('ensure_lunch_entry', { date, ...(startTime ? { startTime } : {}), ...(endTime ? { endTime } : {}), ...(startTime && endTime ? { updateExisting: true } : {}) }))
       if (asBoolean(record.conflict, false)) {
         // Surfaced to the daily entries screen rather than silently skipped,
         // so a day with an early/late meeting still gets a lunch entry once
@@ -310,7 +310,7 @@ export const useEntriesStore = defineStore('entries', () => {
         return record as { created?: boolean; conflict?: boolean }
       }
       pendingLunchConflict.value = null
-      if (asBoolean(record.created, false)) await loadEntries(conflict.date)
+      if (asBoolean(record.created, false) || asBoolean(record.updated, false)) await loadEntries(conflict.date)
       return record as { created?: boolean }
     } catch (err) {
       error.value = err instanceof ApiError ? err.message : 'Failed to create lunch entry'
