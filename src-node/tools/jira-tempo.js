@@ -72,15 +72,15 @@ export const reconcileTempoWorklogs = (localEntries, worklogs) => {
   const keyFor = entry => `${entry.date}|${entry.ticket_id}`;
   const sameDescription = (entry, log) =>
     String(log.description || '').trim().toLowerCase() === String(entry.name || '').trim().toLowerCase();
-  const sameStart = (entry, log) => entry.start_time &&
+  const sameStart = (entry, log) => Boolean(entry.start_time) &&
     String(log.startTime || '').slice(0, 5) === String(entry.start_time).slice(0, 5);
   const consumeMatch = (entry, predicate) => {
     const pool = remaining.get(keyFor(entry)) || [];
     const candidates = [];
     pool.forEach((log, index) => {
       if (predicate(log)) {
-        const knownId = entry.tempo_worklog_id && String(log.worklogId) === String(entry.tempo_worklog_id);
-        candidates.push({ index, score: (knownId ? 2 : 0) + (sameStart(entry, log) ? 1 : 0) });
+        candidates.push({ index, score: (sameStart(entry, log) ? 2 : 0) +
+          (sameDescription(entry, log) ? 1 : 0) });
       }
     });
     candidates.sort((a, b) => b.score - a.score);
@@ -88,25 +88,35 @@ export const reconcileTempoWorklogs = (localEntries, worklogs) => {
     matchesByEntryId.set(entry.id, pool.splice(candidates[0].index, 1)[0]);
     return true;
   };
-  // Match strong shape evidence across all rows first. This prevents an old
-  // ID on a 15-minute split segment from stealing a 3-hour worklog that
-  // clearly belongs to the 3-hour segment with the same task name.
+
+  // Exact duration + description is the strongest evidence and must be
+  // allocated globally before any fallback, so split entries cannot steal it.
   for (const entry of localEntries) {
     consumeMatch(entry, log => log.durationMins === entry.duration_mins && sameDescription(entry, log));
   }
-  // IDs remain the strongest fallback when there is no exact shape match.
-  for (const entry of localEntries) {
-    if (matchesByEntryId.has(entry.id)) continue;
-    consumeMatch(entry, log => entry.tempo_worklog_id &&
-      String(log.worklogId) === String(entry.tempo_worklog_id));
-  }
-  // Older entries may not have a stored Tempo ID. Use start time only after
-  // exact duration/description matches and known IDs have had first refusal.
+
+  // A start-time match is safer than a persisted ID: IDs can become stale
+  // when a local entry is split or a worklog is edited/recreated in Tempo.
   for (const entry of localEntries) {
     if (matchesByEntryId.has(entry.id) || !entry.start_time) continue;
-    consumeMatch(entry, log =>
-      String(log.startTime || '').slice(0, 5) === String(entry.start_time).slice(0, 5));
+    consumeMatch(entry, log => sameStart(entry, log));
   }
+
+  // Only use a stored ID when it does not contradict the local start time.
+  // If the same ticket has multiple entries, an ID-only fallback is ambiguous
+  // and must not claim a different time slot just because an old ID remains.
+  for (const entry of localEntries) {
+    if (matchesByEntryId.has(entry.id) || !entry.tempo_worklog_id) continue;
+    const pool = remaining.get(keyFor(entry)) || [];
+    const candidates = pool.filter(log =>
+      String(log.worklogId) === String(entry.tempo_worklog_id) &&
+      (!entry.start_time || sameStart(entry, log)));
+    if (candidates.length === 1) {
+      const index = pool.indexOf(candidates[0]);
+      matchesByEntryId.set(entry.id, pool.splice(index, 1)[0]);
+    }
+  }
+
   return { matchesByEntryId, unmatchedWorklogs: [...remaining.values()].flat() };
 };
 
