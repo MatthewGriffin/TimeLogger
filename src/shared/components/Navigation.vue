@@ -29,7 +29,7 @@
         :title="sidebarOpen ? undefined : item.label"
         :aria-label="item.label"
       >
-        <span class="nav-icon">{{ item.icon }}</span>
+        <component :is="item.icon" class="nav-icon-svg" aria-hidden="true" />
         <span v-if="sidebarOpen" class="nav-label">{{ item.label }}</span>
       </router-link>
     </div>
@@ -41,7 +41,7 @@
         :title="sidebarOpen ? undefined : 'Settings'"
         aria-label="Settings"
       >
-        <span class="nav-icon">⚙️</span>
+        <Settings class="nav-icon-svg" aria-hidden="true" />
         <span v-if="sidebarOpen" class="nav-label">Settings</span>
       </router-link>
     </div>
@@ -51,6 +51,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { ClipboardCheck, GitPullRequest, LayoutDashboard, MessagesSquare, Send, Settings } from 'lucide-vue-next'
 import { useUiStore } from '@/shared/stores/ui'
 
 const router = useRouter()
@@ -62,14 +63,11 @@ const toggleSidebar = () => {
 }
 
 const navItems = [
-  { path: '/', label: 'Dashboard', icon: '📊' },
-  { path: '/entries', label: 'Daily Entries', icon: '📝' },
-  { path: '/notes', label: 'Notes', icon: '📌' },
-  { path: '/scrum', label: 'Daily Scrum', icon: '📣' },
-  { path: '/calendar', label: 'Calendar', icon: '📅' },
-  { path: '/submit', label: 'Submit Time', icon: '✈️' },
-  { path: '/tempo', label: 'Tempo Status', icon: '🧾' },
-  { path: '/pull-requests', label: 'Pull Requests', icon: '🔀' }
+  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/scrum', label: 'Daily Scrum', icon: MessagesSquare },
+  { path: '/tempo', label: 'Tempo Status', icon: ClipboardCheck },
+  { path: '/submit', label: 'Submit Time', icon: Send },
+  { path: '/pull-requests', label: 'Pull Requests', icon: GitPullRequest }
 ]
 
 const isActive = (path: string) => {
@@ -223,13 +221,10 @@ const isActive = (path: string) => {
   padding-bottom: calc(0.75rem - 2px);
 }
 
-.nav-icon {
-  font-size: 1.2rem;
+.nav-icon-svg {
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
 }
 
 .nav-label {
