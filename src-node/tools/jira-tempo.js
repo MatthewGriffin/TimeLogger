@@ -54,6 +54,62 @@ import { readSprintConfig } from './sprint.js';
 
 export { takeDuplicateWorklog, resolveJiraCredentials, jiraHeaders, daysAhead, learnFutureLimit, isoDaysFromToday, classifyWorklogFailure };
 
+/**
+ * Match local entries to Tempo worklogs without letting a stale persisted ID
+ * override a better duration/description match. Splitting a local task can
+ * leave the old Tempo ID attached to the short segment while the remote
+ * worklog now represents the longer segment. Resolve strong shape matches
+ * across the whole day/ticket pool before falling back to IDs or start times.
+ */
+export const reconcileTempoWorklogs = (localEntries, worklogs) => {
+  const remaining = new Map();
+  for (const log of worklogs) {
+    const key = `${log.date}|${log.ticketId}`;
+    if (!remaining.has(key)) remaining.set(key, []);
+    remaining.get(key).push(log);
+  }
+  const matchesByEntryId = new Map();
+  const keyFor = entry => `${entry.date}|${entry.ticket_id}`;
+  const sameDescription = (entry, log) =>
+    String(log.description || '').trim().toLowerCase() === String(entry.name || '').trim().toLowerCase();
+  const sameStart = (entry, log) => entry.start_time &&
+    String(log.startTime || '').slice(0, 5) === String(entry.start_time).slice(0, 5);
+  const consumeMatch = (entry, predicate) => {
+    const pool = remaining.get(keyFor(entry)) || [];
+    const candidates = [];
+    pool.forEach((log, index) => {
+      if (predicate(log)) {
+        const knownId = entry.tempo_worklog_id && String(log.worklogId) === String(entry.tempo_worklog_id);
+        candidates.push({ index, score: (knownId ? 2 : 0) + (sameStart(entry, log) ? 1 : 0) });
+      }
+    });
+    candidates.sort((a, b) => b.score - a.score);
+    if (!candidates.length) return false;
+    matchesByEntryId.set(entry.id, pool.splice(candidates[0].index, 1)[0]);
+    return true;
+  };
+  // Match strong shape evidence across all rows first. This prevents an old
+  // ID on a 15-minute split segment from stealing a 3-hour worklog that
+  // clearly belongs to the 3-hour segment with the same task name.
+  for (const entry of localEntries) {
+    consumeMatch(entry, log => log.durationMins === entry.duration_mins && sameDescription(entry, log));
+  }
+  // IDs remain the strongest fallback when there is no exact shape match.
+  for (const entry of localEntries) {
+    if (matchesByEntryId.has(entry.id)) continue;
+    consumeMatch(entry, log => entry.tempo_worklog_id &&
+      String(log.worklogId) === String(entry.tempo_worklog_id));
+  }
+  // Older entries may not have a stored Tempo ID. Use start time only after
+  // exact duration/description matches and known IDs have had first refusal.
+  for (const entry of localEntries) {
+    if (matchesByEntryId.has(entry.id) || !entry.start_time) continue;
+    consumeMatch(entry, log =>
+      String(log.startTime || '').slice(0, 5) === String(entry.start_time).slice(0, 5));
+  }
+  return { matchesByEntryId, unmatchedWorklogs: [...remaining.values()].flat() };
+};
+
 export const tools = [
   {
     name: 'tempo_get_future_limit',
@@ -1097,34 +1153,11 @@ export const tools = [
           ORDER BY date ASC, start_time ASC
         `).all(args.from, args.to);
 
-        const remaining = new Map();
-        for (const log of worklogs) {
-          const key = `${log.date}|${log.ticketId}`;
-          if (!remaining.has(key)) remaining.set(key, []);
-          remaining.get(key).push(log);
-        }
+        const { matchesByEntryId, unmatchedWorklogs } =
+          reconcileTempoWorklogs(localEntries, worklogs);
 
         const reconciled = localEntries.map(entry => {
-          const key = `${entry.date}|${entry.ticket_id}`;
-          const pool = remaining.get(key) || [];
-          // Prefer the persisted Tempo ID. For older rows, match by start
-          // time first, then duration and description, so two blocks on the
-          // same ticket cannot be paired in arbitrary order.
-          let index = entry.tempo_worklog_id
-            ? pool.findIndex(log => String(log.worklogId) === String(entry.tempo_worklog_id))
-            : -1;
-          if (index === -1 && entry.start_time) {
-            const entryStart = String(entry.start_time).slice(0, 5);
-            index = pool.findIndex(log => String(log.startTime || '').slice(0, 5) === entryStart);
-          }
-          if (index === -1) {
-            const description = String(entry.name || '').trim().toLowerCase();
-            index = pool.findIndex(log =>
-              log.durationMins === entry.duration_mins &&
-              String(log.description || '').trim().toLowerCase() === description
-            );
-          }
-          const match = index >= 0 ? pool.splice(index, 1)[0] : null;
+          const match = matchesByEntryId.get(entry.id) ?? null;
 
           if (match && String(entry.tempo_worklog_id || '') !== String(match.worklogId)) {
             db.prepare(`
@@ -1156,8 +1189,7 @@ export const tools = [
           };
         });
 
-        const unmatchedWorklogs = [...remaining.values()].flat()
-          .sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
+        unmatchedWorklogs.sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
 
         // The local entry list is authoritative. A Tempo-only worklog that
         // overlaps one of our local entries is a duplicate, not something to
