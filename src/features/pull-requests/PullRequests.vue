@@ -46,13 +46,13 @@
       </div>
 
       <div class="summary-row">
-        <span>{{ filteredPrs.length }} of {{ prs.length }} pull requests</span>
+        <span>{{ filteredPrs.length }} matching · showing {{ paginatedPrs.length }} on this page</span>
         <span v-if="login">Connected as @{{ login }}</span>
       </div>
 
       <div v-if="loading && !prsLoaded" class="empty-state" aria-live="polite">Loading pull requests…</div>
       <section v-else-if="prsLoaded && filteredPrs.length" class="pr-list" aria-label="Pull requests">
-        <article v-for="pr in filteredPrs" :key="pr.id" class="pr-card">
+        <article v-for="pr in paginatedPrs" :key="pr.id" class="pr-card">
           <div class="pr-card-top">
             <span class="state-pill" :class="'state-' + pr.state">{{ statusLabel(pr.state) }}</span>
             <span class="pr-number">{{ pr.repository }}#{{ pr.number }}</span>
@@ -64,6 +64,8 @@
             <span>Author: @{{ pr.author || 'unknown' }}</span>
             <span v-if="pr.branch">Branch: {{ pr.branch }}</span>
             <span v-if="pr.updatedAt">Updated {{ formatDate(pr.updatedAt) }}</span>
+            <span class="pr-comment-count" :title="`${pr.commentCount || 0} comments`">💬 {{ pr.commentCount || 0 }}</span>
+            <span v-if="pr.pendingReview" class="pr-pending-review" title="Review requested" aria-label="Review requested">⚑ Review needed</span>
           </div>
           <div v-if="pr.matchedTicketKeys.length" class="ticket-keys">
             <span v-for="ticket in pr.matchedTicketKeys" :key="ticket" class="ticket-chip">{{ ticket }}</span>
@@ -72,6 +74,11 @@
             <a :href="pr.url" @click.prevent="openPr(pr.url)">View on GitHub ↗</a>
           </div>
         </article>
+        <nav v-if="pageCount > 1" class="pagination" aria-label="Pull request pages">
+          <button type="button" class="btn-refresh" :disabled="currentPage === 1" @click="currentPage--">Previous</button>
+          <span>Page {{ currentPage }} of {{ pageCount }}</span>
+          <button type="button" class="btn-refresh" :disabled="currentPage === pageCount" @click="currentPage++">Next</button>
+        </nav>
       </section>
       <div v-else-if="prsLoaded" class="empty-state">
         <h2>No pull requests match these filters</h2>
@@ -83,7 +90,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { executeApi } from '@/shared/utils/api'
 
@@ -103,6 +110,8 @@ interface PullRequest {
   reviewedByAccount?: boolean
   matchedTicketKeys: string[]
   updatedAt: string | null
+  commentCount?: number
+  pendingReview?: boolean
 }
 
 const connected = ref(false)
@@ -116,6 +125,8 @@ const prsLoaded = ref(false)
 const searchText = ref('')
 const relationshipFilter = ref('all')
 const stateFilter = ref('all')
+const currentPage = ref(1)
+const pageSize = 10
 
 const filteredPrs = computed(() => {
   const query = searchText.value.trim().toLowerCase()
@@ -129,6 +140,11 @@ const filteredPrs = computed(() => {
     return relationshipMatches && stateMatches && searchMatches
   })
 })
+
+watch([searchText, relationshipFilter, stateFilter], () => { currentPage.value = 1 })
+
+const pageCount = computed(() => Math.max(1, Math.ceil(filteredPrs.value.length / pageSize)))
+const paginatedPrs = computed(() => filteredPrs.value.slice((currentPage.value - 1) * pageSize, currentPage.value * pageSize))
 
 const statusLabel = (state: string) =>
   (({ open: 'Open', draft: 'Draft', merged: 'Merged', closed: 'Closed' }) as Record<string, string>)[state] || state
@@ -161,6 +177,7 @@ const loadPullRequests = async () => {
       return
     }
     prs.value = Array.isArray(result.prs) ? result.prs : []
+    currentPage.value = 1
     prsLoaded.value = true
     const diagnostics = result.diagnostics
     const failures = diagnostics?.detailFailures || []
@@ -264,5 +281,7 @@ onMounted(refresh)
 .pr-card-footer { margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--color-border); font-size: .9rem; }
 .empty-state { margin-top: 1.5rem; padding: 2rem; text-align: center; border: 1px dashed var(--color-border); border-radius: var(--radius-md); color: var(--color-text-muted); }
 .empty-state h2 { font-size: 1.1rem; color: var(--color-text); }
+.pagination { display: flex; justify-content: center; align-items: center; gap: 1rem; margin-top: 1rem; color: var(--color-text-muted); }
+.pr-pending-review { color: var(--color-warning, #b7791f); font-weight: 600; }
 @media (max-width: 700px) { .pr-toolbar { align-items: stretch; } .pr-toolbar label, .pr-toolbar input, .pr-toolbar select { width: 100%; min-width: 0; box-sizing: border-box; } }
 </style>
