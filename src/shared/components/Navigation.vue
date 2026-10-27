@@ -51,7 +51,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { ClipboardCheck, GitPullRequest, LayoutDashboard, MessagesSquare, Send, Settings } from 'lucide-vue-next'
+import { BookOpen, CalendarDays, ClipboardCheck, ClipboardList, GitPullRequest, LayoutDashboard, MessagesSquare, Send, Settings } from 'lucide-vue-next'
 import { useUiStore } from '@/shared/stores/ui'
 
 const router = useRouter()
@@ -64,7 +64,10 @@ const toggleSidebar = () => {
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/entries', label: 'Daily Entries', icon: ClipboardList },
+  { path: '/notes', label: 'Notes', icon: BookOpen },
   { path: '/scrum', label: 'Daily Scrum', icon: MessagesSquare },
+  { path: '/calendar', label: 'Calendar', icon: CalendarDays },
   { path: '/tempo', label: 'Tempo Status', icon: ClipboardCheck },
   { path: '/submit', label: 'Submit Time', icon: Send },
   { path: '/pull-requests', label: 'Pull Requests', icon: GitPullRequest }
