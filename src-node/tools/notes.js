@@ -8,6 +8,14 @@ import { ollamaClient } from '../api/ollama-client.js';
 // The only built-in topic. Every other topic comes from actual use, so an
 // empty category never lingers in the list.
 const DEFAULT_NOTE_TOPICS = ['General'];
+// Delete an unused custom category after a note leaves it. General is permanent.
+function removeEmptyTopic(topic) {
+  const name = String(topic || '').trim();
+  if (!name || name.toLowerCase() === 'general') return;
+  const used = db.prepare('SELECT 1 FROM notes WHERE topic = ? COLLATE NOCASE LIMIT 1').get(name);
+  if (!used) db.prepare('DELETE FROM note_topics WHERE name = ? COLLATE NOCASE').run(name);
+}
+
 
 /**
  * Topics are no longer a fixed enum: any topic ever used on a note is a
@@ -245,6 +253,36 @@ export const tools = [
     }
   },
   {
+    name: 'delete_note_topic',
+    description: 'Delete a category and its notes, or move the notes to another category. General cannot be deleted.',
+    parameters: { type: 'object', properties: { topic: { type: 'string' }, move_to: { type: 'string' } }, required: ['topic'] },
+    handler: async (args) => {
+      try {
+        const topic = String(args.topic || '').trim();
+        if (!topic) return { success: false, message: 'Category name is required' };
+        if (topic.toLowerCase() === 'general') return { success: false, message: 'The General category cannot be deleted' };
+        const existing = getKnownTopics().find(item => item.toLowerCase() === topic.toLowerCase());
+        if (!existing) return { success: false, message: 'Category not found' };
+        const target = String(args.move_to || '').trim().replace(/\s+/g, ' ');
+        if (target && target.toLowerCase() === existing.toLowerCase()) return { success: false, message: 'Choose a different destination category' };
+        if (target.length > 30) return { success: false, message: 'Category names must be 30 characters or fewer' };
+        const count = Number(db.prepare('SELECT COUNT(*) AS count FROM notes WHERE topic = ? COLLATE NOCASE').get(existing)?.count || 0);
+        db.transaction(() => {
+          if (target) {
+            db.prepare('INSERT OR IGNORE INTO note_topics (name) VALUES (?)').run(target);
+            db.prepare('UPDATE notes SET topic = ?, updated_at = CURRENT_TIMESTAMP WHERE topic = ? COLLATE NOCASE').run(target, existing);
+          } else {
+            db.prepare('DELETE FROM notes WHERE topic = ? COLLATE NOCASE').run(existing);
+          }
+          db.prepare('DELETE FROM note_topics WHERE name = ? COLLATE NOCASE').run(existing);
+        })();
+        return { success: true, topic: existing, movedTo: target || null, affectedNotes: count, deletedNotes: target ? 0 : count, topics: getKnownTopics() };
+      } catch (error) {
+        return { success: false, message: 'Failed to delete category: ' + error.message };
+      }
+    }
+  },
+  {
     name: 'suggest_note_topic',
     description: 'Ask the local AI to suggest a topic for a note, flagging whether it is a brand-new topic that needs user confirmation',
     parameters: {
@@ -423,6 +461,9 @@ export const tools = [
     },
     handler: async (args) => {
       try {
+        const previous = db.prepare('SELECT topic FROM notes WHERE id = ?').get(args.id);
+        if (!previous) return { success: false, message: 'No note found with ID ' + args.id };
+        const previousTopic = previous.topic;
         const ticketId = (args.ticket_id || '').trim();
         // Linking a note to a ticket always wins over any topic the user
         // picked, so ticket notes stay grouped under their ticket number.
@@ -434,6 +475,7 @@ export const tools = [
           SET note = ?, topic = ?, title = COALESCE(?, title), ticket_id = ?, updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
         `).run(args.note, topic, args.title || null, ticketId || null, args.id);
+        if (String(previousTopic || '').toLowerCase() !== String(topic || '').toLowerCase()) removeEmptyTopic(previousTopic);
 
         // Re-raising a blocker reopens it, so a recurring problem is not
         // hidden by the resolution stamp left from the last time it happened.
@@ -496,6 +538,7 @@ export const tools = [
     },
     handler: async (args) => {
       try {
+        const existing = db.prepare('SELECT topic FROM notes WHERE id = ?').get(args.id);
         const result = db.prepare('DELETE FROM notes WHERE id = ?').run(args.id);
         
         if (result.changes === 0) {
@@ -505,6 +548,7 @@ export const tools = [
           };
         }
         
+        removeEmptyTopic(existing?.topic);
         return {
           success: true,
           message: 'Note deleted'
