@@ -61,6 +61,25 @@ export function readMicrosoftConfig() {
   }
 }
 
+/**
+ * Whether a persisted delegated Graph token exists.
+ *
+ * A refresh token is preferred because it can mint a new access token, but a
+ * still-valid saved access token is also a usable session. OAuth status must
+ * try initializing either kind of saved session rather than treating the
+ * absence of the refresh-token row alone as proof that the user signed out.
+ */
+export function hasStoredGraphToken() {
+  try {
+    return Boolean(db.prepare(
+      "SELECT key FROM settings WHERE key IN ('graph_refresh_token', 'graph_access_token') LIMIT 1"
+    ).get());
+  } catch (error) {
+    console.error('Failed to check stored Graph tokens:', error.message);
+    return false;
+  }
+}
+
 // Rate limiting configuration
 const RATE_LIMIT_RETRY_AFTER = 5000; // 5 seconds
 const SERVER_ERROR_RETRY_AFTER = 1500; // doubles per attempt
