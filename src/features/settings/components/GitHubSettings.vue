@@ -1,10 +1,7 @@
 <template>
   <section class="settings-section">
     <h2>GitHub Pull Requests</h2>
-    <p class="description">
-      Connect the GitHub account you want TimeLogger to track. Pull requests are shown only when
-      that account authored them, is currently requested as a reviewer, or has reviewed them before. The integration is read-only.
-    </p>
+    <p class="description">Enter a GitHub token, then test the connection.</p>
 
     <div class="connection-state" :class="{ connected: status.connected }">
       <strong>{{ status.connected ? 'Connected' : 'Not connected' }}</strong>
