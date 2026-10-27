@@ -387,7 +387,7 @@ const deleteCategory = async (topic: string) => {
     if (moveInstead) {
       const destination = window.prompt(`Move ${count} note${count === 1 ? '' : 's'} from "${topic}" to which category? Enter an existing category name or a new name.`, DEFAULT_TOPIC)
       if (destination == null) return
-      moveTo = destination.trim().replace(/\\s+/g, ' ')
+      moveTo = destination.trim().replace(/\s+/g, ' ')
       if (!moveTo) { uiStore.showError('Enter a destination category'); return }
       if (moveTo.toLowerCase() === topic.toLowerCase()) { uiStore.showError('Choose a different destination category'); return }
     } else if (!window.confirm(`Permanently delete category "${topic}" and all ${count} note${count === 1 ? '' : 's'} in it? This cannot be undone.`)) {

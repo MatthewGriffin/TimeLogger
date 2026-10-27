@@ -334,6 +334,24 @@ async function runTests() {
     }
   });
 
+  await testAsync('Reassigning a note removes its now-empty custom category', async () => {
+    const source = '__TimeLogger_Auto_Cleanup_Source__';
+    const destination = '__TimeLogger_Auto_Cleanup_Destination__';
+    try {
+      await executeTool('create_note_topic', { topic: source });
+      await executeTool('create_note_topic', { topic: destination });
+      const created = await executeTool('create_note', { date: TEST_DATE, note: 'Auto cleanup fixture', title: 'Auto cleanup fixture', topic: source });
+      const updated = await executeTool('update_note', { id: Number(created.noteId), note: 'Auto cleanup fixture updated', title: 'Auto cleanup fixture', topic: destination });
+      assert.strictEqual(updated.success, true, 'Note should be reassigned');
+      const topics = await executeTool('get_note_topics', {});
+      assert(!topics.topics.includes(source), 'Empty source category should be removed');
+      assert(topics.topics.includes(destination), 'Destination category should remain');
+    } finally {
+      db.prepare('DELETE FROM notes WHERE title = ?').run('Auto cleanup fixture');
+      db.prepare('DELETE FROM note_topics WHERE name IN (?, ?)').run(source, destination);
+    }
+  });
+
   // SECTION 6: Setup Tools
   // ============================================================
   log(colors.yellow, '\n⚙️  SECTION 6: Setup Tools\n');
