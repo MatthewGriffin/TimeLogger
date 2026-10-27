@@ -36,7 +36,7 @@
     "@playwright/test": "^1.64.1",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/cli": "^2.12.4",
-    "@types/node": "^24.13.3",
+    "@types/node": "^26.6.5",
     "@vitejs/plugin-vue": "^6.0.10",
     "@vue/tsconfig": "^0.9.1",
     "typescript": "~7.0.2",
