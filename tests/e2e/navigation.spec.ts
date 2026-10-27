@@ -36,13 +36,10 @@ test.describe('Routing', () => {
 test.describe('Navigation sidebar', () => {
   const NAV_ITEMS = [
     { label: 'Dashboard', path: '/' },
-    { label: 'Daily Entries', path: '/entries' },
-    { label: 'Notes', path: '/notes' },
-    { label: 'Calendar', path: '/calendar' },
-    { label: 'Submit Time', path: '/submit' },
+    { label: 'Daily Scrum', path: '/scrum' },
     { label: 'Tempo Status', path: '/tempo' },
+    { label: 'Submit Time', path: '/submit' },
     { label: 'Pull Requests', path: '/pull-requests' },
-    { label: 'Settings', path: '/settings' },
   ];
 
   test('shows a link for every page', async ({ page }) => {
