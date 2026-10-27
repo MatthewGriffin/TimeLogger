@@ -311,7 +311,7 @@ async function runTests() {
 
   // SECTION 6: Setup Tool Tests
   // ============================================================
-  log(colors.yellow, '\n⚙️    await testAsync('Deleting a note category can move notes and removes the old category', async () => {
+  await testAsync('Deleting a note category can move notes and removes the old category', async () => {
     const source = '__TimeLogger_Delete_Source__';
     const destination = '__TimeLogger_Delete_Destination__';
     try {
@@ -334,7 +334,9 @@ async function runTests() {
     }
   });
 
-  SECTION 6: Setup Tools\n');
+  // SECTION 6: Setup Tools
+  // ============================================================
+  log(colors.yellow, '\n⚙️  SECTION 6: Setup Tools\n');
 
   await testAsync('tempo_verify_connection completes', async () => {
     try {
@@ -1056,6 +1058,15 @@ async function runTests() {
     const second = await executeTool('ensure_lunch_entry', { date: TEST_DATE });
     assert.strictEqual(second.created, false);
     assert.strictEqual(second.conflict, undefined, 'An existing lunch entry must not be reported as a conflict');
+    const lunch = db.prepare('SELECT is_lunch, start_time, end_time, duration_mins FROM daily_summary WHERE date = ? AND name = ?').get(TEST_DATE, 'Lunch');
+    assert.strictEqual(lunch.is_lunch, 1, 'Lunch must be marked as a non-work placeholder');
+    const changed = await executeTool('ensure_lunch_entry', { date: TEST_DATE, startTime: '12:30', endTime: '13:15', updateExisting: true });
+    assert.strictEqual(changed.updated, true, 'Setting a different time should update the same placeholder');
+    const movedLunch = db.prepare('SELECT start_time, end_time, duration_mins, is_lunch FROM daily_summary WHERE date = ? AND name = ?').get(TEST_DATE, 'Lunch');
+    assert.strictEqual(movedLunch.start_time, '12:30');
+    assert.strictEqual(movedLunch.end_time, '13:15');
+    assert.strictEqual(movedLunch.duration_mins, 45);
+    assert.strictEqual(movedLunch.is_lunch, 1);
     cleanTestFixtures();
   });
 
