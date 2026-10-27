@@ -10,6 +10,7 @@ import {
   learnFutureLimit,
   daysAhead,
   isoDaysFromToday,
+  reconcileTempoWorklogs,
 } from '../tools/jira-tempo.js';
 import { ukBankHolidays, isUkBankHoliday } from '../utils/uk-holidays.js';
 import { previousWorkingDay, isWorkingDay } from '../utils/working-days.js';
@@ -450,6 +451,29 @@ async function runTests() {
     });
     const en = (o) => ({
       ticket_id: 'TIME-1', name: 'Work', start_time: '09:00', duration_mins: 60, ...o,
+    });
+
+    test('matches a long Tempo worklog to the matching long split entry instead of a short entry with its stale ID', () => {
+      const shortEntry = en({ id: 101, date: '2026-09-07', start_time: '09:00', duration_mins: 15, tempo_worklog_id: 'tempo-99' });
+      const longEntry = en({ id: 102, date: '2026-09-07', start_time: '09:45', duration_mins: 180, tempo_worklog_id: null });
+      const longWorklog = wl({ worklogId: 'tempo-99', date: '2026-09-07', startTime: '09:00', durationMins: 180, description: 'Work' });
+      const result = reconcileTempoWorklogs([shortEntry, longEntry], [longWorklog]);
+      assert.strictEqual(result.matchesByEntryId.get(102), longWorklog,
+        'The 3-hour entry should match the 3-hour Tempo worklog');
+      assert.strictEqual(result.matchesByEntryId.has(101), false,
+        'The 15-minute split entry should remain unmatched');
+      assert.strictEqual(result.unmatchedWorklogs.length, 0,
+        'The matched Tempo worklog should be consumed exactly once');
+    });
+
+    test('still prefers a known Tempo ID when the worklog shape also matches', () => {
+      const first = en({ id: 201, tempo_worklog_id: 'tempo-1' });
+      const second = en({ id: 202, start_time: '10:00', tempo_worklog_id: 'tempo-2' });
+      const firstLog = wl({ worklogId: 'tempo-1' });
+      const secondLog = wl({ worklogId: 'tempo-2', startTime: '10:00' });
+      const result = reconcileTempoWorklogs([first, second], [firstLog, secondLog]);
+      assert.strictEqual(result.matchesByEntryId.get(201), firstLog);
+      assert.strictEqual(result.matchesByEntryId.get(202), secondLog);
     });
 
     test('detects an identical worklog already in Tempo', () => {
