@@ -285,52 +285,6 @@
       </div>
       </div>
 
-      <!-- Submission History -->
-      <div class="submit-right">
-        <div class="history-section">
-          <h2>Submission History</h2>
-          <div class="history-list">
-            <div
-              v-for="submission in submissionHistory"
-              :key="submission.id"
-              :class="['history-item', `status-${submission.status}`]"
-            >
-              <div class="history-icon">{{ submission.status === 'success' ? '✓' : submission.status === 'partial' ? '!' : '✕' }}</div>
-              <div class="history-content">
-                <div class="history-date">{{ formatDate(submission.date) }}</div>
-                <div class="history-count">
-                  {{ submission.entryCount }} {{ submission.entryCount === 1 ? 'entry' : 'entries' }}
-                  <span v-if="submission.failedCount > 0"> · {{ submission.failedCount }} failed</span>
-                </div>
-                <div class="history-time">{{ formatSubmittedAt(submission.submittedAt) }}</div>
-              </div>
-              <div class="history-status">{{ submission.status }}</div>
-            </div>
-          </div>
-          <div v-if="submissionHistory.length === 0" class="empty-state small">
-            <p>No submissions yet</p>
-          </div>
-        </div>
-
-        <!-- Summary -->
-        <div class="summary-section">
-          <h2>Summary</h2>
-          <div class="summary-stats">
-            <div class="stat">
-              <span class="stat-label">Total Hours</span>
-              <span class="stat-value">{{ totalHours }}</span>
-            </div>
-            <div class="stat">
-              <span class="stat-label">Selected Hours</span>
-              <span class="stat-value">{{ selectedHours }}</span>
-            </div>
-            <div class="stat">
-              <span class="stat-label">Pending</span>
-              <span class="stat-value">{{ pendingCount }}</span>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- AI Summary Modal -->
@@ -389,12 +343,8 @@ const loadTypes = async () => {
 }
 
 onMounted(loadTypes)
-onMounted(() => entriesStore.loadSubmissionHistory())
 onMounted(() => entriesStore.loadTempoFutureLimit())
 
-// Submission history comes from the backend, which records every run at
-// submit time.
-const submissionHistory = computed(() => entriesStore.submissionHistory)
 
 /**
  * Resolve a named range to concrete start/end dates.
@@ -1016,7 +966,7 @@ const reconcileDuration = async (row: ReconciledRow) => {
 .submit-content {
   flex: 1;
   display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2rem;
   padding: 2rem 3rem;
   max-width: 1600px;
@@ -1328,21 +1278,6 @@ const reconcileDuration = async (row: ReconciledRow) => {
 }
 
 /* Sidebar */
-.submit-right {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
-}
-
-.history-section,
-.summary-section {
-  background: rgba(30, 41, 59, 0.8);
-  border: 1px solid var(--color-border);
-  border-radius: 0.75rem;
-  padding: 1.5rem;
-  backdrop-filter: blur(10px);
-}
-
 .history-section h2,
 .summary-section h2 {
   font-size: 1.1rem;
@@ -1509,11 +1444,7 @@ const reconcileDuration = async (row: ReconciledRow) => {
     grid-template-columns: 1fr;
   }
 
-  .submit-right {
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
   }
-}
 
 @media (max-width: 768px) {
   .page-header {
@@ -1530,9 +1461,6 @@ const reconcileDuration = async (row: ReconciledRow) => {
     gap: 0.5rem;
   }
 
-  .submit-right {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* Tempo reconciliation is intentionally part of Submit Time's workflow. */
