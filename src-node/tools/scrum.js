@@ -11,7 +11,7 @@ import { localDateKey } from '../utils/dates.js';
 import { previousWorkingDay } from '../utils/working-days.js';
 import { plannedWorkFor } from './scrum-plan.js';
 import { readSprintConfig, matchMeetingTicket } from './sprint.js';
-import { getPullRequestsForTickets, getMergedPullRequestsByAccount } from './github-prs.js';
+import { getPullRequestsForTickets, getPullRequestsWithMajorUpdatesOnDate } from './github-prs.js';
 
 /** Read the configured lunch name so it can be filtered out by whatever it is called. */
 function lunchName() {
@@ -218,19 +218,17 @@ export const tools = [
         const blockers = openBlockers();
 
         const summary = fallbackSummary(previous, current, blockers);
-        const workedTicketValues = [
-          ...previous.entries.map(entry => entry.ticket_id),
-          ...current.entries.map(entry => entry.ticket_id),
-          ...current.planned.map(item => item.ticket_id)
-        ].filter(Boolean);
+        // Daily Scrum PRs are limited to tickets actually worked on
+        // yesterday, plus PRs with a major lifecycle change yesterday.
+        const workedTicketValues = previous.entries.map(entry => entry.ticket_id).filter(Boolean);
         let pullRequests = [];
         try {
-          const [ticketPullRequests, mergedAccountPullRequests] = await Promise.all([
+          const [ticketPullRequests, majorUpdatePullRequests] = await Promise.all([
             getPullRequestsForTickets(workedTicketValues),
-            getMergedPullRequestsByAccount()
+            getPullRequestsWithMajorUpdatesOnDate(yesterday)
           ]);
           const byId = new Map();
-          for (const pr of [...ticketPullRequests, ...mergedAccountPullRequests]) byId.set(pr.id, pr);
+          for (const pr of [...ticketPullRequests, ...majorUpdatePullRequests]) byId.set(pr.id, pr);
           pullRequests = [...byId.values()].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
         } catch (error) {
           // GitHub is optional; a network or authentication issue must not
