@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { tools, db, executeTool, healthCheck } from '../index.js';
+import { inferTopicFromTitle } from '../tools/notes.js';
 import { syncDayFromEvents, applyConflictResolutions } from '../tools/outlook.js';
 import {
   takeDuplicateWorklog,
@@ -255,6 +256,20 @@ async function runTests() {
   // SECTION 3: Utility Function Tests
   // ============================================================
   log(colors.yellow, '\n🔧 SECTION 3: Utilities\n');
+
+  test('Structured note titles provide a useful category when AI returns General', () => {
+    assert.strictEqual(
+      inferTopicFromTitle('Release Process - Filling in Risk Assessment'),
+      'Release Process',
+      'Prefer the broad area before the title separator'
+    );
+    assert.strictEqual(
+      inferTopicFromTitle('Filling in Risk Assessment'),
+      'Risk Assessment',
+      'Strip action wording when the title has no area prefix'
+    );
+    assert.strictEqual(inferTopicFromTitle(''), null, 'Empty titles should not invent a category');
+  });
 
   test('executeTool function is exported', () => {
     assert(typeof executeTool === 'function', 'executeTool should be a function');
