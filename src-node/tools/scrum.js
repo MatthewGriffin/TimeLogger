@@ -231,7 +231,7 @@ export const tools = [
           ]);
           const byId = new Map();
           for (const pr of [...ticketPullRequests, ...mergedAccountPullRequests]) byId.set(pr.id, pr);
-          pullRequests = [...byId.values()].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
+          pullRequests = [...byId.values()].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
         } catch (error) {
           // GitHub is optional; a network or authentication issue must not
           // make the core stand-up summary unavailable.
