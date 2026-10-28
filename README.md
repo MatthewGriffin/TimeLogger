@@ -12,6 +12,10 @@ A Windows desktop app for tracking daily work and submitting it to Jira Tempo.
 - One-click submission to Tempo, with re-submission when entries change
 - System tray access for quick task/note capture and submission
 
+## UI development
+
+All UI changes must follow [UI consistency rules](UI-CONSISTENCY.md), including shared page geometry, section spacing, component styling, responsive layouts, and scoped CSS review.
+
 ## Tech stack
 
 | Layer | Technology |

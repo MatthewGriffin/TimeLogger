@@ -38,11 +38,29 @@
             :key="topic"
             :class="['topic-item', { active: notesStore.selectedTopic === topic }]"
             @click="notesStore.setSelectedTopic(topic)"
+            @contextmenu.prevent="openCategoryMenu($event, topic)"
           >
             <span class="topic-name">{{ topic }}</span>
             <span class="topic-count">{{ notesStore.notesCount[topic] }}</span>
-            <button v-if="topic.toLowerCase() !== DEFAULT_TOPIC.toLowerCase()" type="button" class="btn-delete-topic" :aria-label="`Delete category ${topic}`" title="Delete category" @click.stop="deleteCategory(topic)">×</button>
           </div>
+        </div>
+
+        <div
+          v-if="categoryMenu"
+          class="category-context-menu"
+          role="menu"
+          :style="{ left: `${categoryMenu.x}px`, top: `${categoryMenu.y}px` }"
+          @click.stop
+        >
+          <div class="category-context-title">{{ categoryMenu.topic }}</div>
+          <button
+            v-if="categoryMenu.topic.toLowerCase() !== DEFAULT_TOPIC.toLowerCase()"
+            type="button"
+            role="menuitem"
+            class="category-context-delete"
+            @click="deleteCategoryFromMenu"
+          >Delete category…</button>
+          <button type="button" role="menuitem" @click="closeCategoryMenu">Cancel</button>
         </div>
       </div>
 
@@ -256,6 +274,21 @@ const jiraStore = useJiraStore()
 const entriesStore = useEntriesStore()
 
 const pendingCategoryChoices = ref<Record<string, string>>({})
+const categoryMenu = ref<{ topic: string; x: number; y: number } | null>(null)
+
+const openCategoryMenu = (event: MouseEvent, topic: string) => {
+  categoryMenu.value = { topic, x: event.clientX, y: event.clientY }
+}
+const closeCategoryMenu = () => { categoryMenu.value = null }
+const deleteCategoryFromMenu = async () => {
+  const topic = categoryMenu.value?.topic
+  categoryMenu.value = null
+  if (topic) await deleteCategory(topic)
+}
+const onCategoryMenuKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') closeCategoryMenu()
+}
+window.addEventListener('keydown', onCategoryMenuKeydown)
 const originalEditingNote = ref<{ id: string; title: string; content: string; topic: string } | null>(null)
 const editorTicketId = computed(() => (notesStore.editingNote?.ticketId || '').trim())
 
@@ -546,7 +579,10 @@ const onFocusRequest = (event: Event) => {
 }
 
 window.addEventListener('timelogger:focus-request', onFocusRequest)
-onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocusRequest))
+onUnmounted(() => {
+  window.removeEventListener('timelogger:focus-request', onFocusRequest)
+  window.removeEventListener('keydown', onCategoryMenuKeydown)
+})
 </script>
 
 <style scoped>
@@ -682,9 +718,10 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 }
 
 .topic-item {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
+  column-gap: 0.75rem;
   padding: 0.75rem 1rem;
   background: transparent;
   border: none;
@@ -707,24 +744,63 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   padding-bottom: calc(0.75rem - 2px);
 }
 
-.btn-delete-topic {
-  border: 0;
-  border-radius: 0.3rem;
-  background: transparent;
-  color: var(--color-text-subtle);
-  cursor: pointer;
-  font-size: 1.1rem;
-  line-height: 1;
-  padding: 0.15rem 0.35rem;
+.topic-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.btn-delete-topic:hover { background: var(--color-control-hover); color: var(--color-danger, #dc2626); }
 
 .topic-count {
+  justify-self: end;
+  min-width: 1.4rem;
+  box-sizing: border-box;
+  text-align: center;
   font-size: 0.85rem;
   background: var(--color-control);
   padding: 0.25rem 0.5rem;
   border-radius: 0.25rem;
   color: var(--color-text-subtle);
+}
+
+.category-context-menu {
+  position: fixed;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 10rem;
+  padding: 0.4rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.5rem;
+  background: var(--color-panel, #172033);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.category-context-title {
+  padding: 0.4rem 0.55rem;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.category-context-menu button {
+  border: 0;
+  border-radius: 0.3rem;
+  padding: 0.5rem 0.55rem;
+  text-align: left;
+  color: var(--color-text);
+  background: transparent;
+  cursor: pointer;
+}
+
+.category-context-menu button:hover,
+.category-context-menu button:focus-visible {
+  background: var(--color-control-hover);
+}
+
+.category-context-menu .category-context-delete:hover {
+  color: var(--color-danger);
 }
 
 /* Main Content */

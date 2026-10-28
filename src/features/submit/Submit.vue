@@ -894,7 +894,7 @@ const reconcileDuration = async (row: ReconciledRow) => {
   align-items: center;
   gap: 1.5rem;
   flex-wrap: wrap;
-  padding: 0 3rem 1rem;
+  padding: 0 var(--page-gutter) var(--space-md);
 }
 
 .custom-range {
@@ -943,8 +943,8 @@ const reconcileDuration = async (row: ReconciledRow) => {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 2rem;
-  padding: 2rem 3rem;
-  max-width: 1600px;
+  padding: var(--page-block) var(--page-gutter);
+  max-width: var(--page-max-wide);
   margin: 0 auto;
   width: 100%;
 }
