@@ -5,14 +5,17 @@
         <h1>Notifications</h1>
         <p class="page-sub">Unread notifications stay here after their pop-up disappears.</p>
       </div>
-      <span class="unread-count">{{ notifications.length }} unread</span>
+      <div class="header-actions">
+        <span class="unread-count">{{ notifications.length }} unread</span>
+        <button v-if="notifications.length > 0" class="btn-range" type="button" @click="clearAll">Clear all</button>
+      </div>
     </div>
 
     <div class="page-body">
       <div v-if="notifications.length === 0" class="empty-state">
         <Bell class="empty-icon" aria-hidden="true" />
         <h2>You're all caught up</h2>
-        <p>New app and pull-request notifications will appear here.</p>
+        <p>External notifications, such as GitHub pull-request activity, will appear here.</p>
       </div>
 
       <section v-else class="notification-list" aria-label="Unread notifications">
@@ -41,6 +44,8 @@ import { useUiStore, type Notification } from '@/shared/stores/ui'
 
 const uiStore = useUiStore()
 const notifications = computed(() => uiStore.unreadNotifications)
+
+const clearAll = () => uiStore.clearAllNotifications()
 
 const activateNotification = async (notification: Notification) => {
   // Complete it synchronously so it disappears from the unread list at once.
