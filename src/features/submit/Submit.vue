@@ -177,7 +177,6 @@
       <!-- Tempo reconciliation follows the unsubmitted entries so it has the full content width. -->
       <div class="submit-reconciliation">
         <div class="reconciliation-heading">
-          <h2>Local Entries vs Tempo</h2>
           <button class="btn-range" :disabled="reconciliationLoading" @click="loadReconciliation">
             {{ reconciliationLoading ? 'Refreshing…' : 'Refresh Tempo status' }}
           </button>
@@ -1436,7 +1435,16 @@ const reconcileDuration = async (row: ReconciledRow) => {
 }
 
 /* Tempo reconciliation is intentionally part of Submit Time's workflow. */
-.submit-reconciliation { margin: 1rem 2rem 2rem; padding: 1.25rem; border: 1px solid var(--color-border); border-radius: 12px; min-width: 0; }
+.submit-reconciliation { margin: 1rem 0 2rem; padding: 0; border: 0; border-radius: 0; min-width: 0; }
+.reconciliation-section { min-width: 0; }
+.reconciliation-section .table-recon {
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  backdrop-filter: blur(10px);
+}
 .reconciliation-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
 .reconciliation-heading h2, .reconciliation-section h2 { font-size: 1.1rem; font-weight: 700; }
 .reconciliation-section { margin-top: 1rem; }
@@ -1446,8 +1454,23 @@ const reconcileDuration = async (row: ReconciledRow) => {
 .reconciliation-section .section-note { color: var(--color-text-muted); font-size: .85rem; margin: .5rem 0; }
 .reconciliation-section .table { width: 100%; overflow-x: auto; }
 .reconciliation-section .table-header, .reconciliation-section .table-row { display: grid; grid-template-columns: 100px 120px minmax(150px, 1fr) 75px 75px 145px 130px; gap: .6rem; align-items: center; min-width: 820px; padding: .65rem .5rem; }
-.reconciliation-section .table-header { font-weight: 700; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border); }
-.reconciliation-section .table-row { border-bottom: 1px solid var(--color-border); }
+.reconciliation-section .table-header {
+  background: var(--color-control);
+  font-weight: 600;
+  color: var(--color-text-subtle);
+  text-transform: uppercase;
+  font-size: .85rem;
+  letter-spacing: .05em;
+  border-bottom: 1px solid var(--color-border);
+  padding: 1rem 1.5rem;
+}
+.reconciliation-section .table-row {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--color-border);
+  transition: background .3s ease;
+}
+.reconciliation-section .table-row:hover { background: rgba(51, 65, 85, 0.3); }
+.reconciliation-section .table-row:last-child { border-bottom: 0; }
 .reconciliation-section .ticket-chip { font-family: monospace; }
 .reconciliation-section .ticket-chip.missing { color: var(--color-danger); }
 .reconciliation-section .status-chip { display: inline-block; border-radius: 20px; padding: .2rem .5rem; font-size: .75rem; }
@@ -1458,5 +1481,9 @@ const reconcileDuration = async (row: ReconciledRow) => {
 .reconciliation-section .differs { color: #fcd34d; font-weight: 600; }
 .reconciliation-section .muted { color: var(--color-text-muted); }
 .reconciliation-section .col-desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (max-width: 768px) { .submit-reconciliation { margin: 1rem; padding: .75rem; } }
+@media (max-width: 768px) {
+  .submit-reconciliation { margin: 1rem 0; }
+  .reconciliation-section .table-header,
+  .reconciliation-section .table-row { padding: .75rem; }
+}
 </style>
