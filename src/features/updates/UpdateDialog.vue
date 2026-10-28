@@ -121,7 +121,12 @@ const downloadedLabel = computed(() =>
 
 const declineUpdate = () => {
   if (stage.value === 'available' && info.value) {
-    uiStore.showInfo(`TimeLogger update ${info.value.version} was deferred.`, 5000)
+    uiStore.addNotification({
+      type: 'info',
+      message: `TimeLogger update ${info.value.version} was deferred.`,
+      duration: 5000,
+      persistent: true
+    })
   }
   dismiss()
 }
