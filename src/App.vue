@@ -69,7 +69,12 @@ const pollGitHubActivity = async () => {
         : event.kind === 'merged'
           ? `“${event.title}” (${event.repository}#${event.number}) was merged.`
           : `@${event.reviewer} ${outcome} “${event.title}” (${event.repository}#${event.number}).`
-      uiStore.addNotification({ type: 'info', message, url: event.url })
+      // Keep GitHub activity in the inbox only when it arrives while the app
+      // is backgrounded or minimized. Foreground activity should not create
+      // an unread notification that the user already saw in the app.
+      const isBackgrounded = document.visibilityState !== 'visible' || !document.hasFocus()
+      if (!isBackgrounded) continue
+      uiStore.addNotification({ type: 'info', message, url: event.url, persistent: true })
       try {
         await invoke('show_notification', {
           title: event.kind === 'added'
