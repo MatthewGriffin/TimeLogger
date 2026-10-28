@@ -11,7 +11,7 @@ import { localDateKey } from '../utils/dates.js';
 import { previousWorkingDay } from '../utils/working-days.js';
 import { plannedWorkFor } from './scrum-plan.js';
 import { readSprintConfig, matchMeetingTicket } from './sprint.js';
-import { getPullRequestsForTickets } from './github-prs.js';
+import { getPullRequestsForTickets, getMergedPullRequestsByAccount } from './github-prs.js';
 
 /** Read the configured lunch name so it can be filtered out by whatever it is called. */
 function lunchName() {
@@ -225,7 +225,13 @@ export const tools = [
         ].filter(Boolean);
         let pullRequests = [];
         try {
-          pullRequests = await getPullRequestsForTickets(workedTicketValues);
+          const [ticketPullRequests, mergedAccountPullRequests] = await Promise.all([
+            getPullRequestsForTickets(workedTicketValues),
+            getMergedPullRequestsByAccount()
+          ]);
+          const byId = new Map();
+          for (const pr of [...ticketPullRequests, ...mergedAccountPullRequests]) byId.set(pr.id, pr);
+          pullRequests = [...byId.values()].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || ''));
         } catch (error) {
           // GitHub is optional; a network or authentication issue must not
           // make the core stand-up summary unavailable.
