@@ -40,9 +40,7 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/tempo',
-    name: 'TempoStatus',
-    component: () => import('@/features/tempo/TempoStatus.vue'),
-    meta: { title: 'Tempo Status' }
+    redirect: '/submit'
   },
   {
     path: '/pull-requests',
