@@ -336,53 +336,62 @@ async function pollReviewEvents(token, prs) {
  * review. A generic reviewed-by search is not enough; the review state is
  * verified against the pull-request reviews endpoint.
  */
-export async function getMergedPullRequestsByAccount() {
+/**
+ * Return PRs with a major lifecycle event on the requested date. GitHub's
+ * issue timeline is used so ordinary edits/comments do not count as a major
+ * status update. Supported events include opening, merging/closing, and
+ * adding a reviewer.
+ */
+export async function getPullRequestsWithMajorUpdatesOnDate(date) {
   const token = String(readConfig().token || '');
-  if (!token) return [];
+  if (!token || !/^\\d{4}-\\d{2}-\\d{2}$/.test(String(date || ''))) return [];
   const login = await account(token);
-  const searches = await Promise.all([
-    searchPrs(token, login, `is:pr is:merged author:${login}`),
-    searchPrs(token, login, `is:pr is:merged reviewed-by:${login}`)
-  ]);
+  const query = `is:pr created:${date} OR is:pr merged:${date} OR is:pr updated:${date}`;
+  const items = await searchPrs(token, login, query);
   const candidates = new Map();
-  for (const item of searches.flat()) {
+  for (const item of items) {
     const repoUrl = String(item.repository_url || '');
     const match = repoUrl.match(/\\/repos\\/([^/]+\\/[^/]+)$/);
     if (!match || !Number.isInteger(Number(item.number))) continue;
     candidates.set(`${match[1]}#${item.number}`, { repository: match[1], number: Number(item.number) });
   }
 
-  const selected = [...candidates.values()].sort((a, b) => 0).slice(0, MAX_PRS);
-  const merged = [];
-  const concurrency = 5;
-  for (let i = 0; i < selected.length; i += concurrency) {
-    const batch = await Promise.all(selected.slice(i, i + concurrency).map(async item => {
+  const selected = [...candidates.values()].slice(0, MAX_PRS);
+  const results = [];
+  const majorEvents = new Set(['opened', 'closed', 'merged', 'review_requested', 'ready_for_review', 'converted_to_draft']);
+  for (let i = 0; i < selected.length; i += 5) {
+    const batch = await Promise.all(selected.slice(i, i + 5).map(async item => {
       try {
-        const pr = await githubGet(`/repos/${item.repository}/pulls/${item.number}`, token);
-        if (!pr.merged_at) return null;
-        const authored = String(pr.user?.login || '').toLowerCase() === login.toLowerCase();
-        if (!authored) {
-          const reviews = await githubGet(`/repos/${item.repository}/pulls/${item.number}/reviews?per_page=100`, token).catch(() => []);
-          const approved = Array.isArray(reviews) && reviews.some(review =>
-            String(review.user?.login || '').toLowerCase() === login.toLowerCase() &&
-            String(review.state || '').toUpperCase() === 'APPROVED');
-          if (!approved) return null;
-        }
+        const [pr, timeline] = await Promise.all([
+          githubGet(`/repos/${item.repository}/pulls/${item.number}`, token),
+          githubGet(`/repos/${item.repository}/issues/${item.number}/timeline?per_page=100`, token).catch(() => [])
+        ]);
+        const sameDay = value => String(value || '').slice(0, 10) === date;
+        const matchingEvents = (Array.isArray(timeline) ? timeline : []).filter(event =>
+          majorEvents.has(String(event.event || '').toLowerCase()) && sameDay(event.created_at));
+        const openedThatDay = sameDay(pr.created_at);
+        const mergedThatDay = sameDay(pr.merged_at);
+        if (!openedThatDay && !mergedThatDay && matchingEvents.length === 0) return null;
+        const eventLabels = [];
+        if (openedThatDay || matchingEvents.some(e => e.event === 'opened')) eventLabels.push('opened');
+        if (mergedThatDay || matchingEvents.some(e => e.event === 'merged')) eventLabels.push('merged');
+        if (matchingEvents.some(e => e.event === 'review_requested')) eventLabels.push('reviewer added');
+        if (matchingEvents.some(e => e.event === 'closed') && !mergedThatDay) eventLabels.push('closed');
+        if (matchingEvents.some(e => e.event === 'ready_for_review')) eventLabels.push('marked ready for review');
+        if (matchingEvents.some(e => e.event === 'converted_to_draft')) eventLabels.push('converted to draft');
         return {
           ...safePr({ ...pr, __linkedLogin: login }),
-          isAuthoredByAccount: authored,
-          reviewedByAccount: !authored,
-          requestedReviewer: false,
-          pendingReview: false
+          majorUpdateDate: date,
+          majorUpdateTypes: [...new Set(eventLabels)]
         };
       } catch (error) {
-        console.warn(`Could not load merged PR ${item.repository}#${item.number} for scrum:`, error.message);
+        console.warn(`Could not load PR activity for scrum (${item.repository}#${item.number}):`, error.message);
         return null;
       }
     }));
-    merged.push(...batch.filter(Boolean));
+    results.push(...batch.filter(Boolean));
   }
-  return merged;
+  return results;
 }
 
 export async function getPullRequestsForTickets(ticketValues = []) {
