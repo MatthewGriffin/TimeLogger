@@ -31,6 +31,7 @@
       >
         <component :is="item.icon" class="nav-icon-svg" aria-hidden="true" />
         <span v-if="sidebarOpen" class="nav-label">{{ item.label }}</span>
+        <span v-if="item.path === '/notifications' && unreadCount > 0 && sidebarOpen" class="notification-badge">{{ unreadCount }}</span>
       </router-link>
     </div>
 
@@ -51,12 +52,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { BookOpen, CalendarDays, ClipboardList, GitPullRequest, LayoutDashboard, MessagesSquare, Send, Settings } from 'lucide-vue-next'
+import { Bell, BookOpen, CalendarDays, ClipboardList, GitPullRequest, LayoutDashboard, MessagesSquare, Send, Settings } from 'lucide-vue-next'
 import { useUiStore } from '@/shared/stores/ui'
 
 const router = useRouter()
 const uiStore = useUiStore()
 const sidebarOpen = computed(() => uiStore.sidebarOpen)
+const unreadCount = computed(() => uiStore.unreadNotifications.length)
 
 const toggleSidebar = () => {
   uiStore.toggleSidebar()
@@ -68,6 +70,7 @@ const navItems = [
   { path: '/entries', label: 'Daily Entries', icon: ClipboardList },
   { path: '/submit', label: 'Submit Time', icon: Send },
   { path: '/pull-requests', label: 'Pull Requests', icon: GitPullRequest },
+  { path: '/notifications', label: 'Notifications', icon: Bell },
   { path: '/notes', label: 'Notes', icon: BookOpen },
   { path: '/calendar', label: 'Calendar', icon: CalendarDays }
 ]
@@ -227,6 +230,18 @@ const isActive = (path: string) => {
   width: 20px;
   height: 20px;
   flex-shrink: 0;
+}
+
+.notification-badge {
+  margin-left: auto;
+  min-width: 1.25rem;
+  padding: .1rem .35rem;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  text-align: center;
+  font-size: .7rem;
+  font-weight: 700;
 }
 
 .nav-label {
