@@ -65,10 +65,10 @@ const toggleSidebar = () => {
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/scrum', label: 'Daily Scrum', icon: MessagesSquare },
+  { path: '/entries', label: 'Daily Entries', icon: ClipboardList },
   { path: '/tempo', label: 'Tempo Status', icon: ClipboardCheck },
   { path: '/submit', label: 'Submit Time', icon: Send },
   { path: '/pull-requests', label: 'Pull Requests', icon: GitPullRequest },
-  { path: '/entries', label: 'Daily Entries', icon: ClipboardList },
   { path: '/notes', label: 'Notes', icon: BookOpen },
   { path: '/calendar', label: 'Calendar', icon: CalendarDays }
 ]
