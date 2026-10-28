@@ -498,13 +498,13 @@ async function runTests() {
         'The matched Tempo worklog should be consumed exactly once');
     });
 
-    test('matches the later three-hour entry by duration when its Tempo description differs', () => {
+    test('does not claim a same-duration Tempo worklog when both start time and description differ', () => {
       const shortEntry = en({
         id: 105, date: '2026-10-28', start_time: '09:00', duration_mins: 15,
         name: 'Morning admin', tempo_worklog_id: null,
       });
       const laterEntry = en({
-        id: 106, date: '2026-10-28', start_time: '09:15', duration_mins: 180,
+        id: 106, date: '2026-10-28', start_time: '09:30', duration_mins: 180,
         name: 'Feature implementation', tempo_worklog_id: null,
       });
       const longWorklog = wl({
@@ -512,10 +512,25 @@ async function runTests() {
         durationMins: 180, description: 'Original task description',
       });
       const result = reconcileTempoWorklogs([shortEntry, laterEntry], [longWorklog]);
-      assert.strictEqual(result.matchesByEntryId.has(105), false,
-        'The 15-minute morning entry must not claim the three-hour worklog');
-      assert.strictEqual(result.matchesByEntryId.get(106), longWorklog,
-        'The three-hour worklog should match the local entry with the same duration');
+      assert.strictEqual(result.matchesByEntryId.size, 0,
+        'A matching duration alone must not make a different time slot look submitted');
+      assert.strictEqual(result.unmatchedWorklogs[0], longWorklog,
+        'The unrelated Tempo worklog should remain unmatched');
+    });
+
+    test('matches the exact local time slot and duration even when ticket casing and seconds differ', () => {
+      const local = en({
+        id: 107, date: '2026-10-26', ticket_id: 'inpsvc-1177',
+        start_time: '09:00:00', duration_mins: 15, name: 'Forest upgrade',
+      });
+      const remote = wl({
+        worklogId: 'tempo-1177', date: '2026-10-26', ticketId: 'INPSVC-1177',
+        startTime: '09:00:00', durationMins: 15, description: 'Forest upgrade',
+      });
+      const result = reconcileTempoWorklogs([local], [remote]);
+      assert.strictEqual(result.matchesByEntryId.get(107), remote,
+        'The local entry should match the same Tempo time slot');
+      assert.strictEqual(result.unmatchedWorklogs.length, 0);
     });
 
     test('does not match a stale ID to a different Tempo time slot when durations differ', () => {
