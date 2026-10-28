@@ -43,6 +43,12 @@ const routes: RouteRecordRaw[] = [
     redirect: '/submit'
   },
   {
+    path: '/notifications',
+    name: 'Notifications',
+    component: () => import('@/features/notifications/Notifications.vue'),
+    meta: { title: 'Notifications' }
+  },
+  {
     path: '/pull-requests',
     name: 'PullRequests',
     component: () => import('@/features/pull-requests/PullRequests.vue'),
