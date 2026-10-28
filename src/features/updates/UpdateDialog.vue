@@ -67,7 +67,7 @@
 
         <div class="update-actions">
           <template v-if="stage === 'available'">
-            <button class="update-secondary" @click="dismiss">Later</button>
+            <button class="update-secondary" @click="declineUpdate">Later</button>
             <button class="update-primary" @click="downloadAndInstall">Install now</button>
           </template>
           <template v-else-if="stage === 'ready'">
@@ -87,6 +87,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue'
 import { useUpdater } from '@/features/updates/composables/useUpdater'
+import { useUiStore } from '@/shared/stores/ui'
+
+const uiStore = useUiStore()
 
 const {
   stage,
@@ -116,8 +119,16 @@ const downloadedLabel = computed(() =>
     : formatMb(downloadedBytes.value)
 )
 
+const declineUpdate = () => {
+  if (stage.value === 'available' && info.value) {
+    uiStore.showInfo(`TimeLogger update ${info.value.version} was deferred.`, 5000)
+  }
+  dismiss()
+}
+
 const closeIfIdle = () => {
-  if (dismissable.value) dismiss()
+  if (stage.value === 'available') declineUpdate()
+  else if (dismissable.value) dismiss()
 }
 
 const retry = () => {
@@ -126,7 +137,10 @@ const retry = () => {
 }
 
 const onKeydown = (event: KeyboardEvent) => {
-  if (event.key === 'Escape' && visible.value && dismissable.value) dismiss()
+  if (event.key === 'Escape' && visible.value && dismissable.value) {
+    if (stage.value === 'available') declineUpdate()
+    else dismiss()
+  }
 }
 
 onMounted(() => window.addEventListener('keydown', onKeydown))
