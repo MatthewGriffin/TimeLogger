@@ -344,14 +344,14 @@ async function pollReviewEvents(token, prs) {
  */
 export async function getPullRequestsWithMajorUpdatesOnDate(date) {
   const token = String(readConfig().token || '');
-  if (!token || !/^\\d{4}-\\d{2}-\\d{2}$/.test(String(date || ''))) return [];
+  if (!token || !/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return [];
   const login = await account(token);
   const query = `is:pr created:${date} OR is:pr merged:${date} OR is:pr updated:${date}`;
   const items = await searchPrs(token, login, query);
   const candidates = new Map();
   for (const item of items) {
     const repoUrl = String(item.repository_url || '');
-    const match = repoUrl.match(/\\/repos\\/([^/]+\\/[^/]+)$/);
+    const match = repoUrl.match(/\/repos\/([^/]+\/[^/]+)$/);
     if (!match || !Number.isInteger(Number(item.number))) continue;
     candidates.set(`${match[1]}#${item.number}`, { repository: match[1], number: Number(item.number) });
   }
