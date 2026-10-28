@@ -10,9 +10,36 @@ export const useUiStore = defineStore('ui', () => {
   const modalType = ref<'entry' | 'note' | 'confirm' | null>(null)
   const modalPayload = ref<ModalPayload>({})
   const notifications = ref<Notification[]>([])
+  const unreadNotifications = ref<Notification[]>(loadUnreadNotifications())
   const sidebarOpen = ref(true)
   const timers = new Map<string, ReturnType<typeof setTimeout>>()
   let notificationSequence = 0
+  const unreadStorageKey = 'timelogger.unreadNotifications'
+
+  function loadUnreadNotifications(): Notification[] {
+    try {
+      const saved = localStorage.getItem(unreadStorageKey)
+      if (!saved) return []
+      const parsed: unknown = JSON.parse(saved)
+      if (!Array.isArray(parsed)) return []
+      return parsed.filter((item): item is Notification =>
+        !!item && typeof item === 'object' &&
+        typeof item.id === 'string' &&
+        typeof item.message === 'string' &&
+        ['success', 'error', 'info', 'warning'].includes(item.type)
+      )
+    } catch {
+      return []
+    }
+  }
+
+  const persistUnreadNotifications = () => {
+    try {
+      localStorage.setItem(unreadStorageKey, JSON.stringify(unreadNotifications.value))
+    } catch {
+      // Notifications remain usable for this session if storage is unavailable.
+    }
+  }
 
   const setCurrentPage = (page: string) => {
     currentPage.value = page
@@ -38,6 +65,8 @@ export const useUiStore = defineStore('ui', () => {
       duration: notification.duration ?? 3000
     }
     notifications.value.push(notif)
+    unreadNotifications.value.unshift({ ...notif })
+    persistUnreadNotifications()
 
     if (notif.duration && notif.duration > 0) {
       timers.set(id, setTimeout(() => {
@@ -54,6 +83,12 @@ export const useUiStore = defineStore('ui', () => {
     timers.delete(id)
     notifications.value = notifications.value.filter(n => n.id !== id)
   }
+  const completeNotification = (id: string) => {
+    unreadNotifications.value = unreadNotifications.value.filter(n => n.id !== id)
+    removeNotification(id)
+    persistUnreadNotifications()
+  }
+
   const reportError = (error: unknown, fallback = 'Something went wrong') => {
     const message = error instanceof Error ? error.message : typeof error === 'string' ? error : fallback
     return showError(message)
@@ -89,12 +124,14 @@ export const useUiStore = defineStore('ui', () => {
     modalType,
     modalPayload,
     notifications,
+    unreadNotifications,
     sidebarOpen,
     setCurrentPage,
     openModal,
     closeModal,
     addNotification,
     removeNotification,
+    completeNotification,
     reportError,
     showSuccess,
     showError,
