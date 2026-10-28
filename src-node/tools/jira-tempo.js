@@ -905,6 +905,16 @@ export const tools = [
           }
         }
 
+        // Match the complete day against Tempo before processing any entry.
+        // Sequential duplicate checks can let an early short entry consume the
+        // long worklog that actually belongs to a later split segment (especially
+        // when the short row still carries that worklog's stale persisted ID).
+        // Use the same one-to-one matcher as Local Entries vs Tempo so both views
+        // make identical decisions independent of submission order.
+        const preMatchedWorklogs = checkDuplicates
+          ? reconcileTempoWorklogs(entries, duplicatePool).matchesByEntryId
+          : new Map();
+
         // Post each entry
         const results = [];
         const failedEntries = [];
@@ -940,10 +950,18 @@ export const tools = [
               continue;
             }
 
-            // Checked here rather than before the loop so the comparison can
-            // use the resolved numeric issue id.
-            const duplicate = checkDuplicates
-              ? takeDuplicateWorklog(entry, duplicatePool, issueId)
+            // This match was assigned one-to-one for the whole day using
+            // the same reconciliation matcher as the Local Entries vs Tempo UI.
+            const matchedWorklog = preMatchedWorklogs.get(entry.id);
+            const duplicate = matchedWorklog
+              ? {
+                  worklog: matchedWorklog,
+                  reason: matchedWorklog.startTime?.slice(0, 5) === entry.start_time?.slice(0, 5) &&
+                    Number(matchedWorklog.durationMins) === Number(entry.duration_mins)
+                    ? 'exact_match'
+                    : 'reconciliation_match',
+                  detail: 'Already in Tempo'
+                }
               : null;
             if (duplicate) {
               // The work is in Tempo; only this app's record of it was wrong.
