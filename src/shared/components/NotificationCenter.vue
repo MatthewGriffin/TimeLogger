@@ -24,6 +24,7 @@ const uiStore = useUiStore()
 const notifications = computed(() => uiStore.notifications)
 
 const activateNotification = async (notif: { id: string; url?: string }) => {
+  uiStore.completeNotification(notif.id)
   if (notif.url) {
     try {
       await invoke('open_external_url', { url: notif.url })
@@ -31,7 +32,6 @@ const activateNotification = async (notif: { id: string; url?: string }) => {
       uiStore.showError(error instanceof Error ? error.message : 'Could not open link.')
     }
   }
-  removeNotification(notif.id)
 }
 
 const removeNotification = (id: string) => {
