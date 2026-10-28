@@ -494,39 +494,11 @@ const blockedEntries = computed(() =>
   )
 )
 
-const totalHours = computed(() => {
-  const minutes = unsubmittedEntries.value.reduce((sum, e) => sum + (Number(e.duration) || 0), 0)
-  return (minutes / 60).toFixed(2)
-})
-
-const selectedHours = computed(() => {
-  const minutes = entriesInRange.value
-    .filter(e => selectedEntries.value.includes(e.id))
-    .reduce((sum, e) => sum + (Number(e.duration) || 0), 0)
-  return (minutes / 60).toFixed(2)
-})
-
-const pendingCount = computed(() => {
-  return unsubmittedEntries.value.length
-})
-
 const formatDate = (dateStr: string) => {
   return new Date(dateStr).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     weekday: 'short'
-  })
-}
-
-/** When a submission run happened, shown as a short local date and time. */
-const formatSubmittedAt = (value: string) => {
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return ''
-  return parsed.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit'
   })
 }
 
