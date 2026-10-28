@@ -37,10 +37,10 @@ test.describe('Navigation sidebar', () => {
   const NAV_ITEMS = [
     { label: 'Dashboard', path: '/' },
     { label: 'Daily Scrum', path: '/scrum' },
+    { label: 'Daily Entries', path: '/entries' },
     { label: 'Tempo Status', path: '/tempo' },
     { label: 'Submit Time', path: '/submit' },
     { label: 'Pull Requests', path: '/pull-requests' },
-    { label: 'Daily Entries', path: '/entries' },
     { label: 'Notes', path: '/notes' },
     { label: 'Calendar', path: '/calendar' },
   ];
