@@ -95,6 +95,16 @@ export const reconcileTempoWorklogs = (localEntries, worklogs) => {
     consumeMatch(entry, log => log.durationMins === entry.duration_mins && sameDescription(entry, log));
   }
 
+  // Duration is a stronger signal than start time when a local entry has
+  // been split or edited. Match remaining exact-duration worklogs globally
+  // before falling back to start time, even when the descriptions differ.
+  // Otherwise a short morning entry can steal a later 3-hour worklog simply
+  // because that Tempo worklog retained the original start time.
+  for (const entry of localEntries) {
+    if (matchesByEntryId.has(entry.id)) continue;
+    consumeMatch(entry, log => log.durationMins === entry.duration_mins);
+  }
+
   // A start-time match is safer than a persisted ID: IDs can become stale
   // when a local entry is split or a worklog is edited/recreated in Tempo.
   for (const entry of localEntries) {
