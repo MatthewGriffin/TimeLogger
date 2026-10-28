@@ -172,9 +172,9 @@
             </p>
           </div>
         </div>
-      </div>
 
-      <!-- Tempo reconciliation lives beside submission so missing worklogs can be queued and submitted without changing pages. -->
+
+      <!-- Tempo reconciliation follows the unsubmitted entries so it has the full content width. -->
       <div class="submit-reconciliation">
         <div class="reconciliation-heading">
           <h2>Local Entries vs Tempo</h2>
@@ -282,6 +282,7 @@
           <p v-if="resubmitMessage" class="import-message">{{ resubmitMessage }}</p>
           <p v-if="reconcileMessage" class="import-message">{{ reconcileMessage }}</p>
         </template>
+      </div>
       </div>
 
       <!-- Submission History -->
