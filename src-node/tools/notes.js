@@ -80,6 +80,25 @@ function isReusableTopic(topic) {
 }
 
 /**
+ * Recover a useful category from a structured note title when the model
+ * returns no subject or the catch-all "General". Titles commonly use
+ * "Area - Task detail", so prefer the area before the separator; otherwise
+ * strip common action wording and accept only a reusable short subject.
+ */
+function inferTopicFromTitle(title) {
+  const clean = String(title || '').trim();
+  if (!clean) return null;
+  const segments = clean.split(/\s+(?:-|–|—|:)\s+/).map(part => part.trim()).filter(Boolean);
+  const candidates = segments.length > 1 ? [segments[0], ...segments.slice(1)] : segments;
+  const actionPrefix = /^(?:(?:filling|fill|creating|create|updating|update|reviewing|review|completing|complete|writing|write|working on|working with|adding|add|fixing|fix|documenting|document)\s+(?:in\s+|out\s+|up\s+)?)+/i;
+  for (const candidate of candidates) {
+    const subject = candidate.replace(actionPrefix, '').replace(/\s+/g, ' ').trim();
+    if (isReusableTopic(subject) && !isCatchAll(subject)) return toTitleCase(subject);
+  }
+  return null;
+}
+
+/**
  * Look for an existing topic named in the note itself. This is the strongest
  * and cheapest signal available: if a note talks about Copilot and a Copilot
  * topic already exists, that is where it belongs, and no model call is
@@ -187,14 +206,18 @@ async function suggestTopic(note, knownTopics, title) {
   if (mentioned) return { topic: mentioned, isNew: false, available: true };
 
   try {
-    const subject = await withinBudget(deadline, timeoutMs => extractSubject(cleanTitle, body, timeoutMs));
+    let subject = await withinBudget(deadline, timeoutMs => extractSubject(cleanTitle, body, timeoutMs));
+
+    // A generic model answer is not a useful proposal: recover the main area
+    // from structured titles such as "Release Process - Filling in Risk Assessment".
+    if (!subject || isCatchAll(subject)) subject = inferTopicFromTitle(cleanTitle);
     if (!subject) return { topic: 'General', isNew: false, available: true };
 
     // A subject naming a topic that already exists reuses it as-is.
     const named = matchKnownTopic(subject, knownTopics);
     if (named) return { topic: named, isNew: false, available: true };
 
-    if (!isReusableTopic(subject)) return { topic: 'General', isNew: false, available: true };
+    if (!isReusableTopic(subject) || isCatchAll(subject)) return { topic: 'General', isNew: false, available: true };
     return { topic: toTitleCase(subject), isNew: true, available: true };
   } catch {
     return { topic: 'General', isNew: false, available: true };
