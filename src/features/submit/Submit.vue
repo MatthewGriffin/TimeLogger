@@ -174,6 +174,116 @@
         </div>
       </div>
 
+      <!-- Tempo reconciliation lives beside submission so missing worklogs can be queued and submitted without changing pages. -->
+      <div class="submit-reconciliation">
+        <div class="reconciliation-heading">
+          <h2>Local Entries vs Tempo</h2>
+          <button class="btn-range" :disabled="reconciliationLoading" @click="loadReconciliation">
+            {{ reconciliationLoading ? 'Refreshing…' : 'Refresh Tempo status' }}
+          </button>
+        </div>
+        <p v-if="reconciliationLoading" class="range-summary">Checking Tempo worklogs…</p>
+        <p v-else-if="reconciliationError" class="range-error">{{ reconciliationError }}</p>
+        <template v-else>
+      <div class="section reconciliation-section">
+        <div class="section-header">
+          <h2>Local Entries vs Tempo</h2>
+          <span class="count">{{ reconciled.length }}</span>
+          <button
+            v-if="reconciliationCounts.missingFromTempo > 0"
+            class="import-all-btn"
+            :disabled="isResubmitting"
+            @click="resubmitMissing()"
+          >
+            {{ isResubmitting ? 'Marking…' : `↺ Resubmit all missing (${counts.missingFromTempo})` }}
+          </button>
+        </div>
+
+        <div class="filter-row">
+          <button
+            v-for="filter in statusFilters"
+            :key="filter.value"
+            :class="['btn-filter', { active: statusFilter === filter.value }]"
+            @click="statusFilter = filter.value"
+          >
+            {{ filter.label }}
+          </button>
+        </div>
+
+        <p v-if="statusFilter === 'missing_from_tempo' && filteredReconciled.length > 0" class="section-note">
+          These are marked as submitted here but no longer exist in Tempo — most likely deleted directly there.
+          Resubmit to send them again.
+        </p>
+        <p v-else-if="statusFilter === 'needs_fixing' && filteredReconciled.length > 0" class="section-note">
+          Entries here either vanished from Tempo after being marked sent, or have a duration that no longer
+          matches what's in Tempo. Use Resubmit or "Use local time" below to fix each one.
+        </p>
+
+        <div v-if="filteredReconciled.length === 0" class="empty-state">
+          Nothing matches this filter.
+        </div>
+
+        <div v-else class="table table-recon">
+          <div class="table-header">
+            <div class="col-date">Date</div>
+            <div class="col-ticket">Ticket</div>
+            <div class="col-desc">Task</div>
+            <div class="col-dur">Local</div>
+            <div class="col-dur">Tempo</div>
+            <div class="col-status">Status</div>
+            <div class="col-action"></div>
+          </div>
+          <div
+            v-for="row in filteredReconciled"
+            :key="row.entryId"
+            :class="['table-row', statusClass(row.status)]"
+          >
+            <div class="col-date">{{ row.date }}</div>
+            <div class="col-ticket">
+              <span v-if="row.ticketId" class="ticket-chip">{{ row.ticketId }}</span>
+              <span v-else class="ticket-chip missing" title="No ticket, so this can never reach Tempo">no ticket</span>
+            </div>
+            <div class="col-desc" :title="row.name">{{ row.name }}</div>
+            <div class="col-dur">{{ formatReconciliationDuration(row.durationMins) }}</div>
+            <div class="col-dur">
+              <span v-if="row.tempoDurationMins !== null" :class="{ differs: row.durationDiffers }">
+                {{ formatReconciliationDuration(row.tempoDurationMins) }}
+              </span>
+              <span v-else class="muted">—</span>
+            </div>
+            <div class="col-status">
+              <span :class="['status-chip', statusClass(row.status)]">{{ statusLabel(row.status) }}</span>
+            </div>
+            <div class="col-action">
+              <button
+                v-if="row.status === 'missing_from_tempo'"
+                class="import-btn"
+                :disabled="isResubmitting"
+                title="Mark as not submitted so it can be sent to Tempo again"
+                @click="resubmitMissing([row.entryId])"
+              >
+                Resubmit
+              </button>
+              <button
+                v-else-if="row.durationDiffers && row.worklogId !== null"
+                class="import-btn"
+                :disabled="reconcilingEntryId !== null"
+                title="Update Tempo to match the local duration"
+                @click="reconcileDuration(row)"
+              >
+                {{ reconcilingEntryId === row.entryId ? 'Updating…' : 'Use local time' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+          <p v-if="resubmitMessage" class="import-message">{{ resubmitMessage }}</p>
+          <p v-if="reconcileMessage" class="import-message">{{ reconcileMessage }}</p>
+        </template>
+      </div>
+
       <!-- Submission History -->
       <div class="submit-right">
         <div class="history-section">
@@ -231,6 +341,8 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useEntriesStore, TempoVerificationError, type ActivityType } from '@/shared/stores/entries'
 import { useUiStore } from '@/shared/stores/ui'
 import { localDate, startOfWeek } from '@/shared/utils/dates'
+import { executeApi, ApiError } from '@/shared/utils/api'
+import { asRecord, asString, asNumber, asBoolean, readList } from '@/shared/utils/schema'
 
 const entriesStore = useEntriesStore()
 const uiStore = useUiStore()
@@ -343,6 +455,7 @@ const applyRange = async () => {
   rangeError.value = ''
   try {
     await entriesStore.loadEntriesRange(resolved.start, resolved.end)
+    await loadReconciliation()
     // Anything no longer in view must not stay selected, or a hidden entry
     // would be submitted by a button the user reads as applying to the list.
     const visible = new Set(unsubmittedEntries.value.map(e => e.id))
@@ -657,7 +770,158 @@ const submitSelected = async () => {
   }
 }
 
-// AI Features
+
+interface ReconciledRow {
+  entryId: number
+  date: string
+  name: string
+  ticketId: string | null
+  durationMins: number
+  submitted: boolean
+  status: string
+  tempoDurationMins: number | null
+  durationDiffers: boolean
+  worklogId: number | null
+}
+
+const reconciliationLoading = ref(false)
+const reconciliationError = ref('')
+const reconciled = ref<ReconciledRow[]>([])
+const resubmitMessage = ref('')
+const reconcileMessage = ref('')
+const isResubmitting = ref(false)
+const reconcilingEntryId = ref<number | null>(null)
+const statusFilter = ref('all')
+const reconciliationCounts = ref({ missingFromTempo: 0 })
+
+const statusFilters = [
+  { label: 'All', value: 'all' },
+  { label: 'Needs fixing', value: 'needs_fixing' },
+  { label: 'Matched', value: 'matched' },
+  { label: 'Marked sent, absent', value: 'missing_from_tempo' },
+  { label: 'In Tempo, not marked', value: 'in_tempo_not_marked' },
+  { label: 'Not submitted', value: 'not_submitted' }
+]
+
+const filteredReconciled = computed(() => {
+  if (statusFilter.value === 'all') return reconciled.value
+  if (statusFilter.value === 'needs_fixing') {
+    return reconciled.value.filter(row => row.status === 'missing_from_tempo' || row.durationDiffers)
+  }
+  return reconciled.value.filter(row => row.status === statusFilter.value)
+})
+
+const statusLabel = (status: string) => {
+  switch (status) {
+    case 'matched': return 'In Tempo'
+    case 'missing_from_tempo': return 'Marked sent, absent'
+    case 'in_tempo_not_marked': return 'In Tempo, not marked'
+    default: return 'Not submitted'
+  }
+}
+
+const statusClass = (status: string) => {
+  switch (status) {
+    case 'matched': return 'ok'
+    case 'missing_from_tempo': return 'bad'
+    case 'in_tempo_not_marked': return 'warn'
+    default: return 'pending'
+  }
+}
+
+const formatReconciliationDuration = (mins: number | null) => {
+  if (mins === null || mins === undefined) return '—'
+  const hours = Math.floor(mins / 60)
+  const minutes = mins % 60
+  if (hours === 0) return `${minutes}m`
+  return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`
+}
+
+const loadReconciliation = async () => {
+  const resolved = activeRange.value
+  if (!resolved) return
+  reconciliationLoading.value = true
+  reconciliationError.value = ''
+  try {
+    const raw = await executeApi('tempo_get_worklogs', { from: resolved.start, to: resolved.end })
+    const record = asRecord(raw)
+    if (!asBoolean(record.success, false)) {
+      reconciliationError.value = asString(record.message, 'Failed to read Tempo worklogs')
+      return
+    }
+    reconciled.value = readList(record.reconciled, undefined, item => ({
+      entryId: asNumber(item.entryId),
+      date: asString(item.date),
+      name: asString(item.name),
+      ticketId: item.ticketId ? asString(item.ticketId) : null,
+      durationMins: asNumber(item.durationMins),
+      submitted: asBoolean(item.submitted, false),
+      status: asString(item.status, 'not_submitted'),
+      tempoDurationMins: item.tempoDurationMins === null || item.tempoDurationMins === undefined
+        ? null : asNumber(item.tempoDurationMins),
+      durationDiffers: asBoolean(item.durationDiffers, false),
+      worklogId: item.worklogId === null || item.worklogId === undefined
+        ? null : asNumber(item.worklogId)
+    }))
+    const counts = asRecord(record.counts)
+    reconciliationCounts.value = { missingFromTempo: asNumber(counts.missingFromTempo) }
+  } catch (err) {
+    reconciliationError.value = err instanceof ApiError ? err.message : 'Failed to read Tempo worklogs'
+  } finally {
+    reconciliationLoading.value = false
+  }
+}
+
+const resubmitMissing = async (entryIds?: number[]) => {
+  const ids = entryIds ?? reconciled.value
+    .filter(row => row.status === 'missing_from_tempo')
+    .map(row => row.entryId)
+  if (ids.length === 0) return
+  isResubmitting.value = true
+  resubmitMessage.value = ''
+  try {
+    const result = await executeApi('mark_entries_for_resubmit', { ids })
+    const record = asRecord(result)
+    if (!asBoolean(record.success, false)) {
+      resubmitMessage.value = asString(record.message, 'Failed to mark entries for resubmit')
+      return
+    }
+    resubmitMessage.value = asString(record.message, 'Marked as not submitted') +
+      ' — the entries are now available in Unsubmitted Entries above.'
+    const resolved = activeRange.value
+    if (resolved) await entriesStore.loadEntriesRange(resolved.start, resolved.end)
+    await loadReconciliation()
+    selectedEntries.value = selectedEntries.value.filter(id =>
+      entriesStore.entries.some(entry => entry.id === id && !entry.submitted)
+    )
+    selectAll.value = false
+  } catch (err) {
+    resubmitMessage.value = err instanceof ApiError ? err.message : 'Failed to mark entries for resubmit'
+  } finally {
+    isResubmitting.value = false
+  }
+}
+
+const reconcileDuration = async (row: ReconciledRow) => {
+  reconcilingEntryId.value = row.entryId
+  reconcileMessage.value = ''
+  try {
+    const result = await executeApi('tempo_reconcile_worklog_duration', { entryId: row.entryId })
+    const record = asRecord(result)
+    if (!asBoolean(record.success, false)) {
+      reconcileMessage.value = asString(record.message, 'Failed to reconcile worklog')
+      return
+    }
+    reconcileMessage.value = asString(record.message, 'Tempo worklog updated')
+    await loadReconciliation()
+  } catch (err) {
+    reconcileMessage.value = err instanceof ApiError ? err.message : 'Failed to reconcile worklog'
+  } finally {
+    reconcilingEntryId.value = null
+  }
+}
+
+\n// AI Features
 
 </script>
 
@@ -1269,4 +1533,29 @@ const submitSelected = async () => {
     grid-template-columns: 1fr;
   }
 }
+
+/* Tempo reconciliation is intentionally part of Submit Time's workflow. */
+.submit-reconciliation { margin: 1rem 2rem 2rem; padding: 1.25rem; border: 1px solid var(--color-border); border-radius: 12px; min-width: 0; }
+.reconciliation-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.reconciliation-heading h2, .reconciliation-section h2 { font-size: 1.1rem; font-weight: 700; }
+.reconciliation-section { margin-top: 1rem; }
+.reconciliation-section .filter-row { display: flex; flex-wrap: wrap; gap: .5rem; margin: .75rem 0; }
+.reconciliation-section .btn-filter, .reconciliation-section .import-btn, .reconciliation-section .import-all-btn { border: 1px solid var(--color-control-solid); border-radius: 7px; padding: .4rem .7rem; background: var(--color-surface-raised); color: var(--color-text); cursor: pointer; }
+.reconciliation-section .btn-filter.active { background: var(--color-accent); color: var(--color-on-accent); }
+.reconciliation-section .section-note { color: var(--color-text-muted); font-size: .85rem; margin: .5rem 0; }
+.reconciliation-section .table { width: 100%; overflow-x: auto; }
+.reconciliation-section .table-header, .reconciliation-section .table-row { display: grid; grid-template-columns: 100px 120px minmax(150px, 1fr) 75px 75px 145px 130px; gap: .6rem; align-items: center; min-width: 820px; padding: .65rem .5rem; }
+.reconciliation-section .table-header { font-weight: 700; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border); }
+.reconciliation-section .table-row { border-bottom: 1px solid var(--color-border); }
+.reconciliation-section .ticket-chip { font-family: monospace; }
+.reconciliation-section .ticket-chip.missing { color: var(--color-danger); }
+.reconciliation-section .status-chip { display: inline-block; border-radius: 20px; padding: .2rem .5rem; font-size: .75rem; }
+.reconciliation-section .status-chip.ok { color: #86efac; background: rgba(34,197,94,.15); }
+.reconciliation-section .status-chip.bad { color: var(--color-danger); background: rgba(239,68,68,.15); }
+.reconciliation-section .status-chip.warn { color: #fcd34d; background: rgba(245,158,11,.15); }
+.reconciliation-section .status-chip.pending { color: var(--color-text-muted); background: rgba(148,163,184,.15); }
+.reconciliation-section .differs { color: #fcd34d; font-weight: 600; }
+.reconciliation-section .muted { color: var(--color-text-muted); }
+.reconciliation-section .col-desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 768px) { .submit-reconciliation { margin: 1rem; padding: .75rem; } }
 </style>
