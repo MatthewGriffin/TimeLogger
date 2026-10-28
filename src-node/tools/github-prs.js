@@ -371,7 +371,13 @@ export async function getPullRequestsWithMajorUpdatesOnDate(date) {
           majorEvents.has(String(event.event || '').toLowerCase()) && sameDay(event.created_at));
         const openedThatDay = sameDay(pr.created_at);
         const mergedThatDay = sameDay(pr.merged_at);
-        if (!openedThatDay && !mergedThatDay && matchingEvents.length === 0) return null;
+        const requestedReviewer = (Array.isArray(pr.requested_reviewers) ? pr.requested_reviewers : [])
+          .some(reviewer => String(reviewer.login || '').toLowerCase() === login.toLowerCase());
+        const isOpen = String(pr.state || '').toLowerCase() === 'open' && !pr.merged_at;
+        // An open PR explicitly awaiting this account's review remains pending
+        // work regardless of whether the reviewer request was added yesterday.
+        if (!openedThatDay && !mergedThatDay && matchingEvents.length === 0 &&
+            !(isOpen && requestedReviewer)) return null;
         const eventLabels = [];
         if (openedThatDay || matchingEvents.some(e => e.event === 'opened')) eventLabels.push('opened');
         if (mergedThatDay || matchingEvents.some(e => e.event === 'merged')) eventLabels.push('merged');
@@ -382,7 +388,9 @@ export async function getPullRequestsWithMajorUpdatesOnDate(date) {
         return {
           ...safePr({ ...pr, __linkedLogin: login }),
           majorUpdateDate: date,
-          majorUpdateTypes: [...new Set(eventLabels)]
+          majorUpdateTypes: [...new Set(eventLabels)],
+          requestedReviewer,
+          pendingReview: isOpen && requestedReviewer
         };
       } catch (error) {
         console.warn(`Could not load PR activity for scrum (${item.repository}#${item.number}):`, error.message);
