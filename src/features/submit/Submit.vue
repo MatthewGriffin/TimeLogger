@@ -637,6 +637,7 @@ const submitSelected = async () => {
 
       if (submittedTotal > 0) {
         await entriesStore.loadSubmissionHistory()
+        await loadReconciliation()
       }
 
       const message = submittedTotal > 0
@@ -649,6 +650,9 @@ const submitSelected = async () => {
     }
 
     await entriesStore.loadSubmissionHistory()
+    // Refresh reconciliation after Tempo has accepted/skipped entries so the
+    // Local Entries vs Tempo table immediately reflects the resulting state.
+    await loadReconciliation()
     // A run can narrow the window, so re-read it before the list redraws.
     await entriesStore.loadTempoFutureLimit()
 
