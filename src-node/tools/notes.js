@@ -85,7 +85,7 @@ function isReusableTopic(topic) {
  * "Area - Task detail", so prefer the area before the separator; otherwise
  * strip common action wording and accept only a reusable short subject.
  */
-function inferTopicFromTitle(title) {
+export function inferTopicFromTitle(title) {
   const clean = String(title || '').trim();
   if (!clean) return null;
   const segments = clean.split(/\s+(?:-|–|—|:)\s+/).map(part => part.trim()).filter(Boolean);
