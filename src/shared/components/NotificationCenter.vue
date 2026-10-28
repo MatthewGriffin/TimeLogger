@@ -35,7 +35,7 @@ const activateNotification = async (notif: { id: string; url?: string }) => {
 }
 
 const removeNotification = (id: string) => {
-  uiStore.removeNotification(id)
+  uiStore.completeNotification(id)
 }
 
 const getIcon = (type: string) => {
