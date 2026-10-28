@@ -7,7 +7,7 @@
   background:
     radial-gradient(circle at top, rgba(59, 130, 246, 0.22), transparent 35%),
     linear-gradient(135deg, #050816 0%, #0b1220 100%);
-  font-family: "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
