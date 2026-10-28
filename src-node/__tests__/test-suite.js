@@ -498,6 +498,26 @@ async function runTests() {
         'The matched Tempo worklog should be consumed exactly once');
     });
 
+    test('matches the later three-hour entry by duration when its Tempo description differs', () => {
+      const shortEntry = en({
+        id: 105, date: '2026-10-28', start_time: '09:00', duration_mins: 15,
+        name: 'Morning admin', tempo_worklog_id: null,
+      });
+      const laterEntry = en({
+        id: 106, date: '2026-10-28', start_time: '09:15', duration_mins: 180,
+        name: 'Feature implementation', tempo_worklog_id: null,
+      });
+      const longWorklog = wl({
+        worklogId: 'tempo-three-hours', date: '2026-10-28', startTime: '09:00',
+        durationMins: 180, description: 'Original task description',
+      });
+      const result = reconcileTempoWorklogs([shortEntry, laterEntry], [longWorklog]);
+      assert.strictEqual(result.matchesByEntryId.has(105), false,
+        'The 15-minute morning entry must not claim the three-hour worklog');
+      assert.strictEqual(result.matchesByEntryId.get(106), longWorklog,
+        'The three-hour worklog should match the local entry with the same duration');
+    });
+
     test('does not match a stale ID to a different Tempo time slot when durations differ', () => {
       const shortEntry = en({
         id: 103, date: '2026-10-27', start_time: '08:00', duration_mins: 15,
