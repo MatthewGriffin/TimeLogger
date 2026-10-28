@@ -69,7 +69,7 @@ const pollGitHubActivity = async () => {
         : event.kind === 'merged'
           ? `“${event.title}” (${event.repository}#${event.number}) was merged.`
           : `@${event.reviewer} ${outcome} “${event.title}” (${event.repository}#${event.number}).`
-      uiStore.addNotification({ type: 'info', message, duration: 0, url: event.url })
+      uiStore.addNotification({ type: 'info', message, url: event.url })
       try {
         await invoke('show_notification', {
           title: event.kind === 'added'
