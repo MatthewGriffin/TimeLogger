@@ -62,25 +62,41 @@ export { takeDuplicateWorklog, resolveJiraCredentials, jiraHeaders, daysAhead, l
  * across the whole day/ticket pool before falling back to IDs or start times.
  */
 export const reconcileTempoWorklogs = (localEntries, worklogs) => {
+  // Normalize keys and times before matching: API/local representations can
+  // differ in case or include seconds, even though they identify the same slot.
+  const normalizeTicket = value => String(value || '').trim().toUpperCase();
+  const normalizeDate = value => String(value || '').slice(0, 10);
+  const normalizeTime = value => {
+    const match = /^(\\d{1,2}):(\\d{2})/.exec(String(value || '').trim());
+    return match ? `${match[1].padStart(2, '0')}:${match[2]}` : '';
+  };
+  const normalizeDescription = value => String(value || '').trim().toLowerCase().replace(/\\s+/g, ' ');
+  const keyFor = (date, ticket) => `${normalizeDate(date)}|${normalizeTicket(ticket)}`;
   const remaining = new Map();
   for (const log of worklogs) {
-    const key = `${log.date}|${log.ticketId}`;
+    const key = keyFor(log.date, log.ticketId);
     if (!remaining.has(key)) remaining.set(key, []);
     remaining.get(key).push(log);
   }
+
   const matchesByEntryId = new Map();
-  const keyFor = entry => `${entry.date}|${entry.ticket_id}`;
+  const entryKey = entry => keyFor(entry.date, entry.ticket_id);
   const sameDescription = (entry, log) =>
-    String(log.description || '').trim().toLowerCase() === String(entry.name || '').trim().toLowerCase();
-  const sameStart = (entry, log) => Boolean(entry.start_time) &&
-    String(log.startTime || '').slice(0, 5) === String(entry.start_time).slice(0, 5);
+    normalizeDescription(log.description) === normalizeDescription(entry.name);
+  const sameStart = (entry, log) => Boolean(normalizeTime(entry.start_time)) &&
+    normalizeTime(log.startTime) === normalizeTime(entry.start_time);
+  const sameDuration = (entry, log) => Number(log.durationMins) === Number(entry.duration_mins);
   const consumeMatch = (entry, predicate) => {
-    const pool = remaining.get(keyFor(entry)) || [];
+    const pool = remaining.get(entryKey(entry)) || [];
     const candidates = [];
     pool.forEach((log, index) => {
       if (predicate(log)) {
-        candidates.push({ index, score: (sameStart(entry, log) ? 2 : 0) +
-          (sameDescription(entry, log) ? 1 : 0) });
+        // Prefer the exact time slot; description breaks ties between duplicate
+        // descriptions/durations, but duration alone is not identity.
+        const score = (sameStart(entry, log) ? 4 : 0) +
+          (sameDuration(entry, log) ? 2 : 0) +
+          (sameDescription(entry, log) ? 1 : 0);
+        candidates.push({ index, score });
       }
     });
     candidates.sort((a, b) => b.score - a.score);
@@ -89,35 +105,39 @@ export const reconcileTempoWorklogs = (localEntries, worklogs) => {
     return true;
   };
 
-  // Exact duration + description is the strongest evidence and must be
-  // allocated globally before any fallback, so split entries cannot steal it.
+  // Match exact time slots first. This prevents a different entry on the same
+  // ticket with the same duration from stealing the actual Tempo worklog.
   for (const entry of localEntries) {
-    consumeMatch(entry, log => log.durationMins === entry.duration_mins && sameDescription(entry, log));
+    consumeMatch(entry, log => sameStart(entry, log) && sameDuration(entry, log));
   }
 
-  // Duration is a stronger signal than start time when a local entry has
-  // been split or edited. Match remaining exact-duration worklogs globally
-  // before falling back to start time, even when the descriptions differ.
-  // Otherwise a short morning entry can steal a later 3-hour worklog simply
-  // because that Tempo worklog retained the original start time.
+  // If times changed but the task and duration still identify the worklog,
+  // match it next. Never match on duration alone: unrelated entries commonly
+  // have the same duration and that produced false "In Tempo" statuses.
   for (const entry of localEntries) {
     if (matchesByEntryId.has(entry.id)) continue;
-    consumeMatch(entry, log => log.durationMins === entry.duration_mins);
+    consumeMatch(entry, log => sameDuration(entry, log) && sameDescription(entry, log));
   }
 
-  // A start-time match is safer than a persisted ID: IDs can become stale
-  // when a local entry is split or a worklog is edited/recreated in Tempo.
+  // A stable description at the same start is also strong evidence when the
+  // duration was edited in either the local app or Tempo.
   for (const entry of localEntries) {
-    if (matchesByEntryId.has(entry.id) || !entry.start_time) continue;
+    if (matchesByEntryId.has(entry.id)) continue;
+    consumeMatch(entry, log => sameStart(entry, log) && sameDescription(entry, log));
+  }
+
+  // Last fallback: exact start time on the same date/ticket. The UI will show
+  // duration drift, rather than incorrectly claiming a different slot exists.
+  for (const entry of localEntries) {
+    if (matchesByEntryId.has(entry.id) || !normalizeTime(entry.start_time)) continue;
     consumeMatch(entry, log => sameStart(entry, log));
   }
 
-  // Only use a stored ID when it does not contradict the local start time.
-  // If the same ticket has multiple entries, an ID-only fallback is ambiguous
-  // and must not claim a different time slot just because an old ID remains.
+  // A stored Tempo ID is useful only when its time still agrees with the local
+  // slot. IDs alone can be stale after a local entry is split or recreated.
   for (const entry of localEntries) {
     if (matchesByEntryId.has(entry.id) || !entry.tempo_worklog_id) continue;
-    const pool = remaining.get(keyFor(entry)) || [];
+    const pool = remaining.get(entryKey(entry)) || [];
     const candidates = pool.filter(log =>
       String(log.worklogId) === String(entry.tempo_worklog_id) &&
       (!entry.start_time || sameStart(entry, log)));
