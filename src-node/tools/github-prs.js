@@ -330,6 +330,61 @@ async function pollReviewEvents(token, prs) {
   return events;
 }
 
+/**
+ * Return merged PRs that are relevant to the linked account's daily activity:
+ * PRs authored by the account, plus PRs where the account submitted an APPROVED
+ * review. A generic reviewed-by search is not enough; the review state is
+ * verified against the pull-request reviews endpoint.
+ */
+export async function getMergedPullRequestsByAccount() {
+  const token = String(readConfig().token || '');
+  if (!token) return [];
+  const login = await account(token);
+  const searches = await Promise.all([
+    searchPrs(token, login, `is:pr is:merged author:${login}`),
+    searchPrs(token, login, `is:pr is:merged reviewed-by:${login}`)
+  ]);
+  const candidates = new Map();
+  for (const item of searches.flat()) {
+    const repoUrl = String(item.repository_url || '');
+    const match = repoUrl.match(/\\/repos\\/([^/]+\\/[^/]+)$/);
+    if (!match || !Number.isInteger(Number(item.number))) continue;
+    candidates.set(`${match[1]}#${item.number}`, { repository: match[1], number: Number(item.number) });
+  }
+
+  const selected = [...candidates.values()].sort((a, b) => 0).slice(0, MAX_PRS);
+  const merged = [];
+  const concurrency = 5;
+  for (let i = 0; i < selected.length; i += concurrency) {
+    const batch = await Promise.all(selected.slice(i, i + concurrency).map(async item => {
+      try {
+        const pr = await githubGet(`/repos/${item.repository}/pulls/${item.number}`, token);
+        if (!pr.merged_at) return null;
+        const authored = String(pr.user?.login || '').toLowerCase() === login.toLowerCase();
+        if (!authored) {
+          const reviews = await githubGet(`/repos/${item.repository}/pulls/${item.number}/reviews?per_page=100`, token).catch(() => []);
+          const approved = Array.isArray(reviews) && reviews.some(review =>
+            String(review.user?.login || '').toLowerCase() === login.toLowerCase() &&
+            String(review.state || '').toUpperCase() === 'APPROVED');
+          if (!approved) return null;
+        }
+        return {
+          ...safePr({ ...pr, __linkedLogin: login }),
+          isAuthoredByAccount: authored,
+          reviewedByAccount: !authored,
+          requestedReviewer: false,
+          pendingReview: false
+        };
+      } catch (error) {
+        console.warn(`Could not load merged PR ${item.repository}#${item.number} for scrum:`, error.message);
+        return null;
+      }
+    }));
+    merged.push(...batch.filter(Boolean));
+  }
+  return merged;
+}
+
 export async function getPullRequestsForTickets(ticketValues = []) {
   const token = String(readConfig().token || '');
   if (!token) return [];
