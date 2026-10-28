@@ -864,7 +864,7 @@ const loadReconciliation = async () => {
         ? null : asNumber(item.worklogId)
     }))
     const counts = asRecord(record.counts)
-    reconciliationCounts.value = { missingFromTempo: asNumber(reconciliationCounts.missingFromTempo) }
+    reconciliationCounts.value = { missingFromTempo: asNumber(counts.missingFromTempo) }
   } catch (err) {
     reconciliationError.value = err instanceof ApiError ? err.message : 'Failed to read Tempo worklogs'
   } finally {
