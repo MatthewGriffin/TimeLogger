@@ -65,8 +65,10 @@ export const useUiStore = defineStore('ui', () => {
       duration: notification.duration ?? 3000
     }
     notifications.value.push(notif)
-    unreadNotifications.value.unshift({ ...notif })
-    persistUnreadNotifications()
+    if (notif.persistent) {
+      unreadNotifications.value.unshift({ ...notif })
+      persistUnreadNotifications()
+    }
 
     if (notif.duration && notif.duration > 0) {
       timers.set(id, setTimeout(() => {
@@ -83,6 +85,12 @@ export const useUiStore = defineStore('ui', () => {
     timers.delete(id)
     notifications.value = notifications.value.filter(n => n.id !== id)
   }
+  const clearAllNotifications = () => {
+    for (const notification of unreadNotifications.value) removeNotification(notification.id)
+    unreadNotifications.value = []
+    persistUnreadNotifications()
+  }
+
   const completeNotification = (id: string) => {
     unreadNotifications.value = unreadNotifications.value.filter(n => n.id !== id)
     removeNotification(id)
@@ -132,6 +140,7 @@ export const useUiStore = defineStore('ui', () => {
     addNotification,
     removeNotification,
     completeNotification,
+    clearAllNotifications,
     reportError,
     showSuccess,
     showError,
