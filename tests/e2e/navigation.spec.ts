@@ -14,7 +14,6 @@ const PAGES = [
   { name: 'Calendar', route: ROUTES.calendar, heading: 'Calendar' },
   { name: 'Daily Scrum', route: ROUTES.scrum, heading: 'Daily Scrum' },
   { name: 'Submit Time', route: ROUTES.submit, heading: 'Submit Time' },
-  { name: 'Tempo Status', route: ROUTES.tempo, heading: 'Tempo Status' },
   { name: 'Pull Requests', route: ROUTES.pullRequests, heading: 'Pull Requests' },
   { name: 'Settings', route: ROUTES.settings, heading: 'Settings' },
 ] as const;
@@ -27,7 +26,7 @@ test.describe('Routing', () => {
     });
   }
 
-  test('unknown routes fall back to the dashboard', async ({ page }) => {
+  test('legacy Tempo Status route redirects to Submit Time', async ({ page }) => {\n    await page.goto(ROUTES.tempo);\n    await expect(pageHeading(page)).toHaveText('Submit Time');\n    await expect(page).toHaveURL(/#\\/submit$/);\n  });\n\n  test('Submit Time includes Tempo reconciliation', async ({ page }) => {\n    await page.goto(ROUTES.submit);\n    await expect(pageHeading(page)).toHaveText('Submit Time');\n    await expect(page.getByRole('heading', { name: 'Local Entries vs Tempo' })).toBeVisible();\n  });\n\n  test('unknown routes fall back to the dashboard', async ({ page }) => {
     await page.goto('#/this-route-does-not-exist');
     await expect(pageHeading(page)).toHaveText('Dashboard');
   });
@@ -38,7 +37,6 @@ test.describe('Navigation sidebar', () => {
     { label: 'Dashboard', path: '/' },
     { label: 'Daily Scrum', path: '/scrum' },
     { label: 'Daily Entries', path: '/entries' },
-    { label: 'Tempo Status', path: '/tempo' },
     { label: 'Submit Time', path: '/submit' },
     { label: 'Pull Requests', path: '/pull-requests' },
     { label: 'Notes', path: '/notes' },
