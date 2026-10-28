@@ -10,11 +10,11 @@ export const useUiStore = defineStore('ui', () => {
   const modalType = ref<'entry' | 'note' | 'confirm' | null>(null)
   const modalPayload = ref<ModalPayload>({})
   const notifications = ref<Notification[]>([])
+  const unreadStorageKey = 'timelogger.unreadNotifications'
   const unreadNotifications = ref<Notification[]>(loadUnreadNotifications())
   const sidebarOpen = ref(true)
   const timers = new Map<string, ReturnType<typeof setTimeout>>()
   let notificationSequence = 0
-  const unreadStorageKey = 'timelogger.unreadNotifications'
 
   function loadUnreadNotifications(): Notification[] {
     try {
