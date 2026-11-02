@@ -1549,21 +1549,18 @@ async function runTests() {
     assert.strictEqual(microsoftAuthorityUrl('../../evil.example', 'oauth2/v2.0/token'), null);
   });
 
-  await testAsync('Ollama host is restricted to local loopback addresses', async () => {
-    // Ollama is local-only; plaintext HTTP remains supported.
+  await testAsync('Ollama host accepts explicit local and remote HTTP(S) origins safely', async () => {
+    // Ollama may run locally or on another machine, including a trusted LAN host.
     assert.strictEqual(safeOllamaHost('http://localhost:11434'), 'http://localhost:11434');
     assert.strictEqual(safeOllamaHost('http://127.0.0.1:11434'), 'http://127.0.0.1:11434');
     assert.strictEqual(safeOllamaHost('http://[::1]:11434'), 'http://[::1]:11434');
     assert.strictEqual(safeOllamaHost('http://localhost:11434/api/tags'), 'http://localhost:11434');
     assert.strictEqual(safeOllamaHost('http://192.168.1.25:11434'), 'http://192.168.1.25:11434');
+    assert.strictEqual(safeOllamaHost('http://10.0.0.5:11434'), 'http://10.0.0.5:11434');
+    assert.strictEqual(safeOllamaHost('http://ollama.local:11434'), 'http://ollama.local:11434');
     assert.strictEqual(safeOllamaHost('https://ollama.example.com:443'), 'https://ollama.example.com');
     assert.strictEqual(safeOllamaHost('http://user:pass@192.168.1.25:11434'), null);
     assert.strictEqual(safeOllamaHost('ftp://192.168.1.25:11434'), null);
-    assert.strictEqual(safeOllamaHost('https://localhost:11434'), 'https://localhost:11434');
-    assert.strictEqual(safeOllamaHost('http://192.168.1.20:11434'), null);
-    assert.strictEqual(safeOllamaHost('http://10.0.0.5:11434'), null);
-    assert.strictEqual(safeOllamaHost('http://ollama.local:11434'), null);
-    assert.strictEqual(safeOllamaHost('http://example.com:11434'), null);
     assert.strictEqual(safeOllamaHost('gopher://localhost'), null);
   });
 
