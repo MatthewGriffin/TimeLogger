@@ -86,6 +86,10 @@ const SERVER_ERROR_RETRY_AFTER = 1500; // doubles per attempt
 const MAX_RETRIES = 3;
 const REQUEST_TIMEOUT = 30000; // 30 seconds
 
+// Only replay requests whose HTTP semantics are idempotent. A POST that timed
+// out after Microsoft accepted it must not be sent again automatically.
+const isRetrySafeMethod = method => ['GET', 'HEAD', 'OPTIONS', 'PUT', 'DELETE'].includes(String(method).toUpperCase());
+
 /**
  * Turn a Graph error into something a user can act on.
  *
@@ -376,7 +380,7 @@ class GraphClient {
       return response.data;
     } catch (error) {
       // Handle rate limiting (429)
-      if (error.response?.status === 429 && retryCount < MAX_RETRIES) {
+      if (error.response?.status === 429 && isRetrySafeMethod(method) && retryCount < MAX_RETRIES) {
         const retryAfter = error.response.headers['retry-after'] 
           ? parseInt(error.response.headers['retry-after']) * 1000 
           : RATE_LIMIT_RETRY_AFTER;
@@ -398,7 +402,7 @@ class GraphClient {
       // error page) often enough that a single failure would otherwise show up
       // as "no sections", making a saved section look lost.
       const status = error.response?.status;
-      if (status >= 500 && status < 600 && retryCount < MAX_RETRIES) {
+      if (status >= 500 && status < 600 && isRetrySafeMethod(method) && retryCount < MAX_RETRIES) {
         const backoff = SERVER_ERROR_RETRY_AFTER * Math.pow(2, retryCount);
         console.warn(`Graph returned ${status}. Retrying in ${backoff}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
         await new Promise(resolve => setTimeout(resolve, backoff));
