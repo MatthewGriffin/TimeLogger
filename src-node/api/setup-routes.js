@@ -140,23 +140,22 @@ router.post('/setup/test-jira', async (req, res) => {
       });
     }
 
-    // codeql[js/request-forgery] -- Accepted bounded destination: safeJiraBaseUrl only returns HTTPS Atlassian Cloud tenant origins, strips paths and credentials, and rejects private hosts. Redirects are disabled in the shared HTTP client. Jira API-token Basic authentication requires the tenant hostname, so a fixed API hostname is not compatible with this authentication flow.
-    const jiraResponse = await httpClient.get(`${jiraOrigin}/rest/api/3/myself`, {
+    const jiraResponse = await fetch(`${jiraOrigin}/rest/api/3/myself`, {
       headers: {
         Authorization: `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`,
         'Content-Type': 'application/json',
       },
-      validateStatus: () => true,
+      redirect: 'error',
     });
 
-    if (jiraResponse.status < 200 || jiraResponse.status >= 300) {
+    if (!jiraResponse.ok) {
       return res.status(400).json({
         success: false,
         message: `Jira connection failed (${jiraResponse.status}): ${jiraResponse.statusText}`,
       });
     }
 
-    const user = jiraResponse.data;
+    const user = await jiraResponse.json();
 
     // Save to database
     db.prepare(`
@@ -571,18 +570,19 @@ router.post('/setup/test-ollama', async (req, res) => {
       });
     }
 
-    const response = await httpClient.get(`${ollamaOrigin}/api/tags`, {
-      validateStatus: () => true,
+    const response = await fetch(`${ollamaOrigin}/api/tags`, {
+      signal: AbortSignal.timeout(5000),
+      redirect: 'error',
     });
 
-    if (response.status < 200 || response.status >= 300) {
+    if (!response.ok) {
       return res.status(400).json({
         success: false,
         message: `Ollama connection failed (${response.status}): ${response.statusText}`,
       });
     }
 
-    const data = response.data;
+    const data = await response.json();
     const models = data.models || [];
 
     if (models.length === 0) {
