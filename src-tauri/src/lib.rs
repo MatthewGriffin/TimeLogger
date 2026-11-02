@@ -33,6 +33,7 @@ pub fn run() {
     // over port 3001, each killing the other's backend and leaving nothing
     // listening ("failed to reach backend"). Reuse the running instance.
     .plugin(tauri_plugin_updater::Builder::new().build())
+    .plugin(tauri_plugin_notification::init())
     // Backup and restore need a native file picker. The file itself is read
     // and written by dedicated commands rather than the fs plugin, so no
     // wildcard filesystem scope has to be granted to the webview.
@@ -47,6 +48,7 @@ pub fn run() {
       }
     }))
     .setup(|app| {
+      notifications::set_app_handle(app.handle().clone());
       tray::setup_tray(app)?;
       backend::start_backend_watchdog();
 
