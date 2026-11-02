@@ -363,7 +363,7 @@ class GraphClient {
 
       const config = {
         method,
-        url: `${GRAPH_BASE_URL}${endpoint}`,
+        url: endpoint.startsWith(`${GRAPH_BASE_URL}/`) ? endpoint : `${GRAPH_BASE_URL}${endpoint}`,
         headers: {
           'Authorization': `Bearer ${this.token}`,
           'Content-Type': options.contentType || 'application/json',
@@ -414,19 +414,63 @@ class GraphClient {
   }
 
   /**
+   * Read every page of a Microsoft Graph collection.
+   *
+   * Graph returns an opaque @odata.nextLink when a collection is paged. Follow
+   * that full URL unchanged, but only when it points back to the Graph v1.0
+   * service; this prevents a malformed nextLink from sending the bearer token
+   * to another host. The page cap is a final guard against a broken nextLink loop.
+   */
+  async getAllPages(endpoint) {
+    const items = [];
+    const visited = new Set();
+    let next = endpoint;
+    let pages = 0;
+
+    while (next) {
+      if (++pages > 100) {
+        throw new Error('Microsoft Graph returned too many pages for one request.');
+      }
+
+      let requestEndpoint = next;
+      if (/^https?:\/\//i.test(next)) {
+        let url;
+        try {
+          url = new URL(next);
+        } catch {
+          throw new Error('Microsoft Graph returned an invalid pagination URL.');
+        }
+        if (url.origin !== 'https://graph.microsoft.com' || !url.pathname.startsWith('/v1.0/')) {
+          throw new Error('Microsoft Graph returned an unsafe pagination URL.');
+        }
+        requestEndpoint = url.toString();
+      }
+
+      if (visited.has(requestEndpoint)) {
+        throw new Error('Microsoft Graph returned a pagination loop.');
+      }
+      visited.add(requestEndpoint);
+
+      const response = await this.apiCall('GET', requestEndpoint);
+      if (Array.isArray(response.value)) items.push(...response.value);
+      next = response['@odata.nextLink'] || null;
+    }
+
+    return items;
+  }
+
+  /**
    * Get user's OneNote notebooks
    */
   async getNotebooks() {
-    const response = await this.apiCall('GET', '/me/onenote/notebooks');
-    return response.value || [];
+    return this.getAllPages('/me/onenote/notebooks');
   }
 
   /**
    * Get sections in a notebook
    */
   async getNotebookSections(notebookId) {
-    const response = await this.apiCall('GET', `/me/onenote/notebooks/${notebookId}/sections`);
-    return response.value || [];
+    return this.getAllPages(`/me/onenote/notebooks/${notebookId}/sections`);
   }
 
   /**
