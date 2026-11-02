@@ -59,6 +59,13 @@ jobs:
           }
           exit 0
 
+      # Keep release installs consistent with Quality: security overrides can
+      # change the resolved dependency tree, so refresh both lockfiles before
+      # npm ci rather than failing on a stale committed lockfile.
+      - name: Refresh frontend lockfile
+        if: steps.existing.outputs.exists == 'false'
+        run: npm install --package-lock-only --ignore-scripts
+
       - name: Install frontend dependencies
         if: steps.existing.outputs.exists == 'false'
         run: npm ci
