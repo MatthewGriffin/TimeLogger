@@ -70,6 +70,11 @@ jobs:
         if: steps.existing.outputs.exists == 'false'
         run: npm ci
 
+      - name: Refresh backend lockfile
+        if: steps.existing.outputs.exists == 'false'
+        run: npm install --package-lock-only --ignore-scripts
+        working-directory: src-node
+
       - name: Install backend dependencies
         # better-sqlite3 ships prebuilt binaries, but npm auto-runs `node-gyp
         # rebuild` because binding.gyp is present, which fails on the runner's
