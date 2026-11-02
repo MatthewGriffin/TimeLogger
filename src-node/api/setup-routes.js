@@ -140,8 +140,6 @@ router.post('/setup/test-jira', async (req, res) => {
       });
     }
 
-    // codeql[js/request-forgery] -- Jira supports user-configured public HTTPS tenants;
-    // safeJiraBaseUrl validates the origin and strips all paths, credentials, and query data.
     const jiraResponse = await httpClient.get(`${jiraOrigin}/rest/api/3/myself`, {
       headers: {
         Authorization: `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`,
@@ -572,8 +570,6 @@ router.post('/setup/test-ollama', async (req, res) => {
       });
     }
 
-    // codeql[js/request-forgery] -- Ollama is an intentionally user-configured endpoint;
-    // local/LAN destinations are required, and safeOllamaHost restricts scheme and origin form.
     const response = await httpClient.get(`${ollamaOrigin}/api/tags`, {
       validateStatus: () => true,
     });
