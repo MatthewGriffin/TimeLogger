@@ -566,6 +566,7 @@ const submitSelected = async () => {
   let duplicateTotal = 0
   let futureLimitedTotal = 0
   const failedDates: string[] = []
+  const failedByReason = new Map<string, { date: string; entries: string[] }>()
 
   try {
     // Group by date and submit each date once, passing only the selected ids.
@@ -614,6 +615,12 @@ const submitSelected = async () => {
         submittedTotal += result.count
         skippedTotal += result.skippedEntries.length
         failedTotal += result.failedEntries.length - futureLimited.length
+        for (const failure of result.failedEntries.filter(e => !e.futureLimited)) {
+          const reason = failure.reason?.trim() || 'Tempo returned no error detail.'
+          const group = failedByReason.get(reason) ?? { date, entries: [] }
+          group.entries.push(failure.name || `Entry ${failure.id}`)
+          failedByReason.set(reason, group)
+        }
         futureLimitedTotal += futureLimited.length
         duplicateTotal += result.duplicateEntries.length
         if (result.failedEntries.length > futureLimited.length) failedDates.push(date)
@@ -679,8 +686,17 @@ const submitSelected = async () => {
       const onlyFutureLimited = failedTotal === 0 && futureLimitedTotal > 0
       const message = `${submittedTotal} of ${entryCount} entries submitted — ${detail}` +
         (onlyFutureLimited ? '. Submit those nearer the time.' : '')
-      if (failedTotal > 0) uiStore.showError(message)
-      else uiStore.showInfo(message)
+      if (failedTotal > 0) {
+        // One persistent notification per distinct Tempo error. Entries sharing
+        // a reason are grouped together; different reasons remain separate.
+        for (const [reason, group] of failedByReason) {
+          uiStore.showPersistentError(
+            `Tempo submission failed (${formatDate(group.date)}): ${group.entries.join(', ')}. Error: ${reason}`
+          )
+        }
+        if (failedByReason.size === 0) uiStore.showPersistentError(message)
+        else uiStore.showInfo(message)
+      } else uiStore.showInfo(message)
     } else {
       uiStore.showSuccess(`${submittedTotal} entries submitted successfully`)
     }
