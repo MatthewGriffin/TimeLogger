@@ -7,7 +7,7 @@
  * OAuth tokens are stored in database (settings table) instead of vault.
  */
 
-import axios from 'axios';
+import { httpClient } from './http-client.js';
 import { db } from '../index.js';
 import { microsoftAuthorityUrl } from '../utils/safe-url.js';
 
@@ -325,7 +325,7 @@ class GraphClient {
         body.set('client_secret', this.clientSecret);
       }
 
-      const response = await axios.post(buildTokenEndpoint(this.tenantId), body.toString(), {
+      const response = await httpClient.post(buildTokenEndpoint(this.tenantId), body.toString(), {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         timeout: REQUEST_TIMEOUT
       });
@@ -376,7 +376,7 @@ class GraphClient {
         config.data = data;
       }
 
-      const response = await axios(config);
+      const response = await httpClient(config);
       return response.data;
     } catch (error) {
       // Handle rate limiting (429)

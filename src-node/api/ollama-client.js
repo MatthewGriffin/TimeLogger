@@ -5,7 +5,7 @@
  * Supports model querying, streaming responses, and graceful degradation.
  */
 
-import axios from 'axios';
+import { httpClient } from './http-client.js';
 import { db } from '../index.js';
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
@@ -108,7 +108,7 @@ class OllamaClient {
    */
   async checkAvailability() {
     try {
-      const response = await axios.get(`${this.baseUrl}/api/tags`, {
+      const response = await httpClient.get(`${this.baseUrl}/api/tags`, {
         timeout: 5000
       });
       this.available = response.status === 200;
@@ -124,7 +124,7 @@ class OllamaClient {
    */
   async listModels() {
     try {
-      const response = await axios.get(`${this.baseUrl}/api/tags`, {
+      const response = await httpClient.get(`${this.baseUrl}/api/tags`, {
         timeout: 5000
       });
       this.availableModels = (response.data.models || []).map(toModelName).filter(Boolean);
@@ -207,7 +207,7 @@ class OllamaClient {
     const { timeoutMs, ...bodyOptions } = options;
 
     try {
-      const response = await axios.post(
+      const response = await httpClient.post(
         `${this.baseUrl}/api/generate`,
         {
           model: selectedModel,
@@ -362,7 +362,7 @@ Provide a concise summary.`;
    * cancellation instead.
    */
   async pullModel(model, onProgress) {
-    const response = await axios.post(
+    const response = await httpClient.post(
       `${this.baseUrl}/api/pull`,
       { model, stream: true },
       { responseType: 'stream', timeout: 0 }
