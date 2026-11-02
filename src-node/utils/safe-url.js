@@ -77,14 +77,24 @@ export function safeJiraBaseUrl(input) {
 }
 
 /**
- * Validate an Ollama host.
+ * Validate a local-only Ollama host.
  *
- * Ollama is normally reached over plaintext on the loopback interface or a
- * trusted LAN box, so HTTP has to stay allowed; the origin rebuild still
- * removes any path or credential trickery.
+ * Ollama normally uses plaintext HTTP on loopback. Restricting the hostname
+ * to explicit loopback addresses prevents this setup route becoming an SSRF
+ * proxy for LAN or public services.
  */
 export function safeOllamaHost(input) {
-  return safeBaseUrl(input, { allowHttp: true });
+  const origin = safeBaseUrl(input, { allowHttp: true });
+  if (!origin) return null;
+
+  let hostname;
+  try {
+    hostname = new URL(origin).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+
+  return ['localhost', '127.0.0.1', '[::1]'].includes(hostname) ? origin : null;
 }
 
 // Microsoft accepts a tenant GUID, a verified domain, or one of these aliases.
