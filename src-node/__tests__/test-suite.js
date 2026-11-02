@@ -1555,6 +1555,10 @@ async function runTests() {
     assert.strictEqual(safeOllamaHost('http://127.0.0.1:11434'), 'http://127.0.0.1:11434');
     assert.strictEqual(safeOllamaHost('http://[::1]:11434'), 'http://[::1]:11434');
     assert.strictEqual(safeOllamaHost('http://localhost:11434/api/tags'), 'http://localhost:11434');
+    assert.strictEqual(safeOllamaHost('http://192.168.1.25:11434'), 'http://192.168.1.25:11434');
+    assert.strictEqual(safeOllamaHost('https://ollama.example.com:443'), 'https://ollama.example.com');
+    assert.strictEqual(safeOllamaHost('http://user:pass@192.168.1.25:11434'), null);
+    assert.strictEqual(safeOllamaHost('ftp://192.168.1.25:11434'), null);
     assert.strictEqual(safeOllamaHost('https://localhost:11434'), 'https://localhost:11434');
     assert.strictEqual(safeOllamaHost('http://192.168.1.20:11434'), null);
     assert.strictEqual(safeOllamaHost('http://10.0.0.5:11434'), null);
