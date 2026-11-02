@@ -58,8 +58,8 @@ jobs:
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         env:
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        run: |
         shell: bash
+        run: |
           if git diff --quiet -- src-tauri/Cargo.lock; then
             echo "Cargo.lock is already up to date."
           else
