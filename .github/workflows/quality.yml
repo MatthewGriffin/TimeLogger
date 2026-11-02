@@ -49,6 +49,8 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+      - name: Resolve and compile Rust dependencies
+        run: cargo check --manifest-path src-tauri/Cargo.toml
       - name: Install cargo-audit
         uses: taiki-e/install-action@v2
         with:
