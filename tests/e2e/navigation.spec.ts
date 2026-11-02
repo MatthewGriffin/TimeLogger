@@ -29,7 +29,7 @@ test.describe('Routing', () => {
   test('legacy Tempo Status route redirects to Submit Time', async ({ page }) => {
     await page.goto(ROUTES.tempo);
     await expect(pageHeading(page)).toHaveText('Submit Time');
-    await expect(page).toHaveURL(/#\\/submit$/);
+    await expect(page).toHaveURL(/#\/submit$/);
   });
 
   test('Submit Time includes Tempo reconciliation', async ({ page }) => {
@@ -141,8 +141,6 @@ test.describe('Page health', () => {
       await expect(pageHeading(page)).toHaveText(page_.heading);
     }
 
-    expect(errors, `Unexpected console errors:
-${errors.join('
-')}`).toEqual([]);
+    expect(errors, `Unexpected console errors:\n${errors.join('\n')}`).toEqual([]);
   });
 });
