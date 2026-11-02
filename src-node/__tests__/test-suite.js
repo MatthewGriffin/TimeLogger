@@ -1546,10 +1546,17 @@ async function runTests() {
     assert.strictEqual(microsoftAuthorityUrl('../../evil.example', 'oauth2/v2.0/token'), null);
   });
 
-  await testAsync('an Ollama host allows http but still only an origin', async () => {
-    // Ollama is normally plaintext on loopback, so http has to stay allowed.
+  await testAsync('Ollama host is restricted to local loopback addresses', async () => {
+    // Ollama is local-only; plaintext HTTP remains supported.
     assert.strictEqual(safeOllamaHost('http://localhost:11434'), 'http://localhost:11434');
+    assert.strictEqual(safeOllamaHost('http://127.0.0.1:11434'), 'http://127.0.0.1:11434');
+    assert.strictEqual(safeOllamaHost('http://[::1]:11434'), 'http://[::1]:11434');
     assert.strictEqual(safeOllamaHost('http://localhost:11434/api/tags'), 'http://localhost:11434');
+    assert.strictEqual(safeOllamaHost('https://localhost:11434'), 'https://localhost:11434');
+    assert.strictEqual(safeOllamaHost('http://192.168.1.20:11434'), null);
+    assert.strictEqual(safeOllamaHost('http://10.0.0.5:11434'), null);
+    assert.strictEqual(safeOllamaHost('http://ollama.local:11434'), null);
+    assert.strictEqual(safeOllamaHost('http://example.com:11434'), null);
     assert.strictEqual(safeOllamaHost('gopher://localhost'), null);
   });
 
