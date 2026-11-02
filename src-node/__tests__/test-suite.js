@@ -21,6 +21,7 @@ import { extractTicketKeys, classifyPullRequest, isOpenUnmergedPullRequest } fro
 import { GraphClient, hasStoredGraphToken } from '../api/graph-client.js';
 import { fetchAllTempoPages } from '../tools/jira-tempo-worklogs.js';
 import { localDateKey, parseDateKey } from '../utils/dates.js';
+import { makeHttpRequest, httpClient } from '../api/http-client.js';
 
 // Color codes for output
 const colors = {
@@ -109,6 +110,45 @@ async function runTests() {
   log(colors.green, '✅ Backend ready for testing\n');
 
  
+  await testAsync('Shared HTTP client parses JSON and preserves response metadata', async () => {
+    const { createServer } = await import('http');
+    const server = createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'X-Test': 'shared-client' });
+      res.end(JSON.stringify({ method: req.method }));
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const response = await makeHttpRequest(`http://127.0.0.1:${server.address().port}/test`);
+      assert.strictEqual(response.status, 200);
+      assert.deepStrictEqual(response.data, { method: 'GET' });
+      assert.strictEqual(response.headers['x-test'], 'shared-client');
+      assert.strictEqual(httpClient.defaults.maxRedirects, 0);
+    } finally {
+      await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    }
+  });
+
+  await testAsync('Shared HTTP adapter preserves HTTP error details', async () => {
+    const { createServer } = await import('http');
+    const server = createServer((req, res) => {
+      res.writeHead(422, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ message: 'invalid payload' }));
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      await assert.rejects(
+        () => makeHttpRequest(`http://127.0.0.1:${server.address().port}/failure`),
+        /HTTP 422: .*invalid payload/
+      );
+    } finally {
+      await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    }
+  });
+
+  await testAsync('Shared HTTP adapter rejects unsupported protocols', async () => {
+    await assert.rejects(() => makeHttpRequest('file:///etc/passwd'), /Unsupported URL protocol/);
+  });
+
   // Tempo pagination uses bearer-authenticated requests, so validate every
   // opaque continuation URL before following it.
   await testAsync('Tempo pagination combines pages and preserves opaque next links', async () => {
