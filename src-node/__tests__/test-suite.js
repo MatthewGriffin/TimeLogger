@@ -18,7 +18,7 @@ import { previousWorkingDay, isWorkingDay } from '../utils/working-days.js';
 import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, microsoftAuthorityUrl, escapeHtml } from '../utils/safe-url.js';
 import { backendPort } from '../utils/backend-port.js';
 import { extractTicketKeys, classifyPullRequest, isOpenUnmergedPullRequest } from '../tools/github-prs.js';
-import { hasStoredGraphToken } from '../api/graph-client.js';
+import { GraphClient, hasStoredGraphToken } from '../api/graph-client.js';
 import { localDateKey, parseDateKey } from '../utils/dates.js';
 
 // Color codes for output
@@ -106,6 +106,41 @@ async function runTests() {
   // Backend already imported
   log(colors.blue, '📦 Backend loaded');
   log(colors.green, '✅ Backend ready for testing\n');
+
+ 
+  // Microsoft Graph collection paging: preserve opaque nextLinks but reject
+  // URLs that could disclose the delegated bearer token to another host.
+  await testAsync('Graph pagination combines every page and follows nextLink unchanged', async () => {
+    const client = new GraphClient();
+    const requests = [];
+    client.apiCall = async (method, endpoint) => {
+      requests.push({ method, endpoint });
+      if (requests.length === 1) return {
+        value: [{ id: 'first' }],
+        '@odata.nextLink': 'https://graph.microsoft.com/v1.0/me/onenote/notebooks?$skiptoken=opaque%2Btoken'
+      };
+      return { value: [{ id: 'second' }] };
+    };
+    const items = await client.getAllPages('/me/onenote/notebooks');
+    assert.deepStrictEqual(items.map(item => item.id), ['first', 'second']);
+    assert.strictEqual(requests[1].endpoint, 'https://graph.microsoft.com/v1.0/me/onenote/notebooks?$skiptoken=opaque%2Btoken');
+  });
+
+  await testAsync('Graph pagination rejects nextLinks to other hosts', async () => {
+    const client = new GraphClient();
+    client.apiCall = async () => ({
+      value: [{ id: 'first' }],
+      '@odata.nextLink': 'https://attacker.example/steal-token'
+    });
+    await assert.rejects(() => client.getAllPages('/me/onenote/notebooks'), /unsafe pagination URL/);
+  });
+
+  await testAsync('Graph pagination detects repeated nextLinks', async () => {
+    const client = new GraphClient();
+    const next = 'https://graph.microsoft.com/v1.0/me/onenote/notebooks?$skiptoken=same';
+    client.apiCall = async () => ({ value: [], '@odata.nextLink': next });
+    await assert.rejects(() => client.getAllPages('/me/onenote/notebooks'), /pagination loop/);
+  });
 
   // ============================================================
   // SECTION 1: Tool Registry Tests
