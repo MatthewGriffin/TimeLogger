@@ -19,6 +19,7 @@ import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, microsoftAuthorityUrl, e
 import { backendPort } from '../utils/backend-port.js';
 import { extractTicketKeys, classifyPullRequest, isOpenUnmergedPullRequest } from '../tools/github-prs.js';
 import { GraphClient, hasStoredGraphToken } from '../api/graph-client.js';
+import { fetchAllTempoPages } from '../tools/jira-tempo-worklogs.js';
 import { localDateKey, parseDateKey } from '../utils/dates.js';
 
 // Color codes for output
@@ -106,6 +107,46 @@ async function runTests() {
   // Backend already imported
   log(colors.blue, '📦 Backend loaded');
   log(colors.green, '✅ Backend ready for testing\n');
+
+ 
+  // Tempo pagination uses bearer-authenticated requests, so validate every
+  // opaque continuation URL before following it.
+  await testAsync('Tempo pagination combines pages and preserves opaque next links', async () => {
+    const requests = [];
+    const items = await fetchAllTempoPages('https://api.tempo.io/4/worklogs?from=2026-01-01', 'test-token', async (url, options) => {
+      requests.push({ url, options });
+      if (requests.length === 1) return {
+        data: {
+          results: [{ tempoWorklogId: 1 }],
+          metadata: { next: 'https://api.tempo.io/4/worklogs?cursor=opaque%2Bvalue' }
+        }
+      };
+      return { data: { results: [{ tempoWorklogId: 2 }] } };
+    });
+    assert.deepStrictEqual(items.map(item => item.tempoWorklogId), [1, 2]);
+    assert.strictEqual(requests[1].url, 'https://api.tempo.io/4/worklogs?cursor=opaque%2Bvalue');
+    assert.strictEqual(requests[1].options.headers.Authorization, 'Bearer test-token');
+  });
+
+  await testAsync('Tempo pagination rejects continuation links to other hosts', async () => {
+    await assert.rejects(
+      () => fetchAllTempoPages('https://api.tempo.io/4/worklogs', 'test-token', async () => ({
+        data: { results: [], metadata: { next: 'https://attacker.example/collect' } }
+      })),
+      /unsafe pagination URL/
+    );
+  });
+
+  await testAsync('Tempo pagination detects repeated continuation links', async () => {
+    const next = 'https://api.tempo.io/4/worklogs?cursor=repeated';
+    await assert.rejects(
+      () => fetchAllTempoPages('https://api.tempo.io/4/worklogs', 'test-token', async () => ({
+        data: { results: [], metadata: { next } }
+      })),
+      /pagination loop/
+    );
+  });
+
 
  
   // Microsoft Graph collection paging: preserve opaque nextLinks but reject
