@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 /**
  * Response validation for backend tool calls.
  *
@@ -64,3 +66,12 @@ export const readList = <T>(
   }
   return out
 }
+
+
+/** Validate the outer backend envelope before trusting its success/result fields. */
+export const apiEnvelopeSchema = z.object({
+  success: z.boolean().optional(),
+  message: z.string().optional(),
+  result: z.unknown().optional(),
+  data: z.unknown().optional()
+}).passthrough()
