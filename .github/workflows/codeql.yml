@@ -32,7 +32,6 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           queries: security-extended
-          packs: ${{ matrix.language == 'javascript-typescript' && 'local/timelogger-codeql-models' || '' }}
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
