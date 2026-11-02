@@ -523,13 +523,11 @@ class GraphClient {
 
     // Use calendarview for better recurrence handling. The id is required so
     // synced entries can be matched to their source event.
-    const response = await this.apiCall('GET',
-      `/me/calendarview?startDateTime=${start}&endDateTime=${end}` +
+    const endpoint = `/me/calendarview?startDateTime=${start}&endDateTime=${end}` +
       '&$select=id,subject,start,end,isReminderOn,isAllDay,recurrence,categories,location,showAs,isCancelled' +
-      '&$orderby=start/dateTime&$top=250'
-    );
+      '&$orderby=start/dateTime&$top=250';
 
-    return response.value || [];
+    return this.getAllPages(endpoint);
   }
 
   /**
