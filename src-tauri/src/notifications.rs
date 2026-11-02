@@ -1,65 +1,25 @@
-use std::process::Command;
+use std::sync::OnceLock;
+use tauri::AppHandle;
+use tauri_plugin_notification::NotificationExt;
 
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
+static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
-/// Stops the helper PowerShell process from flashing a console window. A
-/// reminder that blinks a black box on screen is exactly the interruption
-/// notifications are supposed to avoid.
-#[cfg(target_os = "windows")]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-/// Windows will not display a toast for an unknown application. The AUMID
-/// must be registered, otherwise `CreateToastNotifier` throws
-/// RPC_E_SERVERFAULT and nothing is ever shown.
-#[cfg(target_os = "windows")]
-const APP_USER_MODEL_ID: &str = "com.timelogger.app";
-
-#[cfg(target_os = "windows")]
-const DISPLAY_NAME: &str = "TimeLogger";
-
-/// WinRT types are only available to Windows PowerShell 5.1. PowerShell 7
-/// cannot load them, so resolving `powershell` through PATH is not safe -
-/// address the 5.1 binary directly.
-#[cfg(target_os = "windows")]
-fn powershell_path() -> String {
-    let root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
-    format!("{}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", root)
-}
-
-/// Escape text for inclusion in the toast XML document. Without this an
-/// ampersand or angle bracket in a task name makes the XML invalid and the
-/// notification silently fails to appear.
-#[cfg(target_os = "windows")]
-fn escape_xml(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
-}
-
-/// Escape a value for a single-quoted PowerShell literal, where the only
-/// special character is the quote itself.
-#[cfg(target_os = "windows")]
-fn escape_ps_single(text: &str) -> String {
-    text.replace('\'', "''")
+pub fn set_app_handle(handle: AppHandle) {
+    let _ = APP_HANDLE.set(handle);
 }
 
 #[derive(Debug, Clone)]
 pub struct Notification {
     pub title: String,
     pub body: String,
+    // Retained for compatibility with existing callers. The Tauri notification
+    // plugin does not currently expose desktop click actions on Windows.
     pub url: Option<String>,
 }
 
 impl Notification {
     pub fn new(title: impl Into<String>, body: impl Into<String>) -> Self {
-        Self {
-            title: title.into(),
-            body: body.into(),
-            url: None,
-        }
+        Self { title: title.into(), body: body.into(), url: None }
     }
 
     pub fn with_url(mut self, url: impl Into<String>) -> Self {
@@ -70,98 +30,27 @@ impl Notification {
         self
     }
 
-    #[cfg(target_os = "windows")]
     pub fn show(&self) -> Result<(), String> {
-        let actions = self.url.as_ref().map(|url| format!(
-            "<actions><action content=\"Open pull request\" arguments=\"{}\" activationType=\"protocol\"/></actions>",
-            escape_xml(url),
-        )).unwrap_or_default();
-        let toast_xml = format!(
-            "<toast><visual><binding template=\"ToastGeneric\"><text>{}</text><text>{}</text></binding></visual>{}</toast>",
-            escape_xml(&self.title),
-            escape_xml(&self.body),
-            actions,
-        );
-
-        // Both WinRT assemblies must be loaded explicitly. Loading only
-        // ToastNotificationManager leaves XmlDocument unresolvable, which was
-        // why every notification failed before.
-        let ps_script = format!(
-            r#"
-$ErrorActionPreference = 'Stop'
-$aumid = '{aumid}'
-$key = "HKCU:\SOFTWARE\Classes\AppUserModelId\$aumid"
-if (-not (Test-Path $key)) {{ New-Item -Path $key -Force | Out-Null }}
-New-ItemProperty -Path $key -Name DisplayName -Value '{display}' -PropertyType String -Force | Out-Null
-
-[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] > $null
-[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom, ContentType = WindowsRuntime] > $null
-
-$xml = New-Object Windows.Data.Xml.Dom.XmlDocument
-$xml.LoadXml('{toast}')
-$toast = New-Object Windows.UI.Notifications.ToastNotification $xml
-[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($aumid).Show($toast)
-"#,
-            aumid = APP_USER_MODEL_ID,
-            display = escape_ps_single(DISPLAY_NAME),
-            toast = escape_ps_single(&toast_xml),
-        );
-
-        let output = Command::new(powershell_path())
-            .args([
-                "-NoProfile",
-                "-NonInteractive",
-                "-WindowStyle",
-                "Hidden",
-                "-Command",
-                &ps_script,
-            ])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-            .map_err(|e| format!("Failed to show notification: {}", e))?;
-
-        if output.status.success() {
-            return Ok(());
-        }
-
-        // Previously a failure with empty stderr was reported as success, so a
-        // broken notification pipeline looked healthy from the app's side.
-        let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        Err(if err.is_empty() {
-            format!("Notification failed with exit code {:?}", output.status.code())
-        } else {
-            err
-        })
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    pub fn show(&self) -> Result<(), String> {
-        Err("Notifications only supported on Windows".to_string())
+        let app = APP_HANDLE.get()
+            .ok_or_else(|| "Application handle is not available".to_string())?;
+        app.notification().builder()
+            .title(&self.title)
+            .body(&self.body)
+            .show()
+            .map_err(|e| format!("Failed to show notification: {e}"))
     }
 }
 
 pub fn show_submission_success(submission_date: &str) -> Result<(), String> {
-    let notif = Notification::new(
-        "✅ Time Entry Submitted",
-        format!("Successfully submitted entries for {}", submission_date),
-    );
-    notif.show()
+    Notification::new("✅ Time Entry Submitted", format!("Successfully submitted entries for {}", submission_date)).show()
 }
 
 pub fn show_submission_error(error: &str) -> Result<(), String> {
-    let notif = Notification::new(
-        "❌ Submission Failed",
-        format!("Failed to submit entries: {}", error),
-    );
-    notif.show()
+    Notification::new("❌ Submission Failed", format!("Failed to submit entries: {}", error)).show()
 }
 
 pub fn show_daily_reminder(task_count: usize) -> Result<(), String> {
-    let notif = Notification::new(
-        "⏰ Daily Summary",
-        format!("You have {} time entries to review", task_count),
-    );
-    notif.show()
+    Notification::new("⏰ Daily Summary", format!("You have {} time entries to review", task_count)).show()
 }
 
 fn format_duration(minutes: usize) -> String {
@@ -178,27 +67,16 @@ fn format_duration(minutes: usize) -> String {
 pub fn show_tempo_reminder(entry_count: usize, minutes: usize) -> Result<(), String> {
     let entries = if entry_count == 1 { "entry" } else { "entries" };
     let body = if minutes > 0 {
-        format!(
-            "{} {} ({}) not yet submitted to Tempo.",
-            entry_count,
-            entries,
-            format_duration(minutes)
-        )
+        format!("{} {} ({}) not yet submitted to Tempo.", entry_count, entries, format_duration(minutes))
     } else {
         format!("{} {} not yet submitted to Tempo.", entry_count, entries)
     };
-
-    let notif = Notification::new("⏱️ Submit your time to Tempo", body);
-    notif.show()
+    Notification::new("⏱️ Submit your time to Tempo", body).show()
 }
 
 #[allow(dead_code)]
 pub fn show_calendar_reminder(event_title: &str, time_until: &str) -> Result<(), String> {
-    let notif = Notification::new(
-        "📅 Upcoming Event",
-        format!("{} starts {}", event_title, time_until),
-    );
-    notif.show()
+    Notification::new("📅 Upcoming Event", format!("{} starts {}", event_title, time_until)).show()
 }
 
 pub fn show_generic(title: &str, message: &str) -> Result<(), String> {
@@ -213,38 +91,32 @@ pub fn show_generic_with_url(title: &str, message: &str, url: Option<&str>) -> R
     notif.show()
 }
 
-// ---------------------------------------------------------------------------
-// Commands exposed to the webview. These wrap the functions above so the
-// frontend gets a uniform Result<String, String> instead of Result<(), String>.
-// ---------------------------------------------------------------------------
-
 #[tauri::command]
 pub fn show_notification(title: String, message: String, url: Option<String>) -> Result<String, String> {
-  show_generic_with_url(&title, &message, url.as_deref())?;
-  Ok("Notification shown".to_string())
+    show_generic_with_url(&title, &message, url.as_deref())?;
+    Ok("Notification shown".to_string())
 }
 
 #[tauri::command]
 pub fn show_submission_success_notification(submission_date: String) -> Result<String, String> {
-  show_submission_success(&submission_date)?;
-  Ok("Notification shown".to_string())
+    show_submission_success(&submission_date)?;
+    Ok("Notification shown".to_string())
 }
 
 #[tauri::command]
 pub fn show_submission_error_notification(error: String) -> Result<String, String> {
-  show_submission_error(&error)?;
-  Ok("Notification shown".to_string())
+    show_submission_error(&error)?;
+    Ok("Notification shown".to_string())
 }
 
 #[tauri::command]
 pub fn show_daily_reminder_notification(task_count: i32) -> Result<String, String> {
-  show_daily_reminder(task_count as usize)?;
-  Ok("Notification shown".to_string())
+    show_daily_reminder(task_count.max(0) as usize)?;
+    Ok("Notification shown".to_string())
 }
 
 #[tauri::command]
 pub fn show_tempo_reminder_notification(entry_count: i32, minutes: i32) -> Result<String, String> {
-  show_tempo_reminder(entry_count.max(0) as usize, minutes.max(0) as usize)?;
-  Ok("Notification shown".to_string())
+    show_tempo_reminder(entry_count.max(0) as usize, minutes.max(0) as usize)?;
+    Ok("Notification shown".to_string())
 }
-
