@@ -6,13 +6,16 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -51,6 +54,20 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Resolve and compile Rust dependencies
         run: cargo check --manifest-path src-tauri/Cargo.toml
+      - name: Commit regenerated Cargo.lock to the PR branch
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          if git diff --quiet -- src-tauri/Cargo.lock; then
+            echo "Cargo.lock is already up to date."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add src-tauri/Cargo.lock
+            git commit -m "chore: update Rust dependency lockfile"
+            git push origin "HEAD:$PR_HEAD_REF"
+          fi
       - name: Install cargo-audit
         uses: taiki-e/install-action@v2
         with:
