@@ -73,7 +73,13 @@ export function safeBaseUrl(input, { allowHttp = false, allowPrivateHosts = true
  * this route be used to probe the local network.
  */
 export function safeJiraBaseUrl(input) {
-  return safeBaseUrl(input, { allowHttp: false, allowPrivateHosts: false });
+  const origin = safeBaseUrl(input, { allowHttp: false, allowPrivateHosts: false });
+  if (!origin) return null;
+
+  // Jira Cloud API-token authentication is supported on Atlassian tenant
+  // domains. Never send the user's Basic credentials to an arbitrary host.
+  const hostname = new URL(origin).hostname.toLowerCase();
+  return hostname.endsWith('.atlassian.net') ? origin : null;
 }
 
 /**
