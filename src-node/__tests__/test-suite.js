@@ -1509,6 +1509,7 @@ async function runTests() {
 
   await testAsync('a Jira base URL keeps only a plain https origin', async () => {
     assert.strictEqual(safeJiraBaseUrl('https://acme.atlassian.net'), 'https://acme.atlassian.net');
+    assert.strictEqual(safeJiraBaseUrl('https://acme.atlassian.net:443'), 'https://acme.atlassian.net');
     // Path, query and fragment are dropped so they cannot redirect the request.
     assert.strictEqual(safeJiraBaseUrl('https://acme.atlassian.net/a/b?c=1#d'), 'https://acme.atlassian.net');
   });
