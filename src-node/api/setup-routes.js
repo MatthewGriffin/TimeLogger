@@ -140,6 +140,7 @@ router.post('/setup/test-jira', async (req, res) => {
       });
     }
 
+    // codeql[js/request-forgery] -- Accepted bounded destination: safeJiraBaseUrl only returns HTTPS Atlassian Cloud tenant origins, strips paths and credentials, and rejects private hosts. Redirects are disabled in the shared HTTP client. Jira API-token Basic authentication requires the tenant hostname, so a fixed API hostname is not compatible with this authentication flow.
     const jiraResponse = await httpClient.get(`${jiraOrigin}/rest/api/3/myself`, {
       headers: {
         Authorization: `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`,
