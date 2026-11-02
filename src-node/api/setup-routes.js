@@ -123,8 +123,6 @@ function redactSecrets(value) {
  */
 router.post('/setup/test-jira', async (req, res) => {
   try {
-    // codeql[js/request-forgery] -- The user explicitly configures this HTTPS Jira origin;
-    // the validator rejects local/private destinations, and this setup route is loopback-only.
     const { baseUrl, email, apiToken, tempoToken } = req.body;
 
     if (!baseUrl || !email || !apiToken) {
@@ -142,6 +140,8 @@ router.post('/setup/test-jira', async (req, res) => {
       });
     }
 
+    // codeql[js/request-forgery] -- Jira supports user-configured public HTTPS tenants;
+    // safeJiraBaseUrl validates the origin and strips all paths, credentials, and query data.
     const jiraResponse = await httpClient.get(`${jiraOrigin}/rest/api/3/myself`, {
       headers: {
         Authorization: `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`,
@@ -555,8 +555,6 @@ router.get('/setup/oauth-callback', async (req, res) => {
  */
 router.post('/setup/test-ollama', async (req, res) => {
   try {
-    // codeql[js/request-forgery] -- The user explicitly configures the Ollama endpoint;
-    // loopback/LAN destinations are required for local and remote Ollama installations.
     const { host } = req.body;
 
     if (!host) {
@@ -574,6 +572,8 @@ router.post('/setup/test-ollama', async (req, res) => {
       });
     }
 
+    // codeql[js/request-forgery] -- Ollama is an intentionally user-configured endpoint;
+    // local/LAN destinations are required, and safeOllamaHost restricts scheme and origin form.
     const response = await httpClient.get(`${ollamaOrigin}/api/tags`, {
       validateStatus: () => true,
     });
