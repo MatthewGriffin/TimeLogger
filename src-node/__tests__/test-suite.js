@@ -1512,6 +1512,9 @@ async function runTests() {
     assert.strictEqual(safeJiraBaseUrl('https://acme.atlassian.net:443'), 'https://acme.atlassian.net');
     // Path, query and fragment are dropped so they cannot redirect the request.
     assert.strictEqual(safeJiraBaseUrl('https://acme.atlassian.net/a/b?c=1#d'), 'https://acme.atlassian.net');
+    // Only Atlassian Cloud tenants may receive the Jira API-token header.
+    assert.strictEqual(safeJiraBaseUrl('https://jira.example.com'), null);
+    assert.strictEqual(safeJiraBaseUrl('https://atlassian.net'), null);
   });
 
   await testAsync('a Jira base URL rejects anything that could leak the API token', async () => {
