@@ -10,6 +10,7 @@ import crypto from 'crypto';
 import { db } from '../index.js';
 import { graphClient, readMicrosoftConfig, hasStoredGraphToken, GRAPH_SCOPE_STRING, buildTokenEndpoint } from './graph-client.js';
 import { ollamaClient } from './ollama-client.js';
+import { httpClient } from './http-client.js';
 import { setupLimiter } from './rate-limit.js';
 import { backendPort } from '../utils/backend-port.js';
 import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, microsoftAuthorityUrl, escapeHtml } from '../utils/safe-url.js';
@@ -140,21 +141,22 @@ router.post('/setup/test-jira', async (req, res) => {
     }
 
     // Test Jira connection
-    const jiraResponse = await fetch(`${jiraOrigin}/rest/api/3/myself`, {
+    const jiraResponse = await httpClient.get(`${jiraOrigin}/rest/api/3/myself`, {
       headers: {
         Authorization: `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`,
         'Content-Type': 'application/json',
       },
+      validateStatus: () => true,
     });
 
-    if (!jiraResponse.ok) {
+    if (jiraResponse.status < 200 || jiraResponse.status >= 300) {
       return res.status(400).json({
         success: false,
         message: `Jira connection failed (${jiraResponse.status}): ${jiraResponse.statusText}`,
       });
     }
 
-    const user = await jiraResponse.json();
+    const user = jiraResponse.data;
 
     // Save to database
     db.prepare(`
@@ -197,15 +199,15 @@ router.post('/setup/test-tempo', async (req, res) => {
       });
     }
 
-    const tempoResponse = await fetch('https://api.tempo.io/4/worklogs?limit=1', {
-      method: 'GET',
+    const tempoResponse = await httpClient.get('https://api.tempo.io/4/worklogs?limit=1', {
       headers: {
         'Authorization': `Bearer ${tempoToken}`,
         'Content-Type': 'application/json',
       },
+      validateStatus: () => true,
     });
 
-    if (!tempoResponse.ok) {
+    if (tempoResponse.status < 200 || tempoResponse.status >= 300) {
       let errorMsg = 'Invalid Tempo API token';
       if (tempoResponse.status === 401) {
         errorMsg = 'Invalid or expired Tempo API token';
@@ -269,21 +271,20 @@ router.post('/setup/test-graph', async (req, res) => {
     }
 
     // Validate using Microsoft identity endpoint
-    const tokenResponse = await fetch(microsoftAuthorityUrl(safeTenant, 'oauth2/v2.0/token'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        scope: 'https://graph.microsoft.com/.default',
-        grant_type: 'client_credentials',
-      }).toString(),
+    const tokenResponse = await httpClient.post(microsoftAuthorityUrl(safeTenant, 'oauth2/v2.0/token'), new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      scope: 'https://graph.microsoft.com/.default',
+      grant_type: 'client_credentials',
+    }).toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      responseType: 'text',
+      transformResponse: [(data) => data],
+      validateStatus: () => true,
     });
 
-    if (!tokenResponse.ok) {
-      const detail = await tokenResponse.text();
+    if (tokenResponse.status < 200 || tokenResponse.status >= 300) {
+      const detail = tokenResponse.data;
       let message = `Microsoft authentication failed (${tokenResponse.status})`;
       let code = '';
       try {
@@ -482,18 +483,19 @@ router.get('/setup/oauth-callback', async (req, res) => {
     tokenBody.set('code_verifier', verifier);
 
     const exchange = async () =>
-      fetch(buildTokenEndpoint(stored.tenantId), {
-        method: 'POST',
+      httpClient.post(buildTokenEndpoint(stored.tenantId), tokenBody.toString(), {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: tokenBody.toString(),
+        responseType: 'text',
+        transformResponse: [(data) => data],
+        validateStatus: () => true,
       });
 
     let response = await exchange();
-    let text = await response.text();
+    let text = response.data;
 
     // The registration turned out to be public. Drop the secret, remember that
     // for next time, and retry rather than making the user re-run the test.
-    if (!response.ok && text.includes('AADSTS700025') && tokenBody.has('client_secret')) {
+    if ((response.status < 200 || response.status >= 300) && text.includes('AADSTS700025') && tokenBody.has('client_secret')) {
       tokenBody.delete('client_secret');
       db.prepare(`
         INSERT OR REPLACE INTO settings (key, value)
@@ -507,10 +509,10 @@ router.get('/setup/oauth-callback', async (req, res) => {
       }));
 
       response = await exchange();
-      text = await response.text();
+      text = response.data;
     }
 
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       let detail = text;
       try {
         detail = JSON.parse(text).error_description || text;
@@ -570,16 +572,18 @@ router.post('/setup/test-ollama', async (req, res) => {
     }
 
     // Test Ollama endpoint
-    const response = await fetch(`${ollamaOrigin}/api/tags`);
+    const response = await httpClient.get(`${ollamaOrigin}/api/tags`, {
+      validateStatus: () => true,
+    });
 
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       return res.status(400).json({
         success: false,
         message: `Ollama connection failed (${response.status}): ${response.statusText}`,
       });
     }
 
-    const data = await response.json();
+    const data = response.data;
     const models = data.models || [];
 
     if (models.length === 0) {
