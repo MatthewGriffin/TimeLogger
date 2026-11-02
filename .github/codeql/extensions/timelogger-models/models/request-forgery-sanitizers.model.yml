@@ -1,0 +1,7 @@
+extensions:
+  - addsTo:
+      pack: codeql/javascript-all
+      extensible: barrierModel
+    data:
+      - ["file:src-node/utils/safe-url.js", "Member[safeJiraBaseUrl].ReturnValue", "request-forgery"]
+      - ["file:src-node/utils/safe-url.js", "Member[safeOllamaHost].ReturnValue", "request-forgery"]
