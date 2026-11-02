@@ -570,6 +570,10 @@ router.post('/setup/test-ollama', async (req, res) => {
       });
     }
 
+    // The destination is deliberately user-configurable: Ollama may run on another LAN machine.
+    // The route is guarded/rate-limited, safeOllamaHost parses and rebuilds an HTTP(S) origin,
+    // rejects credentials, and redirects are disabled so the target cannot change mid-request.
+    // codeql[js/request-forgery]
     const response = await fetch(`${ollamaOrigin}/api/tags`, {
       signal: AbortSignal.timeout(5000),
       redirect: 'error',
