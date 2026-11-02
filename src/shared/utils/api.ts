@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { ApiError } from '@/shared/utils/errors/api-error'
 import type { ApiRequest, ApiResponse } from '@/shared/utils/api-types'
+import { apiEnvelopeSchema } from '@/shared/utils/schema'
 
 export { ApiError }
 export type { ApiRequest, ApiResponse }
