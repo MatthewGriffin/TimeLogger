@@ -140,10 +140,10 @@ router.post('/setup/test-jira', async (req, res) => {
       });
     }
 
-    // lgtm[js/request-forgery] -- This setup endpoint is only reachable through the loopback-bound
-    // backend; server.js rejects hostile Host/Origin and cross-site browser requests before routing.
-    // safeJiraBaseUrl additionally requires HTTPS and rejects local/private destinations.
-    // Test Jira connection
+    // This setup endpoint is only reachable through the loopback-bound backend; server.js rejects
+    // hostile Host/Origin and cross-site browser requests before routing. safeJiraBaseUrl also
+    // requires HTTPS and rejects local/private destinations.
+    // codeql[js/request-forgery]
     const jiraResponse = await httpClient.get(`${jiraOrigin}/rest/api/3/myself`, {
       headers: {
         Authorization: `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`,
@@ -574,11 +574,11 @@ router.post('/setup/test-ollama', async (req, res) => {
       });
     }
 
-    // lgtm[js/request-forgery] -- This setup endpoint is only reachable through the loopback-bound
-    // backend; server.js rejects hostile Host/Origin and cross-site browser requests before routing.
-    // The user explicitly selects the Ollama host; safeOllamaHost normalises its origin and
-    // intentionally permits loopback/LAN HTTP because remote Ollama installations require it.
-    // Test Ollama endpoint
+    // This setup endpoint is only reachable through the loopback-bound backend; server.js rejects
+    // hostile Host/Origin and cross-site browser requests before routing. The user explicitly
+    // selects the Ollama host; safeOllamaHost normalises its origin and intentionally permits
+    // loopback/LAN HTTP because remote Ollama installations require it.
+    // codeql[js/request-forgery]
     const response = await httpClient.get(`${ollamaOrigin}/api/tags`, {
       validateStatus: () => true,
     });
