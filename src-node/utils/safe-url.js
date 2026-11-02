@@ -62,10 +62,7 @@ export function safeBaseUrl(input, { allowHttp = false, allowPrivateHosts = true
   if (!url.hostname) return null;
   if (!allowPrivateHosts && isPrivateHost(url.hostname)) return null;
 
-  // The URL parser has reduced this to a validated origin (scheme, host and port only).
-  // URI-encode that canonical form at the trust boundary before it reaches HTTP sinks.
-  // encodeURI preserves the URL delimiters while escaping any remaining unsafe characters.
-  return encodeURI(url.origin);
+  return url.origin;
 }
 
 /**
