@@ -7,8 +7,7 @@
         <button class="btn-today" @click="goToToday" :disabled="entriesStore.isLoading">Today</button>
         <button class="btn-nav" @click="previousDay" :disabled="entriesStore.isLoading">← Previous</button>
         <label class="date-picker-control">
-          <span class="sr-only">Choose entry date</span>
-          <input type="date" v-model="selectedDate" :disabled="entriesStore.isLoading" @change="loadEntriesForDate(selectedDate)" />
+          <input type="date" aria-label="Choose entry date" v-model="selectedDate" :disabled="entriesStore.isLoading" @change="loadEntriesForDate(selectedDate)" />
           <span class="date-display">{{ formatDateHeader(selectedDate) }}</span>
         </label>
         <button class="btn-nav" @click="nextDay" :disabled="entriesStore.isLoading">Next →</button>
