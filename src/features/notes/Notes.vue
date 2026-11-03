@@ -125,10 +125,12 @@
             <div class="note-footer">
               <span class="note-time">{{ formatDate(note.updatedAt) }}</span>
               <div class="note-actions">
-                <button class="btn-icon" @click.stop="editNote(note)" title="Edit">✏️</button>
+                <button type="button" class="btn-icon" @click.stop="editNote(note)" :aria-label="`Edit note: ${note.title}`" title="Edit">✏️</button>
                 <button
                   class="btn-icon delete"
+                  type="button"
                   @click.stop="deleteNote(note.id)"
+                  :aria-label="`Delete note: ${note.title}`"
                   title="Delete"
                   :disabled="notesStore.isLoading"
                 >🗑️</button>
@@ -151,7 +153,7 @@
       <div class="modal">
         <div class="modal-header">
           <h2>{{ notesStore.editingNote?.id ? 'Edit Note' : 'New Note' }}</h2>
-          <button class="modal-close" @click="closeEditor">✕</button>
+          <button type="button" class="modal-close" aria-label="Close note editor" @click="closeEditor">✕</button>
         </div>
 
         <form @submit.prevent="saveNote" class="note-form">
