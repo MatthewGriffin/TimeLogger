@@ -85,16 +85,16 @@ export function safeJiraBaseUrl(input) {
 /**
  * Validate an Ollama endpoint selected explicitly by the user.
  *
- * Ollama can run locally or on another machine (for example, a trusted LAN
- * host). Keep that supported configuration while constraining the value to
- * an HTTP(S) origin: credentials are rejected and paths, queries and
- * fragments are discarded by safeBaseUrl before the fixed API path is added.
- * The setup route is rate-limited and guarded against cross-site requests;
- * its fetch also rejects redirects so the destination cannot be changed by
- * the remote server.
+ * Ollama is supported on this machine or a private/LAN host only. Rejecting
+ * public destinations prevents the setup probe from being used to reach
+ * arbitrary internet hosts. The existing isPrivateHost helper covers literal
+ * loopback/private IPs and local/internal hostnames; it does not resolve DNS.
  */
 export function safeOllamaHost(input) {
-  return safeBaseUrl(input, { allowHttp: true });
+  const origin = safeBaseUrl(input, { allowHttp: true });
+  if (!origin) return null;
+
+  return isPrivateHost(new URL(origin).hostname) ? origin : null;
 }
 
 // Microsoft accepts a tenant GUID, a verified domain, or one of these aliases.
