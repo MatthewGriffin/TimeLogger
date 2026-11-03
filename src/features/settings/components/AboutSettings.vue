@@ -18,9 +18,9 @@
       </div>
 
       <div class="button-group" style="flex-direction: column; gap: 0.75rem;">
-        <button class="btn-secondary" @click="$emit('check-updates')">🔄 Check for Updates</button>
-        <button class="btn-secondary" @click="$emit('open-documentation')">📖 View Documentation</button>
-        <button class="btn-secondary" @click="$emit('report-issue')">🐛 Report Issue</button>
+        <button type="button" class="btn-secondary" @click="$emit('check-updates')">🔄 Check for Updates</button>
+        <button type="button" class="btn-secondary" @click="$emit('open-documentation')">📖 View Documentation</button>
+        <button type="button" class="btn-secondary" @click="$emit('report-issue')">🐛 Report Issue</button>
       </div>
 
       <div class="info-box">
