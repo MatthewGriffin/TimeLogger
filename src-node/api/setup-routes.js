@@ -566,13 +566,12 @@ router.post('/setup/test-ollama', async (req, res) => {
     if (!ollamaOrigin) {
       return res.status(400).json({
         success: false,
-        message: 'Ollama host must be an http:// or https:// address, for example http://localhost:11434',
+        message: 'Ollama host must be a localhost or private/LAN http:// or https:// address, for example http://localhost:11434',
       });
     }
 
-    // This endpoint intentionally probes the Ollama URL explicitly configured by the
-    // local user. safeOllamaHost limits it to an HTTP(S) origin; redirects are disabled.
-    const response = await fetch(`${ollamaOrigin}/api/tags`, { // lgtm[js/request-forgery]
+    // Only local/private Ollama destinations pass safeOllamaHost; redirects are disabled.
+    const response = await fetch(`${ollamaOrigin}/api/tags`, {
       signal: AbortSignal.timeout(5000),
       redirect: 'error',
     });
