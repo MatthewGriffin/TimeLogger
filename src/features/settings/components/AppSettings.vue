@@ -13,13 +13,15 @@
       </div>
 
       <h3 class="settings-subheading">Working Hours</h3>
-      <div class="form-group">
-        <label for="workday-start">Day Starts</label>
-        <input v-model="formData.workday.startTime" type="time" id="workday-start" />
-      </div>
-      <div class="form-group">
-        <label for="workday-end">Day Ends</label>
-        <input v-model="formData.workday.endTime" type="time" id="workday-end" />
+      <div class="form-row">
+        <div class="form-group">
+          <label for="workday-start">Day Starts</label>
+          <input v-model="formData.workday.startTime" type="time" id="workday-start" />
+        </div>
+        <div class="form-group">
+          <label for="workday-end">Day Ends</label>
+          <input v-model="formData.workday.endTime" type="time" id="workday-end" />
+        </div>
       </div>
       <div class="form-hint">Used to log all-day calendar events such as holidays and leave.</div>
 
