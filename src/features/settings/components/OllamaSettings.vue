@@ -8,14 +8,14 @@
       </div>
 
       <div class="form-group">
-        <label>Host Address *</label>
+        <label>Local Host Address *</label>
         <input
           v-model="props.formData.host"
           type="text"
           placeholder="http://localhost:11434"
           @change="$emit('validate-host')"
         />
-        <span class="form-hint-small">Default: http://localhost:11434</span>
+        <span class="form-hint-small">Local Ollama only. Use localhost or 127.0.0.1; LAN and remote hosts are not supported.</span>
       </div>
 
       <div class="form-group">
