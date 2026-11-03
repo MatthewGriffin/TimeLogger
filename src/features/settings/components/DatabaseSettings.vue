@@ -14,29 +14,29 @@
       <div class="form-group">
         <label>Export & Backup</label>
         <div class="button-group">
-          <button class="btn-secondary" @click="$emit('export-json')">📥 Export as JSON</button>
-          <button class="btn-secondary" @click="$emit('export-csv')">📥 Export as CSV</button>
+          <button type="button" class="btn-secondary" @click="$emit('export-json')">📥 Export as JSON</button>
+          <button type="button" class="btn-secondary" @click="$emit('export-csv')">📥 Export as CSV</button>
         </div>
         <span class="form-hint-small">Download a backup of all your time entries and notes</span>
       </div>
       <div class="form-group">
         <label>Import Backup</label>
         <div class="button-group">
-          <button class="btn-secondary" @click="$emit('import')">📤 Import Data</button>
+          <button type="button" class="btn-secondary" @click="$emit('import')">📤 Import Data</button>
         </div>
         <span class="form-hint-small">Restore data from a previously exported backup</span>
       </div>
       <div class="form-group">
         <label>Logs & Diagnostics</label>
         <div class="button-group">
-          <button class="btn-secondary" @click="$emit('view-logs')">📋 View Logs</button>
+          <button type="button" class="btn-secondary" @click="$emit('view-logs')">📋 View Logs</button>
         </div>
         <span class="form-hint-small">View application logs for debugging</span>
       </div>
       <div class="form-group">
         <label>Reset Application</label>
         <div class="button-group">
-          <button class="btn-danger" @click="$emit('clear-data')">🗑️ Clear All Data</button>
+          <button type="button" class="btn-danger" @click="$emit('clear-data')">🗑️ Clear All Data</button>
         </div>
         <span class="form-hint-small">⚠️ This action cannot be undone. Make sure to backup your data first.</span>
       </div>
