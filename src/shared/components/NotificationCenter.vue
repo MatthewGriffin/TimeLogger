@@ -9,7 +9,7 @@
       >
         <div class="notification-icon">{{ getIcon(notif.type) }}</div>
         <div class="notification-content">{{ notif.message }}</div>
-        <button class="notification-close" @click.stop="removeNotification(notif.id)">✕</button>
+        <button type="button" class="notification-close" :aria-label="`Dismiss notification: ${notif.message}`" @click.stop="removeNotification(notif.id)">✕</button>
       </div>
     </transition-group>
   </div>
