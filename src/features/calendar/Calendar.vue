@@ -505,19 +505,7 @@ onMounted(async () => {
 }
 
 .month-picker input {
-  min-height: 2.5rem;
-  padding: 0.5rem 0.75rem;
-  color: var(--color-text);
-  background: var(--color-control);
-  border: 1px solid var(--color-border-strong);
-  border-radius: 0.5rem;
-  color-scheme: dark;
-  font: inherit;
-}
-
-.month-picker input:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+  min-width: 10rem;
 }
 
 .btn-nav,
@@ -574,6 +562,7 @@ onMounted(async () => {
 /* Content */
 .calendar-content {
   flex: 1;
+  min-width: 0;
   display: grid;
   grid-template-columns: 1fr 300px;
   gap: 2rem;
@@ -585,6 +574,7 @@ onMounted(async () => {
 
 /* Calendar */
 .calendar-container {
+  min-width: 0;
   background: rgba(30, 41, 59, 0.8);
   border: 1px solid var(--color-border);
   border-radius: 0.75rem;
@@ -891,16 +881,82 @@ onMounted(async () => {
 
 @media (max-width: 768px) {
   .page-header {
-    padding: 1.5rem;
+    padding: 1rem;
   }
 
   .header-actions {
     width: 100%;
-    justify-content: space-between;
+    justify-content: flex-start;
+    gap: 0.5rem;
+  }
+
+  .header-actions button {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-inline: 0.6rem;
+  }
+
+  .calendar-content {
+    padding: 1rem;
+    gap: 1rem;
+  }
+
+  .calendar-container {
+    padding: 0.75rem;
+  }
+
+  .calendar-weekdays,
+  .calendar-grid {
+    gap: 0.4rem;
   }
 
   .calendar-day {
-    min-height: 80px;
+    min-height: 0;
+    padding: 0.4rem;
+  }
+
+  .day-number {
+    margin-bottom: 0.25rem;
+  }
+
+  .event-badge {
+    padding: 0.15rem 0.25rem;
+    font-size: 0.65rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .calendar-weekdays,
+  .calendar-grid {
+    gap: 0.2rem;
+  }
+
+  .calendar-container {
+    padding: 0.4rem;
+  }
+
+  .calendar-day {
+    padding: 0.2rem;
+    border-radius: 0.3rem;
+  }
+
+  .weekday {
+    font-size: 0.65rem;
+    letter-spacing: 0;
+  }
+
+  .day-number {
+    font-size: 0.8rem;
+  }
+
+  .event-badge {
+    font-size: 0.55rem;
+    padding: 0.1rem;
+  }
+
+  .event-more {
+    font-size: 0.6rem;
+    padding: 0.1rem;
   }
 }
 </style>
