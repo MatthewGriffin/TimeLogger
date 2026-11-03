@@ -20,11 +20,11 @@
 
       <div class="time-controls">
         <label>
-          Start
+          <span>Start</span>
           <input v-model="startTime" type="time" class="time-input" />
         </label>
         <label>
-          End
+          <span>End</span>
           <input v-model="endTime" type="time" class="time-input" />
         </label>
       </div>
@@ -122,6 +122,7 @@ const dismiss = (): void => {
 .time-controls {
   display: flex;
   gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .time-controls label {
@@ -130,21 +131,6 @@ const dismiss = (): void => {
   gap: 0.35rem;
   font-size: 0.8rem;
   color: var(--color-text-subtle);
-}
-
-.time-input {
-  padding: 0.5rem 0.65rem;
-  background: rgba(15, 23, 42, 0.7);
-  border: 1px solid var(--color-border-strong);
-  border-radius: 0.4rem;
-  color: var(--color-text);
-  font-size: 0.875rem;
-  font-family: inherit;
-}
-
-.time-input:focus {
-  outline: none;
-  border-color: var(--color-accent);
 }
 
 .prompt-note {
