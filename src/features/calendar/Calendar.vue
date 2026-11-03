@@ -80,7 +80,7 @@
                 <span v-if="event.location" class="event-location">📍 {{ event.location }}</span>
               </div>
             </div>
-            <button class="btn-add-entry" @click="createEntryFromEvent(event)" title="Add as time entry">
+            <button type="button" class="btn-add-entry" @click="createEntryFromEvent(event)" :aria-label="`Create time entry from ${event.title}`" title="Add as time entry">
               📝
             </button>
           </div>
@@ -98,7 +98,7 @@
       <div class="modal">
         <div class="modal-header">
           <h2>{{ selectedEvent.title }}</h2>
-          <button class="modal-close" @click="selectedEvent = null">✕</button>
+          <button type="button" class="modal-close" aria-label="Close event details" @click="selectedEvent = null">✕</button>
         </div>
 
         <div class="event-details">
