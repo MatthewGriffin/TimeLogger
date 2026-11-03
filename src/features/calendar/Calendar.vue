@@ -4,7 +4,10 @@
     <div class="page-header">
       <div class="header-content">
         <h1>Calendar</h1>
-        <div class="month-display">{{ currentMonthYear }}</div>
+        <label class="month-picker">
+          <span class="sr-only">Choose calendar month</span>
+          <input type="month" :value="currentMonthKey" @change="selectMonth(($event.target as HTMLInputElement).value)" />
+        </label>
         <div v-if="isLoadingEvents" class="calendar-refresh-status" role="status" aria-live="polite">
           <span class="refresh-spinner" aria-hidden="true"></span>
           Updating calendar events…
@@ -30,10 +33,13 @@
 
         <!-- Calendar days -->
         <div class="calendar-grid">
-          <div
+          <button
             v-for="day in calendarDays"
             :key="day.date"
+            type="button"
             :class="['calendar-day', { 'other-month': !day.isCurrentMonth, 'today': day.isToday, 'selected': day.date === selectedDate, 'has-events': day.events.length > 0 }]"
+            :aria-label="`${day.date}, ${day.events.length} event(s)`"
+            :aria-pressed="day.date === selectedDate"
             @click="selectedDate = day.date"
           >
             <div class="day-number">{{ day.dayOfMonth }}</div>
@@ -50,7 +56,7 @@
                 +{{ day.events.length - 2 }}
               </div>
             </div>
-          </div>
+          </button>
         </div>
       </div>
 
@@ -179,14 +185,14 @@ const isLoadingEvents = ref(false)
 const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 const currentMonthYear = computed(() => {
-  return currentDate.value.toLocaleDateString('en-US', {
+  return currentDate.value.toLocaleDateString('en-GB', {
     year: 'numeric',
     month: 'long'
   })
 })
 
 const selectedDateDisplay = computed(() => {
-  return new Date(`${selectedDate.value}T00:00:00`).toLocaleDateString('en-US', {
+  return new Date(`${selectedDate.value}T12:00:00`).toLocaleDateString('en-GB', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
@@ -385,6 +391,19 @@ const nextMonth = async () => {
   await autoSyncDisplayedMonth()
 }
 
+const selectMonth = async (value: string) => {
+  if (!/^\\d{4}-\\d{2}$/.test(value)) return
+  const [year, month] = value.split('-').map(Number)
+  if (month < 1 || month > 12) return
+  currentDate.value = new Date(year, month - 1, 1)
+  const selected = new Date(`${selectedDate.value}T12:00:00`)
+  if (selected.getFullYear() !== year || selected.getMonth() !== month - 1) {
+    selectedDate.value = toLocalDateString(new Date(year, month - 1, 1))
+  }
+  await loadCalendarEvents()
+  await autoSyncDisplayedMonth()
+}
+
 const goToToday = async () => {
   currentDate.value = new Date()
   selectedDate.value = toLocalDateString(new Date())
@@ -479,6 +498,24 @@ onMounted(async () => {
 .header-actions {
   display: flex;
   gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.month-picker input {
+  min-height: 2.5rem;
+  padding: 0.5rem 0.75rem;
+  color: var(--color-text);
+  background: var(--color-control);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.5rem;
+  color-scheme: dark;
+  font: inherit;
+}
+
+.month-picker input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .btn-nav,
@@ -579,6 +616,12 @@ onMounted(async () => {
 }
 
 .calendar-day {
+  appearance: none;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  color: inherit;
+  font: inherit;
   aspect-ratio: 1;
   background: rgba(51, 65, 85, 0.3);
   border: 1px solid var(--color-border);
@@ -594,6 +637,11 @@ onMounted(async () => {
 .calendar-day:hover {
   border-color: var(--color-border-stronger);
   background: var(--color-control);
+}
+
+.calendar-day:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .calendar-day.other-month {
