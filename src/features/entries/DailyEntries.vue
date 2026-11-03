@@ -59,8 +59,8 @@
               <div class="col-duration">{{ formatDuration(entry.duration) }}</div>
               <div class="col-actions">
                 <template v-if="!entry.isLunch">
-                  <button class="btn-icon" @click="editEntry(entry)" title="Edit">✏️</button>
-                  <button class="btn-icon delete" @click="deleteEntry(entry.id)" title="Delete" :disabled="entriesStore.isLoading">🗑️</button>
+                  <button type="button" class="btn-icon" @click="editEntry(entry)" :aria-label="`Edit entry: ${entry.taskName}`" title="Edit">✏️</button>
+                  <button type="button" class="btn-icon delete" @click="deleteEntry(entry.id)" :aria-label="`Delete entry: ${entry.taskName}`" title="Delete" :disabled="entriesStore.isLoading">🗑️</button>
                 </template>
                 <span v-else class="lunch-placeholder-label">Placeholder</span>
               </div>
