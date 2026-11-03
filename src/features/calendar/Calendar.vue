@@ -5,8 +5,7 @@
       <div class="header-content">
         <h1>Calendar</h1>
         <label class="month-picker">
-          <span class="sr-only">Choose calendar month</span>
-          <input type="month" :value="currentMonthKey" @change="selectMonth(($event.target as HTMLInputElement).value)" />
+          <input type="month" aria-label="Choose calendar month" :value="currentMonthKey" @change="selectMonth(($event.target as HTMLInputElement).value)" />
         </label>
         <div v-if="isLoadingEvents" class="calendar-refresh-status" role="status" aria-live="polite">
           <span class="refresh-spinner" aria-hidden="true"></span>
@@ -40,7 +39,7 @@
             :class="['calendar-day', { 'other-month': !day.isCurrentMonth, 'today': day.isToday, 'selected': day.date === selectedDate, 'has-events': day.events.length > 0 }]"
             :aria-label="`${day.date}, ${day.events.length} event(s)`"
             :aria-pressed="day.date === selectedDate"
-            @click="selectedDate = day.date"
+            @click="selectDay(day)"
           >
             <div class="day-number">{{ day.dayOfMonth }}</div>
             <div class="day-events">
@@ -389,6 +388,16 @@ const nextMonth = async () => {
   currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() + 1)
   await loadCalendarEvents()
   await autoSyncDisplayedMonth()
+}
+
+const selectDay = async (day: CalendarDay) => {
+  selectedDate.value = day.date
+  if (!day.isCurrentMonth) {
+    const date = new Date(`${day.date}T12:00:00`)
+    currentDate.value = new Date(date.getFullYear(), date.getMonth(), 1)
+    await loadCalendarEvents()
+    await autoSyncDisplayedMonth()
+  }
 }
 
 const selectMonth = async (value: string) => {
