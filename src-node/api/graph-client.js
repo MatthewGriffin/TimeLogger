@@ -7,7 +7,7 @@
  * OAuth tokens are stored in database (settings table) instead of vault.
  */
 
-import axios from 'axios';
+import { httpClient } from './http-client.js';
 import { db } from '../index.js';
 import { microsoftAuthorityUrl } from '../utils/safe-url.js';
 
@@ -85,6 +85,10 @@ const RATE_LIMIT_RETRY_AFTER = 5000; // 5 seconds
 const SERVER_ERROR_RETRY_AFTER = 1500; // doubles per attempt
 const MAX_RETRIES = 3;
 const REQUEST_TIMEOUT = 30000; // 30 seconds
+
+// Only replay requests whose HTTP semantics are idempotent. A POST that timed
+// out after Microsoft accepted it must not be sent again automatically.
+const isRetrySafeMethod = method => ['GET', 'HEAD', 'OPTIONS', 'PUT', 'DELETE'].includes(String(method).toUpperCase());
 
 /**
  * Turn a Graph error into something a user can act on.
@@ -321,7 +325,7 @@ class GraphClient {
         body.set('client_secret', this.clientSecret);
       }
 
-      const response = await axios.post(buildTokenEndpoint(this.tenantId), body.toString(), {
+      const response = await httpClient.post(buildTokenEndpoint(this.tenantId), body.toString(), {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         timeout: REQUEST_TIMEOUT
       });
@@ -359,7 +363,7 @@ class GraphClient {
 
       const config = {
         method,
-        url: `${GRAPH_BASE_URL}${endpoint}`,
+        url: endpoint.startsWith(`${GRAPH_BASE_URL}/`) ? endpoint : `${GRAPH_BASE_URL}${endpoint}`,
         headers: {
           'Authorization': `Bearer ${this.token}`,
           'Content-Type': options.contentType || 'application/json',
@@ -372,11 +376,11 @@ class GraphClient {
         config.data = data;
       }
 
-      const response = await axios(config);
+      const response = await httpClient(config);
       return response.data;
     } catch (error) {
       // Handle rate limiting (429)
-      if (error.response?.status === 429 && retryCount < MAX_RETRIES) {
+      if (error.response?.status === 429 && isRetrySafeMethod(method) && retryCount < MAX_RETRIES) {
         const retryAfter = error.response.headers['retry-after'] 
           ? parseInt(error.response.headers['retry-after']) * 1000 
           : RATE_LIMIT_RETRY_AFTER;
@@ -398,7 +402,7 @@ class GraphClient {
       // error page) often enough that a single failure would otherwise show up
       // as "no sections", making a saved section look lost.
       const status = error.response?.status;
-      if (status >= 500 && status < 600 && retryCount < MAX_RETRIES) {
+      if (status >= 500 && status < 600 && isRetrySafeMethod(method) && retryCount < MAX_RETRIES) {
         const backoff = SERVER_ERROR_RETRY_AFTER * Math.pow(2, retryCount);
         console.warn(`Graph returned ${status}. Retrying in ${backoff}ms (attempt ${retryCount + 1}/${MAX_RETRIES})`);
         await new Promise(resolve => setTimeout(resolve, backoff));
@@ -410,19 +414,63 @@ class GraphClient {
   }
 
   /**
+   * Read every page of a Microsoft Graph collection.
+   *
+   * Graph returns an opaque @odata.nextLink when a collection is paged. Follow
+   * that full URL unchanged, but only when it points back to the Graph v1.0
+   * service; this prevents a malformed nextLink from sending the bearer token
+   * to another host. The page cap is a final guard against a broken nextLink loop.
+   */
+  async getAllPages(endpoint) {
+    const items = [];
+    const visited = new Set();
+    let next = endpoint;
+    let pages = 0;
+
+    while (next) {
+      if (++pages > 100) {
+        throw new Error('Microsoft Graph returned too many pages for one request.');
+      }
+
+      let requestEndpoint = next;
+      if (/^https?:\/\//i.test(next)) {
+        let url;
+        try {
+          url = new URL(next);
+        } catch {
+          throw new Error('Microsoft Graph returned an invalid pagination URL.');
+        }
+        if (url.origin !== 'https://graph.microsoft.com' || !url.pathname.startsWith('/v1.0/')) {
+          throw new Error('Microsoft Graph returned an unsafe pagination URL.');
+        }
+        requestEndpoint = url.toString();
+      }
+
+      if (visited.has(requestEndpoint)) {
+        throw new Error('Microsoft Graph returned a pagination loop.');
+      }
+      visited.add(requestEndpoint);
+
+      const response = await this.apiCall('GET', requestEndpoint);
+      if (Array.isArray(response.value)) items.push(...response.value);
+      next = response['@odata.nextLink'] || null;
+    }
+
+    return items;
+  }
+
+  /**
    * Get user's OneNote notebooks
    */
   async getNotebooks() {
-    const response = await this.apiCall('GET', '/me/onenote/notebooks');
-    return response.value || [];
+    return this.getAllPages('/me/onenote/notebooks');
   }
 
   /**
    * Get sections in a notebook
    */
   async getNotebookSections(notebookId) {
-    const response = await this.apiCall('GET', `/me/onenote/notebooks/${notebookId}/sections`);
-    return response.value || [];
+    return this.getAllPages(`/me/onenote/notebooks/${notebookId}/sections`);
   }
 
   /**
@@ -475,13 +523,11 @@ class GraphClient {
 
     // Use calendarview for better recurrence handling. The id is required so
     // synced entries can be matched to their source event.
-    const response = await this.apiCall('GET',
-      `/me/calendarview?startDateTime=${start}&endDateTime=${end}` +
+    const endpoint = `/me/calendarview?startDateTime=${start}&endDateTime=${end}` +
       '&$select=id,subject,start,end,isReminderOn,isAllDay,recurrence,categories,location,showAs,isCancelled' +
-      '&$orderby=start/dateTime&$top=250'
-    );
+      '&$orderby=start/dateTime&$top=250';
 
-    return response.value || [];
+    return this.getAllPages(endpoint);
   }
 
   /**

@@ -10,6 +10,7 @@ import crypto from 'crypto';
 import { db } from '../index.js';
 import { graphClient, readMicrosoftConfig, hasStoredGraphToken, GRAPH_SCOPE_STRING, buildTokenEndpoint } from './graph-client.js';
 import { ollamaClient } from './ollama-client.js';
+import { httpClient } from './http-client.js';
 import { setupLimiter } from './rate-limit.js';
 import { backendPort } from '../utils/backend-port.js';
 import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, microsoftAuthorityUrl, escapeHtml } from '../utils/safe-url.js';
@@ -139,12 +140,12 @@ router.post('/setup/test-jira', async (req, res) => {
       });
     }
 
-    // Test Jira connection
     const jiraResponse = await fetch(`${jiraOrigin}/rest/api/3/myself`, {
       headers: {
         Authorization: `Basic ${Buffer.from(`${email}:${apiToken}`).toString('base64')}`,
         'Content-Type': 'application/json',
       },
+      redirect: 'error',
     });
 
     if (!jiraResponse.ok) {
@@ -197,15 +198,15 @@ router.post('/setup/test-tempo', async (req, res) => {
       });
     }
 
-    const tempoResponse = await fetch('https://api.tempo.io/4/worklogs?limit=1', {
-      method: 'GET',
+    const tempoResponse = await httpClient.get('https://api.tempo.io/4/worklogs?limit=1', {
       headers: {
         'Authorization': `Bearer ${tempoToken}`,
         'Content-Type': 'application/json',
       },
+      validateStatus: () => true,
     });
 
-    if (!tempoResponse.ok) {
+    if (tempoResponse.status < 200 || tempoResponse.status >= 300) {
       let errorMsg = 'Invalid Tempo API token';
       if (tempoResponse.status === 401) {
         errorMsg = 'Invalid or expired Tempo API token';
@@ -269,21 +270,20 @@ router.post('/setup/test-graph', async (req, res) => {
     }
 
     // Validate using Microsoft identity endpoint
-    const tokenResponse = await fetch(microsoftAuthorityUrl(safeTenant, 'oauth2/v2.0/token'), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        scope: 'https://graph.microsoft.com/.default',
-        grant_type: 'client_credentials',
-      }).toString(),
+    const tokenResponse = await httpClient.post(microsoftAuthorityUrl(safeTenant, 'oauth2/v2.0/token'), new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      scope: 'https://graph.microsoft.com/.default',
+      grant_type: 'client_credentials',
+    }).toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      responseType: 'text',
+      transformResponse: [(data) => data],
+      validateStatus: () => true,
     });
 
-    if (!tokenResponse.ok) {
-      const detail = await tokenResponse.text();
+    if (tokenResponse.status < 200 || tokenResponse.status >= 300) {
+      const detail = tokenResponse.data;
       let message = `Microsoft authentication failed (${tokenResponse.status})`;
       let code = '';
       try {
@@ -482,18 +482,19 @@ router.get('/setup/oauth-callback', async (req, res) => {
     tokenBody.set('code_verifier', verifier);
 
     const exchange = async () =>
-      fetch(buildTokenEndpoint(stored.tenantId), {
-        method: 'POST',
+      httpClient.post(buildTokenEndpoint(stored.tenantId), tokenBody.toString(), {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: tokenBody.toString(),
+        responseType: 'text',
+        transformResponse: [(data) => data],
+        validateStatus: () => true,
       });
 
     let response = await exchange();
-    let text = await response.text();
+    let text = response.data;
 
     // The registration turned out to be public. Drop the secret, remember that
     // for next time, and retry rather than making the user re-run the test.
-    if (!response.ok && text.includes('AADSTS700025') && tokenBody.has('client_secret')) {
+    if ((response.status < 200 || response.status >= 300) && text.includes('AADSTS700025') && tokenBody.has('client_secret')) {
       tokenBody.delete('client_secret');
       db.prepare(`
         INSERT OR REPLACE INTO settings (key, value)
@@ -507,10 +508,10 @@ router.get('/setup/oauth-callback', async (req, res) => {
       }));
 
       response = await exchange();
-      text = await response.text();
+      text = response.data;
     }
 
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       let detail = text;
       try {
         detail = JSON.parse(text).error_description || text;
@@ -565,12 +566,26 @@ router.post('/setup/test-ollama', async (req, res) => {
     if (!ollamaOrigin) {
       return res.status(400).json({
         success: false,
-        message: 'Ollama host must be an http:// or https:// address, for example http://localhost:11434',
+        message: 'Ollama host must be a localhost or private/LAN http:// or https:// address, for example http://localhost:11434',
       });
     }
 
-    // Test Ollama endpoint
-    const response = await fetch(`${ollamaOrigin}/api/tags`);
+    // Build the fixed Ollama endpoint from the validated origin so user-supplied
+    // paths, queries, and fragments can never influence the outbound request.
+    const tagsUrl = new URL('/api/tags', ollamaOrigin);
+
+    // Revalidate the final origin immediately before making the request.
+    if (safeOllamaHost(tagsUrl.origin) !== ollamaOrigin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid Ollama host',
+      });
+    }
+
+    const response = await fetch(tagsUrl.toString(), {
+      signal: AbortSignal.timeout(5000),
+      redirect: 'error',
+    });
 
     if (!response.ok) {
       return res.status(400).json({
