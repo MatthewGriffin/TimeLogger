@@ -26,12 +26,12 @@
         :key="item.path"
         :to="item.path"
         :class="['nav-link', { active: isActive(item.path) }]"
-        :title="sidebarOpen ? undefined : item.label"
-        :aria-label="item.label"
+        :title="sidebarOpen ? undefined : navigationTitle(item.label)"
+        :aria-label="navigationTitle(item.label)"
       >
         <component :is="item.icon" class="nav-icon-svg" aria-hidden="true" />
         <span v-if="sidebarOpen" class="nav-label">{{ item.label }}</span>
-        <span v-if="item.path === '/notifications' && unreadCount > 0 && sidebarOpen" class="notification-badge">{{ unreadCount }}</span>
+        <span v-if="item.path === '/notifications' && unreadCount > 0" class="notification-badge" aria-hidden="true">{{ unreadCount }}</span>
       </router-link>
     </div>
 
@@ -59,6 +59,11 @@ const router = useRouter()
 const uiStore = useUiStore()
 const sidebarOpen = computed(() => uiStore.sidebarOpen)
 const unreadCount = computed(() => uiStore.unreadNotifications.length)
+
+const navigationTitle = (label: string) => {
+  if (label !== 'Notifications' || unreadCount.value === 0) return label
+  return `${label}, ${unreadCount.value} unread`
+}
 
 const toggleSidebar = () => {
   uiStore.toggleSidebar()
@@ -200,6 +205,7 @@ const isActive = (path: string) => {
 }
 
 .nav-link {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -212,6 +218,11 @@ const isActive = (path: string) => {
   font-size: 0.95rem;
   white-space: nowrap;
   cursor: pointer;
+}
+
+.nav-link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .nav-link:hover {
@@ -242,6 +253,20 @@ const isActive = (path: string) => {
   text-align: center;
   font-size: .7rem;
   font-weight: 700;
+}
+
+.navigation.collapsed .notification-badge,
+@media (max-width: 768px) {
+  .notification-badge {
+    position: absolute;
+    top: 0.15rem;
+    right: 0.15rem;
+    margin-left: 0;
+    min-width: 1rem;
+    padding: 0.05rem 0.25rem;
+    font-size: 0.65rem;
+    line-height: 1.2;
+  }
 }
 
 .nav-label {
