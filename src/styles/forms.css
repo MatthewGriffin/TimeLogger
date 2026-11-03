@@ -315,6 +315,7 @@
 /* Consistent native date/time controls across pages and dialogs. */
 .form-group input[type="date"],
 .form-group input[type="time"],
+input[type="month"],
 input.date-input,
 input.time-input,
 input.split-time,
@@ -333,6 +334,7 @@ input.split-time,
 
 .form-group input[type="date"]:focus-visible,
 .form-group input[type="time"]:focus-visible,
+input[type="month"]:focus-visible,
 input.date-input:focus-visible,
 input.time-input:focus-visible,
 input.split-time:focus-visible,
