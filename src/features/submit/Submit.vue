@@ -378,10 +378,8 @@ const resolveRange = (range: DateRange): { start: string; end: string } | null =
   }
 
   if (!customStart.value || !customEnd.value) return null
-  const start = customStart.value <= customEnd.value ? customStart.value : customEnd.value
-  const end = customStart.value <= customEnd.value ? customEnd.value : customStart.value
-  if (start > todayString) return null
-  return { start, end: end > todayString ? todayString : end }
+  if (customStart.value > customEnd.value || customStart.value > todayString || customEnd.value > todayString) return null
+  return { start: customStart.value, end: customEnd.value }
 }
 
 const todayDate = localDate(new Date())
@@ -494,7 +492,7 @@ const blockedEntries = computed(() =>
 )
 
 const formatDate = (dateStr: string) => {
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-GB', {
     month: 'short',
     day: 'numeric',
     weekday: 'short'
@@ -921,28 +919,16 @@ const reconcileDuration = async (row: ReconciledRow) => {
   flex-wrap: wrap;
 }
 
+.range-field .date-input {
+  min-width: 10.5rem;
+}
+
 .range-field {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
   font-size: 0.8rem;
   color: var(--color-text-subtle);
-}
-
-.date-input {
-  padding: 0.5rem 0.75rem;
-  background: var(--color-control);
-  border: 1px solid var(--color-border-strong);
-  border-radius: 0.5rem;
-  color: var(--color-text);
-  font-size: 0.9rem;
-  font-family: inherit;
-  color-scheme: dark;
-}
-
-.date-input:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
 }
 
 .range-summary {
