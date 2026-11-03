@@ -14,8 +14,8 @@
         <span class="conflict-subject">Left {{ first.subject }} early to join {{ second.subject }}</span>
       </label>
       <div v-if="mode === 'split'" class="split-fields">
-        <span>Switched over at</span>
-        <input type="time" v-model="cutover" class="split-time" />
+        <label for="meeting-cutover">Switched over at</label>
+        <input id="meeting-cutover" type="time" v-model="cutover" class="split-time" />
       </div>
       <p v-if="mode === 'split' && !splitError" class="split-preview">
         {{ first.subject }} {{ first.startTime }}–{{ cutover }}, then {{ second.subject }} {{ cutover }}–{{ second.endTime }}
@@ -146,14 +146,7 @@ const submit = (): void => {
   margin: 0.4rem 0 0.4rem 1.7rem;
   color: var(--color-text-muted);
   font-size: 0.85rem;
-}
-
-.split-time {
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  border-radius: 0.35rem;
-  color: var(--color-text);
-  padding: 0.25rem 0.5rem;
+  flex-wrap: wrap;
 }
 
 .split-error {
