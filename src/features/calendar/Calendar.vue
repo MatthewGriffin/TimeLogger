@@ -183,13 +183,6 @@ const isLoadingEvents = ref(false)
 
 const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-const currentMonthYear = computed(() => {
-  return currentDate.value.toLocaleDateString('en-GB', {
-    year: 'numeric',
-    month: 'long'
-  })
-})
-
 const selectedDateDisplay = computed(() => {
   return new Date(`${selectedDate.value}T12:00:00`).toLocaleDateString('en-GB', {
     weekday: 'long',
@@ -401,7 +394,7 @@ const selectDay = async (day: CalendarDay) => {
 }
 
 const selectMonth = async (value: string) => {
-  if (!/^\\d{4}-\\d{2}$/.test(value)) return
+  if (!/^\d{4}-\d{2}$/.test(value)) return
   const [year, month] = value.split('-').map(Number)
   if (month < 1 || month > 12) return
   currentDate.value = new Date(year, month - 1, 1)
