@@ -36,8 +36,8 @@
         />
 
         <div class="confirm-actions">
-          <button class="confirm-cancel" @click="close">Cancel</button>
-          <button class="confirm-accept" :disabled="!matches" @click="confirmIfAllowed">
+          <button type="button" class="confirm-cancel" @click="close">Cancel</button>
+          <button type="button" class="confirm-accept" :disabled="!matches" @click="confirmIfAllowed">
             {{ acceptLabel }}
           </button>
         </div>
