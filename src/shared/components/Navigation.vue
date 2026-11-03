@@ -255,7 +255,17 @@ const isActive = (path: string) => {
   font-weight: 700;
 }
 
-.navigation.collapsed .notification-badge,
+.navigation.collapsed .notification-badge {
+  position: absolute;
+  top: 0.15rem;
+  right: 0.15rem;
+  margin-left: 0;
+  min-width: 1rem;
+  padding: 0.05rem 0.25rem;
+  font-size: 0.65rem;
+  line-height: 1.2;
+}
+
 @media (max-width: 768px) {
   .notification-badge {
     position: absolute;
