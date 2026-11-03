@@ -6,7 +6,11 @@
       <div class="header-actions">
         <button class="btn-today" @click="goToToday" :disabled="entriesStore.isLoading">Today</button>
         <button class="btn-nav" @click="previousDay" :disabled="entriesStore.isLoading">← Previous</button>
-        <div class="date-display">{{ formatDateHeader(selectedDate) }}</div>
+        <label class="date-picker-control">
+          <span class="sr-only">Choose entry date</span>
+          <input type="date" v-model="selectedDate" :disabled="entriesStore.isLoading" @change="loadEntriesForDate(selectedDate)" />
+          <span class="date-display">{{ formatDateHeader(selectedDate) }}</span>
+        </label>
         <button class="btn-nav" @click="nextDay" :disabled="entriesStore.isLoading">Next →</button>
         <button class="btn-sync" :disabled="entriesStore.isSyncingCalendar" @click="syncCalendarToEntries">
           {{ entriesStore.isSyncingCalendar ? 'Syncing…' : '🔄 Sync Meetings' }}
@@ -684,6 +688,28 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   flex-wrap: wrap;
 }
 
+.date-picker-control {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.date-picker-control input {
+  min-height: 2.5rem;
+  padding: 0.45rem 0.6rem;
+  color: var(--color-text);
+  background: var(--color-control);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.5rem;
+  color-scheme: dark;
+  font: inherit;
+}
+
+.date-picker-control input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 .date-display {
   font-size: 1.1rem;
   color: var(--color-accent);
@@ -1234,6 +1260,10 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   .header-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .date-picker-control {
+    flex-wrap: wrap;
   }
 
   .date-display {
