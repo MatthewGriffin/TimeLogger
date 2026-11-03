@@ -8,19 +8,46 @@ import { jiraHeaders } from './jira-tempo-auth.js';
  * size, so stopping at the first page would silently under-report what is
  * already logged and risk a duplicate submission.
  */
-async function fetchAllTempoPages(url, tempoToken) {
+export async function fetchAllTempoPages(url, tempoToken, request = makeHttpRequest) {
   const headers = {
     'Authorization': `Bearer ${tempoToken}`,
     'Content-Type': 'application/json'
   };
 
   const results = [];
+  const visited = new Set();
   let nextUrl = url;
+  let pages = 0;
+
   while (nextUrl) {
-    const response = await makeHttpRequest(nextUrl, { method: 'GET', headers });
-    results.push(...(response.data?.results || []));
+    if (++pages > 100) {
+      throw new Error('Tempo returned too many pages for one request.');
+    }
+
+    // Tempo's metadata.next is an opaque absolute URL. Validate its destination
+    // before attaching the bearer token, but pass the original string through
+    // unchanged so pagination parameters are not rewritten.
+    let parsed;
+    try {
+      parsed = new URL(nextUrl);
+    } catch {
+      throw new Error('Tempo returned an invalid pagination URL.');
+    }
+    if (parsed.origin !== 'https://api.tempo.io' || !parsed.pathname.startsWith('/4/')) {
+      throw new Error('Tempo returned an unsafe pagination URL.');
+    }
+    if (visited.has(nextUrl)) {
+      throw new Error('Tempo returned a pagination loop.');
+    }
+    visited.add(nextUrl);
+
+    const response = await request(nextUrl, { method: 'GET', headers });
+    if (Array.isArray(response.data?.results)) {
+      results.push(...response.data.results);
+    }
     nextUrl = response.data?.metadata?.next || null;
   }
+
   return results;
 }
 

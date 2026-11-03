@@ -8,6 +8,7 @@
  */
 
 import { spawn } from 'child_process';
+import { localDateKey } from '../utils/dates.js';
 
 const SCRIPT_TIMEOUT_MS = 60_000;
 
@@ -224,7 +225,7 @@ export async function getLocalCalendarEvents(startDate, endDate) {
 /** Report whether the local Outlook client can be reached. */
 export async function testOutlookCom() {
   try {
-    const today = new Date().toLocaleDateString('en-CA');
+    const today = localDateKey();
     const events = await getLocalCalendarEvents(today, today);
     return { success: true, message: `Connected to Outlook (${events.length} event(s) today)`, count: events.length };
   } catch (error) {

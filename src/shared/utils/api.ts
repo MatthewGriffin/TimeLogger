@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { ApiError } from '@/shared/utils/errors/api-error'
 import type { ApiRequest, ApiResponse } from '@/shared/utils/api-types'
+import { apiEnvelopeSchema } from '@/shared/utils/schema'
 
 export { ApiError }
 export type { ApiRequest, ApiResponse }
@@ -43,8 +44,9 @@ const redactSensitiveText = (value: string) => value
   .replace(/Bearer\s+[A-Za-z0-9._~-]+/gi, 'Bearer [REDACTED]')
 
 export function unwrapToolResult<T>(payload: unknown): T {
-  if (!payload || typeof payload !== 'object') throw new ApiError('Malformed response from server')
-  const envelope = payload as Record<string, unknown>
+  const parsed = apiEnvelopeSchema.safeParse(payload)
+  if (!parsed.success) throw new ApiError('Malformed response from server')
+  const envelope = parsed.data as Record<string, unknown>
   if (envelope.success === false) {
     throw new ApiError(typeof envelope.message === 'string' ? redactSensitiveText(envelope.message) : 'Operation failed', undefined, payload as ApiResponse)
   }

@@ -18,7 +18,10 @@ import { previousWorkingDay, isWorkingDay } from '../utils/working-days.js';
 import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, microsoftAuthorityUrl, escapeHtml } from '../utils/safe-url.js';
 import { backendPort } from '../utils/backend-port.js';
 import { extractTicketKeys, classifyPullRequest, isOpenUnmergedPullRequest } from '../tools/github-prs.js';
-import { hasStoredGraphToken } from '../api/graph-client.js';
+import { GraphClient, hasStoredGraphToken } from '../api/graph-client.js';
+import { fetchAllTempoPages } from '../tools/jira-tempo-worklogs.js';
+import { localDateKey, parseDateKey } from '../utils/dates.js';
+import { makeHttpRequest, httpClient } from '../api/http-client.js';
 
 // Color codes for output
 const colors = {
@@ -105,6 +108,120 @@ async function runTests() {
   // Backend already imported
   log(colors.blue, '📦 Backend loaded');
   log(colors.green, '✅ Backend ready for testing\n');
+
+ 
+  await testAsync('Shared HTTP client parses JSON and preserves response metadata', async () => {
+    const { createServer } = await import('http');
+    const server = createServer((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'X-Test': 'shared-client' });
+      res.end(JSON.stringify({ method: req.method }));
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const response = await makeHttpRequest(`http://127.0.0.1:${server.address().port}/test`);
+      assert.strictEqual(response.status, 200);
+      assert.deepStrictEqual(response.data, { method: 'GET' });
+      assert.strictEqual(response.headers['x-test'], 'shared-client');
+      assert.strictEqual(httpClient.defaults.maxRedirects, 0);
+    } finally {
+      await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    }
+  });
+
+  await testAsync('Shared HTTP adapter preserves HTTP error details', async () => {
+    const { createServer } = await import('http');
+    const server = createServer((req, res) => {
+      res.writeHead(422, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ message: 'invalid payload' }));
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      await assert.rejects(
+        () => makeHttpRequest(`http://127.0.0.1:${server.address().port}/failure`),
+        /HTTP 422: .*invalid payload/
+      );
+    } finally {
+      await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    }
+  });
+
+  await testAsync('Shared HTTP adapter rejects unsupported protocols', async () => {
+    await assert.rejects(() => makeHttpRequest('file:///etc/passwd'), /Unsupported URL protocol/);
+  });
+
+  // Tempo pagination uses bearer-authenticated requests, so validate every
+  // opaque continuation URL before following it.
+  await testAsync('Tempo pagination combines pages and preserves opaque next links', async () => {
+    const requests = [];
+    const items = await fetchAllTempoPages('https://api.tempo.io/4/worklogs?from=2026-01-01', 'test-token', async (url, options) => {
+      requests.push({ url, options });
+      if (requests.length === 1) return {
+        data: {
+          results: [{ tempoWorklogId: 1 }],
+          metadata: { next: 'https://api.tempo.io/4/worklogs?cursor=opaque%2Bvalue' }
+        }
+      };
+      return { data: { results: [{ tempoWorklogId: 2 }] } };
+    });
+    assert.deepStrictEqual(items.map(item => item.tempoWorklogId), [1, 2]);
+    assert.strictEqual(requests[1].url, 'https://api.tempo.io/4/worklogs?cursor=opaque%2Bvalue');
+    assert.strictEqual(requests[1].options.headers.Authorization, 'Bearer test-token');
+  });
+
+  await testAsync('Tempo pagination rejects continuation links to other hosts', async () => {
+    await assert.rejects(
+      () => fetchAllTempoPages('https://api.tempo.io/4/worklogs', 'test-token', async () => ({
+        data: { results: [], metadata: { next: 'https://attacker.example/collect' } }
+      })),
+      /unsafe pagination URL/
+    );
+  });
+
+  await testAsync('Tempo pagination detects repeated continuation links', async () => {
+    const next = 'https://api.tempo.io/4/worklogs?cursor=repeated';
+    await assert.rejects(
+      () => fetchAllTempoPages('https://api.tempo.io/4/worklogs', 'test-token', async () => ({
+        data: { results: [], metadata: { next } }
+      })),
+      /pagination loop/
+    );
+  });
+
+
+ 
+  // Microsoft Graph collection paging: preserve opaque nextLinks but reject
+  // URLs that could disclose the delegated bearer token to another host.
+  await testAsync('Graph pagination combines every page and follows nextLink unchanged', async () => {
+    const client = new GraphClient();
+    const requests = [];
+    client.apiCall = async (method, endpoint) => {
+      requests.push({ method, endpoint });
+      if (requests.length === 1) return {
+        value: [{ id: 'first' }],
+        '@odata.nextLink': 'https://graph.microsoft.com/v1.0/me/onenote/notebooks?$skiptoken=opaque%2Btoken'
+      };
+      return { value: [{ id: 'second' }] };
+    };
+    const items = await client.getAllPages('/me/onenote/notebooks');
+    assert.deepStrictEqual(items.map(item => item.id), ['first', 'second']);
+    assert.strictEqual(requests[1].endpoint, 'https://graph.microsoft.com/v1.0/me/onenote/notebooks?$skiptoken=opaque%2Btoken');
+  });
+
+  await testAsync('Graph pagination rejects nextLinks to other hosts', async () => {
+    const client = new GraphClient();
+    client.apiCall = async () => ({
+      value: [{ id: 'first' }],
+      '@odata.nextLink': 'https://attacker.example/steal-token'
+    });
+    await assert.rejects(() => client.getAllPages('/me/onenote/notebooks'), /unsafe pagination URL/);
+  });
+
+  await testAsync('Graph pagination detects repeated nextLinks', async () => {
+    const client = new GraphClient();
+    const next = 'https://graph.microsoft.com/v1.0/me/onenote/notebooks?$skiptoken=same';
+    client.apiCall = async () => ({ value: [], '@odata.nextLink': next });
+    await assert.rejects(() => client.getAllPages('/me/onenote/notebooks'), /pagination loop/);
+  });
 
   // ============================================================
   // SECTION 1: Tool Registry Tests
@@ -1392,8 +1509,12 @@ async function runTests() {
 
   await testAsync('a Jira base URL keeps only a plain https origin', async () => {
     assert.strictEqual(safeJiraBaseUrl('https://acme.atlassian.net'), 'https://acme.atlassian.net');
+    assert.strictEqual(safeJiraBaseUrl('https://acme.atlassian.net:443'), 'https://acme.atlassian.net');
     // Path, query and fragment are dropped so they cannot redirect the request.
     assert.strictEqual(safeJiraBaseUrl('https://acme.atlassian.net/a/b?c=1#d'), 'https://acme.atlassian.net');
+    // Only Atlassian Cloud tenants may receive the Jira API-token header.
+    assert.strictEqual(safeJiraBaseUrl('https://jira.example.com'), null);
+    assert.strictEqual(safeJiraBaseUrl('https://atlassian.net'), null);
   });
 
   await testAsync('a Jira base URL rejects anything that could leak the API token', async () => {
@@ -1428,10 +1549,25 @@ async function runTests() {
     assert.strictEqual(microsoftAuthorityUrl('../../evil.example', 'oauth2/v2.0/token'), null);
   });
 
-  await testAsync('an Ollama host allows http but still only an origin', async () => {
-    // Ollama is normally plaintext on loopback, so http has to stay allowed.
+  await testAsync('Ollama host accepts only local and private HTTP(S) origins', async () => {
+    // Loopback and private/LAN IPv4 and IPv6 destinations remain supported.
     assert.strictEqual(safeOllamaHost('http://localhost:11434'), 'http://localhost:11434');
+    assert.strictEqual(safeOllamaHost('http://127.0.0.1:11434'), 'http://127.0.0.1:11434');
+    assert.strictEqual(safeOllamaHost('http://[::1]:11434'), 'http://[::1]:11434');
     assert.strictEqual(safeOllamaHost('http://localhost:11434/api/tags'), 'http://localhost:11434');
+    assert.strictEqual(safeOllamaHost('http://192.168.1.20:11434'), 'http://192.168.1.20:11434');
+    assert.strictEqual(safeOllamaHost('http://10.0.0.5:11434'), 'http://10.0.0.5:11434');
+    assert.strictEqual(safeOllamaHost('http://172.16.0.5:11434'), 'http://172.16.0.5:11434');
+    assert.strictEqual(safeOllamaHost('http://[fc00::1]:11434'), 'http://[fc00::1]:11434');
+    assert.strictEqual(safeOllamaHost('http://ollama.local:11434'), 'http://ollama.local:11434');
+    assert.strictEqual(safeOllamaHost('http://ollama.internal:11434'), 'http://ollama.internal:11434');
+  });
+
+  await testAsync('Ollama host rejects public destinations and unsafe URL forms', async () => {
+    assert.strictEqual(safeOllamaHost('https://ollama.example.com'), null);
+    assert.strictEqual(safeOllamaHost('https://8.8.8.8:11434'), null);
+    assert.strictEqual(safeOllamaHost('http://user:pass@192.168.1.25:11434'), null);
+    assert.strictEqual(safeOllamaHost('ftp://192.168.1.25:11434'), null);
     assert.strictEqual(safeOllamaHost('gopher://localhost'), null);
   });
 

@@ -73,18 +73,28 @@ export function safeBaseUrl(input, { allowHttp = false, allowPrivateHosts = true
  * this route be used to probe the local network.
  */
 export function safeJiraBaseUrl(input) {
-  return safeBaseUrl(input, { allowHttp: false, allowPrivateHosts: false });
+  const origin = safeBaseUrl(input, { allowHttp: false, allowPrivateHosts: false });
+  if (!origin) return null;
+
+  // Jira Cloud API-token authentication is supported on Atlassian tenant
+  // domains. Never send the user's Basic credentials to an arbitrary host.
+  const hostname = new URL(origin).hostname.toLowerCase();
+  return hostname.endsWith('.atlassian.net') ? origin : null;
 }
 
 /**
- * Validate an Ollama host.
+ * Validate an Ollama endpoint selected explicitly by the user.
  *
- * Ollama is normally reached over plaintext on the loopback interface or a
- * trusted LAN box, so HTTP has to stay allowed; the origin rebuild still
- * removes any path or credential trickery.
+ * Ollama is supported on this machine or a private/LAN host only. Rejecting
+ * public destinations prevents the setup probe from being used to reach
+ * arbitrary internet hosts. The existing isPrivateHost helper covers literal
+ * loopback/private IPs and local/internal hostnames; it does not resolve DNS.
  */
 export function safeOllamaHost(input) {
-  return safeBaseUrl(input, { allowHttp: true });
+  const origin = safeBaseUrl(input, { allowHttp: true });
+  if (!origin) return null;
+
+  return isPrivateHost(new URL(origin).hostname) ? origin : null;
 }
 
 // Microsoft accepts a tenant GUID, a verified domain, or one of these aliases.
