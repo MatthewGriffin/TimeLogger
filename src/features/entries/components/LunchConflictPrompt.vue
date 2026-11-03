@@ -3,7 +3,7 @@
     <div class="modal prompt-modal">
       <div class="modal-header">
         <h2>🥪 Lunch time conflicts with an entry</h2>
-        <button class="modal-close" @click="dismiss">✕</button>
+        <button type="button" class="modal-close" aria-label="Close lunch conflict prompt" @click="dismiss">✕</button>
       </div>
 
       <p class="prompt-intro">
