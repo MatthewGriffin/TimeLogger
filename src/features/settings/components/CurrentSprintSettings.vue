@@ -29,7 +29,7 @@
       </div>
 
       <div class="form-group">
-        <button class="btn-lookup" @click="$emit('lookup-pi-tickets')" :disabled="props.lookupBusy || !props.formData.piNumber">
+        <button type="button" class="btn-lookup" @click="$emit('lookup-pi-tickets')" :disabled="props.lookupBusy || !props.formData.piNumber">
           {{ props.lookupBusy ? '⏳ Searching Jira...' : '🔍 Load Tickets from Jira' }}
         </button>
         <small v-if="props.lookupMessage" :class="['lookup-msg', props.lookupOk ? 'ok' : 'bad']">
