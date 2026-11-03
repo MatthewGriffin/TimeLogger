@@ -874,6 +874,8 @@ onMounted(async () => {
 /* Content */
 .settings-content {
   flex: 1;
+  min-height: 0;
+  min-width: 0;
   display: flex;
   overflow: hidden;
 }
@@ -926,6 +928,7 @@ onMounted(async () => {
 /* Tab Content */
 .tab-content {
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
   padding: 2rem 3rem;
   max-width: 700px;
@@ -966,6 +969,70 @@ onMounted(async () => {
   .tab-button {
     padding: 0.75rem;
     font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .settings-content {
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  .settings-tabs {
+    width: 100%;
+    max-width: 100%;
+    flex: 0 0 auto;
+    flex-direction: row;
+    gap: 0.25rem;
+    padding: 0.5rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+
+  .tab-button {
+    flex: 0 0 auto;
+    min-height: 2.75rem;
+    padding: 0.65rem 0.85rem;
+    border-radius: 0.5rem;
+    font-size: 0.85rem;
+  }
+
+  .tab-button.active {
+    border-bottom: 0;
+    padding-bottom: 0.65rem;
+    box-shadow: inset 0 -2px 0 var(--color-accent);
+  }
+
+  .tab-content {
+    width: 100%;
+    max-width: none;
+    padding: 1rem;
+    overflow: visible;
+    box-sizing: border-box;
+  }
+}
+
+@media (max-width: 480px) {
+  .settings-tabs {
+    padding: 0.4rem;
+  }
+
+  .tab-button {
+    gap: 0.5rem;
+    padding: 0.6rem 0.7rem;
+    font-size: 0.8rem;
+  }
+
+  .settings-tab-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  .tab-content {
+    padding: 0.75rem;
   }
 }
 </style>
