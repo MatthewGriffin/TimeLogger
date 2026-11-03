@@ -7,6 +7,7 @@ import { db } from '../index.js';
 import { splitTimeRange, timeToMinutes } from '../utils/time-ranges.js';
 import { readSprintConfig, matchMeetingTicket } from './sprint.js';
 import { isoDaysFromToday } from './jira-tempo-future.js';
+import { localDateKey } from '../utils/dates.js';
 
 // Cached responses keyed by date range (TTL: 3 minutes). Keying by range
 // matters because each calendar view requests a different window.
@@ -644,7 +645,7 @@ export const tools = [
       try {
         // Default to today so a caller that omits the date still does something
         // sensible rather than failing.
-        const date = args.date || new Date().toLocaleDateString('en-CA');
+        const date = args.date || localDateKey();
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
           throw new Error('date is required in YYYY-MM-DD format');
         }
@@ -792,7 +793,7 @@ export const tools = [
     },
     handler: async (args) => {
       try {
-        const month = args.month || new Date().toLocaleDateString('en-CA').slice(0, 7);
+        const month = args.month || localDateKey().slice(0, 7);
         if (!/^\d{4}-\d{2}$/.test(month)) {
           throw new Error('month is required in YYYY-MM format');
         }

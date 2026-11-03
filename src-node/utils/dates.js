@@ -28,5 +28,5 @@ export function isWeekend(date) {
 export function parseDateKey(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return null;
   const date = new Date(`${value}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? null : date;
+  return Number.isNaN(date.getTime()) || localDateKey(date) !== value ? null : date;
 }
