@@ -570,8 +570,19 @@ router.post('/setup/test-ollama', async (req, res) => {
       });
     }
 
-    // Only local/private Ollama destinations pass safeOllamaHost; redirects are disabled.
-    const response = await fetch(`${ollamaOrigin}/api/tags`, {
+    // Build the fixed Ollama endpoint from the validated origin so user-supplied
+    // paths, queries, and fragments can never influence the outbound request.
+    const tagsUrl = new URL('/api/tags', ollamaOrigin);
+
+    // Revalidate the final origin immediately before making the request.
+    if (safeOllamaHost(tagsUrl.origin) !== ollamaOrigin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid Ollama host',
+      });
+    }
+
+    const response = await fetch(tagsUrl.toString(), {
       signal: AbortSignal.timeout(5000),
       redirect: 'error',
     });
