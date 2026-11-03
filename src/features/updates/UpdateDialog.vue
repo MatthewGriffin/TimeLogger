@@ -67,16 +67,16 @@
 
         <div class="update-actions">
           <template v-if="stage === 'available'">
-            <button class="update-secondary" @click="declineUpdate">Later</button>
-            <button class="update-primary" @click="downloadAndInstall">Install now</button>
+            <button type="button" class="update-secondary" @click="declineUpdate">Later</button>
+            <button type="button" class="update-primary" @click="downloadAndInstall">Install now</button>
           </template>
           <template v-else-if="stage === 'ready'">
-            <button class="update-secondary" @click="dismiss">Restart later</button>
-            <button class="update-primary" @click="restartNow">Restart now</button>
+            <button type="button" class="update-secondary" @click="dismiss">Restart later</button>
+            <button type="button" class="update-primary" @click="restartNow">Restart now</button>
           </template>
           <template v-else-if="stage === 'error'">
-            <button class="update-secondary" @click="dismiss">Close</button>
-            <button class="update-primary" @click="retry">Try again</button>
+            <button type="button" class="update-secondary" @click="dismiss">Close</button>
+            <button type="button" class="update-primary" @click="retry">Try again</button>
           </template>
         </div>
       </div>
