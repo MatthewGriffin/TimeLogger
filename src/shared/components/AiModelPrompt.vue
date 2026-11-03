@@ -40,9 +40,9 @@
       </div>
 
       <div class="model-prompt-actions">
-        <button v-if="offering" class="model-prompt-primary" @click="install">Download</button>
-        <button v-if="failed" class="model-prompt-primary" @click="install">Retry</button>
-        <button class="model-prompt-close" :aria-label="offering ? 'Not now' : 'Dismiss'" @click="dismiss">✕</button>
+        <button type="button" v-if="offering" class="model-prompt-primary" @click="install">Download</button>
+        <button type="button" v-if="failed" class="model-prompt-primary" @click="install">Retry</button>
+        <button type="button" class="model-prompt-close" :aria-label="offering ? 'Not now' : 'Dismiss'" @click="dismiss">✕</button>
       </div>
     </div>
   </transition>
