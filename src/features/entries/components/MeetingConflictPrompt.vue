@@ -3,7 +3,7 @@
     <div class="modal prompt-modal">
       <div class="modal-header">
         <h2>📅 Overlapping meetings — which did you attend?</h2>
-        <button class="modal-close" @click="skipAll">✕</button>
+        <button type="button" class="modal-close" aria-label="Close meeting conflict prompt" @click="skipAll">✕</button>
       </div>
 
       <p class="prompt-intro">
