@@ -33,16 +33,18 @@
 
         <div class="topics-list">
           <button class="btn-add-topic" type="button" @click="createCategory">+ Category</button>
-          <div
+          <button
             v-for="topic in notesStore.topics"
             :key="topic"
+            type="button"
             :class="['topic-item', { active: notesStore.selectedTopic === topic }]"
+            :aria-pressed="notesStore.selectedTopic === topic"
             @click="notesStore.setSelectedTopic(topic)"
             @contextmenu.prevent="openCategoryMenu($event, topic)"
           >
             <span class="topic-name">{{ topic }}</span>
             <span class="topic-count">{{ notesStore.notesCount[topic] }}</span>
-          </div>
+          </button>
         </div>
 
         <div
@@ -718,6 +720,10 @@ onUnmounted(() => {
 }
 
 .topic-item {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  text-align: left;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -730,6 +736,11 @@ onUnmounted(() => {
   border-radius: 0.5rem;
   transition: all 0.3s ease;
   font-weight: 500;
+}
+
+.topic-item:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .topic-item:hover {
