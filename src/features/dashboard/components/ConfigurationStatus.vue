@@ -8,7 +8,7 @@
           {{ missingConfigs.join(' • ') }}
         </p>
       </div>
-      <button class="banner-button" @click="navigateToSettings">
+      <button type="button" class="banner-button" @click="navigateToSettings">
         Go to Settings →
       </button>
     </div>
