@@ -26,7 +26,19 @@ test.describe('Routing', () => {
     });
   }
 
-  test('legacy Tempo Status route redirects to Submit Time', async ({ page }) => {\n    await page.goto(ROUTES.tempo);\n    await expect(pageHeading(page)).toHaveText('Submit Time');\n    await expect(page).toHaveURL(/#\\/submit$/);\n  });\n\n  test('Submit Time includes Tempo reconciliation', async ({ page }) => {\n    await page.goto(ROUTES.submit);\n    await expect(pageHeading(page)).toHaveText('Submit Time');\n    await expect(page.getByRole('heading', { name: 'Local Entries vs Tempo' })).toBeVisible();\n  });\n\n  test('unknown routes fall back to the dashboard', async ({ page }) => {
+  test('legacy Tempo Status route redirects to Submit Time', async ({ page }) => {
+    await page.goto(ROUTES.tempo);
+    await expect(pageHeading(page)).toHaveText('Submit Time');
+    await expect(page).toHaveURL(/#\/submit$/);
+  });
+
+  test('Submit Time includes Tempo reconciliation', async ({ page }) => {
+    await page.goto(ROUTES.submit);
+    await expect(pageHeading(page)).toHaveText('Submit Time');
+    await expect(page.getByRole('heading', { name: 'Local Entries vs Tempo' })).toBeVisible();
+  });
+
+  test('unknown routes fall back to the dashboard', async ({ page }) => {
     await page.goto('#/this-route-does-not-exist');
     await expect(pageHeading(page)).toHaveText('Dashboard');
   });

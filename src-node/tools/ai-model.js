@@ -11,7 +11,7 @@
  */
 
 import { db } from '../index.js';
-import axios from 'axios';
+import { httpClient } from '../api/http-client.js';
 import { ollamaClient, RECOMMENDED_MODEL, RECOMMENDED_MODEL_SIZE } from '../api/ollama-client.js';
 
 const DISMISSED_KEY = 'ai_model_prompt_dismissed';
@@ -54,7 +54,7 @@ export const tools = [
         return { success: true, ollamaAvailable: true, loaded: false, model: null };
       }
       try {
-        const response = await axios.get(`${ollamaClient.baseUrl}/api/ps`, { timeout: 3000 });
+        const response = await httpClient.get(`${ollamaClient.baseUrl}/api/ps`, { timeout: 3000 });
         const running = Array.isArray(response.data?.models) ? response.data.models : [];
         const loaded = running.some(item => {
           const name = String(item.name || item.model || '');

@@ -110,6 +110,10 @@ export const useUiStore = defineStore('ui', () => {
     return addNotification({ type: 'error', message, duration })
   }
 
+  const showPersistentError = (message: string, duration = 7000) => {
+    return addNotification({ type: 'error', message, duration, persistent: true })
+  }
+
   const showInfo = (message: string, duration?: number) => {
     return addNotification({ type: 'info', message, duration })
   }
@@ -144,6 +148,7 @@ export const useUiStore = defineStore('ui', () => {
     reportError,
     showSuccess,
     showError,
+    showPersistentError,
     showInfo,
     showWarning,
     toggleSidebar,

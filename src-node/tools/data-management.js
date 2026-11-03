@@ -11,6 +11,8 @@
  * colleague's backup cannot silently repoint your app at their Jira account.
  */
 
+import { localDateKey } from '../utils/dates.js';
+
 import { db, APP_DATA_DIR } from '../db.js';
 import { statSync } from 'fs';
 import { join } from 'path';
@@ -132,7 +134,7 @@ export const tools = [
             format,
             content: toCsv(columns, rows.map(row => columns.map(column => row[column]))),
             count: rows.length,
-            suggestedName: `timelogger-entries-${new Date().toISOString().slice(0, 10)}.csv`
+            suggestedName: `timelogger-entries-${localDateKey()}.csv`
           };
         }
 
