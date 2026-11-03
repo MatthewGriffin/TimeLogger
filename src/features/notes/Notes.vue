@@ -207,15 +207,16 @@
               <option v-for="ticket in recentTickets" :key="ticket" :value="ticket" />
             </datalist>
             <div v-if="jiraStore.matches.length > 0" class="ticket-suggestions">
-              <div
+              <button
                 v-for="match in jiraStore.matches"
                 :key="match.key"
+                type="button"
                 class="ticket-match"
                 @click="applyJiraMatch(match)"
               >
                 <span class="ticket-match-key">{{ match.key }}</span>
                 <span class="ticket-match-summary">{{ match.summary }}</span>
-              </div>
+              </button>
             </div>
           </div>
 
@@ -1133,15 +1134,25 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  width: 100%;
   padding: 0.5rem 0.75rem;
-  background: var(--color-control);
+  border: 0;
   border-radius: 0.375rem;
+  background: var(--color-control);
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
   transition: background 0.2s ease;
 }
 
 .ticket-match:hover {
   background: var(--color-control-hover);
+}
+
+.ticket-match:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .ticket-match-key {
