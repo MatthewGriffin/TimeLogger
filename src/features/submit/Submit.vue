@@ -760,7 +760,10 @@ const ticketPreviewLoaded = ref(false)
 const ticketPreviewError = ref('')
 const ticketPreviewReviewed = ref(0)
 const ticketPreviewRows = ref<Array<{ entryId: number; date: string; task: string; startTime: string; worklogId: string; localTicket: string; tempoTicket: string; tempoDurationMins: number }>>([])
-const ticketPreviewUnmatched = ref<Array<{ entryId: number; date: string; task: string; reason: string }>>([])\nconst pendingTicketCorrection = ref<TicketPreviewRow | null>(null)\nconst ticketCorrectionLoading = ref(false)\nconst ticketCorrectionMessage = ref('')
+const ticketPreviewUnmatched = ref<Array<{ entryId: number; date: string; task: string; reason: string }>>([])
+const pendingTicketCorrection = ref<TicketPreviewRow | null>(null)
+const ticketCorrectionLoading = ref(false)
+const ticketCorrectionMessage = ref('')
 
 const reconciliationLoading = ref(false)
 const reconciliationError = ref('')
@@ -966,7 +969,8 @@ const reconcileDuration = async (row: ReconciledRow) => {
 
 .ticket-preview-section { margin: 1rem 0; padding: 1rem; border: 1px solid var(--color-border); border-radius: 0.6rem; }
 .ticket-preview-row { display: grid; gap: 0.25rem; padding: 0.65rem; border: 1px solid var(--color-border); border-radius: 0.4rem; margin: 0.5rem 0; }
-.ticket-preview-row small { color: var(--color-text-subtle); }\n.ticket-correction-confirm { margin-top: 0.85rem; padding: 0.85rem; border: 1px solid var(--color-border); border-radius: 0.5rem; }
+.ticket-preview-row small { color: var(--color-text-subtle); }
+.ticket-correction-confirm { margin-top: 0.85rem; padding: 0.85rem; border: 1px solid var(--color-border); border-radius: 0.5rem; }
 
 /* Page Header */
 .page-header h1 {
