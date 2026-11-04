@@ -12,6 +12,7 @@ import {
   daysAhead,
   isoDaysFromToday,
   reconcileTempoWorklogs,
+  buildTempoTicketCorrectionPreview,
 } from '../tools/jira-tempo.js';
 import { ukBankHolidays, isUkBankHoliday } from '../utils/uk-holidays.js';
 import { previousWorkingDay, isWorkingDay } from '../utils/working-days.js';
@@ -648,6 +649,38 @@ async function runTests() {
         'A matching duration alone must not make a different time slot look submitted');
       assert.strictEqual(result.unmatchedWorklogs[0], longWorklog,
         'The unrelated Tempo worklog should remain unmatched');
+    });
+
+    test('PI correction preview correlates by Tempo tempoWorklogId and reports ticket mismatch only', () => {
+      const local = [
+        { id: 301, date: '2026-11-02', name: 'Feature work', ticket_id: 'PI43-100', start_time: '09:00', duration_mins: 60, tempo_worklog_id: '9001' },
+        { id: 302, date: '2026-11-02', name: 'Review', ticket_id: 'PI43-101', start_time: '10:00', duration_mins: 30, tempo_worklog_id: '9002' },
+      ];
+      const remote = [
+        { tempoWorklogId: 9001, ticketId: 'PI44-100', description: 'Feature work', startTime: '09:00', durationMins: 60 },
+        { tempoWorklogId: 9002, ticketId: 'PI43-101', description: 'Review', startTime: '10:00', durationMins: 30 },
+      ];
+      const preview = buildTempoTicketCorrectionPreview(local, remote);
+      assert.strictEqual(preview.reviewed, 2);
+      assert.strictEqual(preview.mismatchCount, 1);
+      assert.strictEqual(preview.reviewRows[0].entryId, 301);
+      assert.strictEqual(preview.reviewRows[0].worklogId, 9001);
+      assert.strictEqual(preview.reviewRows[0].tempoTicket, 'PI44-100');
+      assert.strictEqual(preview.unmatchedStoredIds.length, 0);
+    });
+
+    test('PI correction preview does not guess when a stored Tempo worklog ID is missing', () => {
+      const local = [
+        { id: 303, date: '2026-11-02', name: 'Uncertain', ticket_id: 'PI43-102', start_time: '11:00', duration_mins: 30, tempo_worklog_id: 'missing-id' },
+      ];
+      const remote = [
+        { tempoWorklogId: 9003, ticketId: 'PI44-102', description: 'Uncertain', startTime: '11:00', durationMins: 30 },
+      ];
+      const preview = buildTempoTicketCorrectionPreview(local, remote);
+      assert.strictEqual(preview.mismatchCount, 0);
+      assert.strictEqual(preview.reviewRows.length, 0);
+      assert.strictEqual(preview.unmatchedStoredIds.length, 1);
+      assert.strictEqual(preview.unmatchedStoredIds[0].entryId, 303);
     });
 
     test('matches the exact local time slot and duration even when ticket casing and seconds differ', () => {
