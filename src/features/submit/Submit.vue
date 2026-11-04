@@ -761,7 +761,7 @@ const ticketPreviewError = ref('')
 const ticketPreviewReviewed = ref(0)
 const ticketPreviewRows = ref<Array<{ entryId: number; date: string; task: string; startTime: string; worklogId: string; localTicket: string; tempoTicket: string; tempoDurationMins: number }>>([])
 const ticketPreviewUnmatched = ref<Array<{ entryId: number; date: string; task: string; reason: string }>>([])
-const pendingTicketCorrection = ref<TicketPreviewRow | null>(null)
+const pendingTicketCorrection = ref<{ entryId: number; date: string; task: string; startTime: string; worklogId: string; localTicket: string; tempoTicket: string; tempoDurationMins: number } | null>(null)
 const ticketCorrectionLoading = ref(false)
 const ticketCorrectionMessage = ref('')
 
