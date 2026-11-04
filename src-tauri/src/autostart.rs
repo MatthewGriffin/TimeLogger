@@ -44,10 +44,11 @@ mod windows_registry {
     // beneath "Program Files" remain valid.
     let command = wide(&format!("\"{}\"", executable.display()));
     let mut key: HKey = std::ptr::null_mut();
+    let mut disposition = 0u32;
     let status = unsafe {
       RegCreateKeyExW(
         HKEY_CURRENT_USER, sub_key.as_ptr(), 0, std::ptr::null_mut(), 0,
-        KEY_SET_VALUE, std::ptr::null(), &mut key, std::ptr::null_mut()
+        KEY_SET_VALUE, std::ptr::null(), &mut key, &mut disposition
       )
     };
     if status != 0 {
