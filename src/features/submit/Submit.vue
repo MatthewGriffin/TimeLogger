@@ -726,6 +726,13 @@ interface ReconciledRow {
   worklogId: number | null
 }
 
+const ticketPreviewLoading = ref(false)
+const ticketPreviewLoaded = ref(false)
+const ticketPreviewError = ref('')
+const ticketPreviewReviewed = ref(0)
+const ticketPreviewRows = ref<Array<{ entryId: number; date: string; task: string; startTime: string; worklogId: string; localTicket: string; tempoTicket: string; tempoDurationMins: number }>>([])
+const ticketPreviewUnmatched = ref<Array<{ entryId: number; date: string; task: string; reason: string }>>([])
+
 const reconciliationLoading = ref(false)
 const reconciliationError = ref('')
 const reconciled = ref<ReconciledRow[]>([])
@@ -777,6 +784,38 @@ const formatReconciliationDuration = (mins: number | null) => {
   const minutes = mins % 60
   if (hours === 0) return `${minutes}m`
   return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`
+}
+
+const previewTicketCorrections = async () => {
+  const resolved = activeRange.value
+  if (!resolved) return
+  ticketPreviewLoading.value = true
+  ticketPreviewLoaded.value = true
+  ticketPreviewError.value = ''
+  ticketPreviewRows.value = []
+  ticketPreviewUnmatched.value = []
+  try {
+    const record = asRecord(await executeApi('tempo_preview_ticket_corrections', { from: resolved.start, to: resolved.end }))
+    if (!asBoolean(record.success, false)) {
+      ticketPreviewError.value = asString(record.message, 'Failed to preview PI ticket mismatches')
+      return
+    }
+    ticketPreviewReviewed.value = asNumber(record.reviewed)
+    ticketPreviewRows.value = readList(record.reviewRows, undefined, item => ({
+      entryId: asNumber(item.entryId), date: asString(item.date), task: asString(item.task),
+      startTime: asString(item.startTime), worklogId: asString(item.worklogId),
+      localTicket: asString(item.localTicket), tempoTicket: asString(item.tempoTicket),
+      tempoDurationMins: asNumber(item.tempoDurationMins)
+    }))
+    ticketPreviewUnmatched.value = readList(record.unmatchedStoredIds, undefined, item => ({
+      entryId: asNumber(item.entryId), date: asString(item.date), task: asString(item.task),
+      reason: asString(item.reason)
+    }))
+  } catch (err) {
+    ticketPreviewError.value = err instanceof ApiError ? err.message : 'Failed to preview PI ticket mismatches'
+  } finally {
+    ticketPreviewLoading.value = false
+  }
 }
 
 const loadReconciliation = async () => {
