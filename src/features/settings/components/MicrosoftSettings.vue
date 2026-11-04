@@ -97,7 +97,7 @@
             <li>Add redirect URI: <code>http://localhost:3001/api/setup/oauth-callback</code></li>
             <li>Save the settings, then click <strong>Sign in with Microsoft</strong></li>
           </ol>
-          <p style="margin-top: 12px; font-size: 0.9em; color: #666;">
+          <p class="email-integration-note">
             📧 <strong>Email:</strong> Outlook email access is provided by a local COM extension and does not require Graph API configuration.
           </p>
         </div>
@@ -130,6 +130,8 @@ defineEmits<{
 </script>
 
 <style scoped>
+.email-integration-note { margin-top: 12px; font-size: 0.9em; color: var(--color-text-muted); }
+
 .account-connection {
   margin: 20px 0;
   padding: 16px;
