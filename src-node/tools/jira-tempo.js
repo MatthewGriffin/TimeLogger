@@ -1234,14 +1234,15 @@ export const tools = [
         if (!remote || String(remote.tempoWorklogId) !== String(args.worklogId)) {
           throw new Error('Tempo did not return the requested worklog. No changes were made.');
         }
-        const currentIssueId = remote.issue?.id;
-        if (currentIssueId == null) throw new Error('Tempo worklog has no Jira issue ID. No changes were made.');
+        const currentIssueId = Number(remote.issue?.id);
+        if (!Number.isSafeInteger(currentIssueId) || currentIssueId <= 0) throw new Error('Tempo worklog has no valid Jira issue ID. No changes were made.');
         const currentIssues = await searchIssues(credentials, `id = ${Number(currentIssueId)}`, { limit: 2, fields: 'key' });
         const currentTicket = currentIssues[0]?.key;
         if (!currentTicket || currentTicket.toUpperCase() !== String(args.expectedCurrentTicket).toUpperCase()) {
           throw new Error('The Tempo worklog ticket has changed since the preview. Refresh before correcting.');
         }
 
+        if (!/^[A-Z][A-Z0-9_]*-\d+$/i.test(String(args.targetTicket || ''))) throw new Error('Target ticket key is not valid. No changes were made.');
         const targetIssues = await searchIssues(credentials, `key = "${escapeJql(args.targetTicket)}"`, { limit: 2, fields: 'key' });
         const targetIssue = targetIssues.find(issue => issue.key?.toUpperCase() === String(args.targetTicket).toUpperCase());
         const targetIssueId = Number(targetIssue?.id);
@@ -1260,10 +1261,10 @@ export const tools = [
           issueId: targetIssueId,
           authorAccountId,
           startDate: remote.startDate,
-          startTime: remote.startTime || '00:00:00',
           timeSpentSeconds: Number(remote.timeSpentSeconds),
           description: remote.description || ''
         };
+        if (remote.startTime) body.startTime = remote.startTime;
         if (remote.billableSeconds !== undefined && remote.billableSeconds !== null) body.billableSeconds = Number(remote.billableSeconds);
         if (remote.remainingEstimateSeconds !== undefined && remote.remainingEstimateSeconds !== null) body.remainingEstimateSeconds = Number(remote.remainingEstimateSeconds);
         const attributes = Array.isArray(remote.attributes)
