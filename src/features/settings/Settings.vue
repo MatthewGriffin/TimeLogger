@@ -704,6 +704,7 @@ const saveSettings = async () => {
     })
 
     await saveSprintConfig()
+    await loadSprintConfigHistory()
     // Update auto-start via Tauri ONLY if it changed
     if (formData.value.autoStart !== originalData.value?.autoStart) {
       try {
