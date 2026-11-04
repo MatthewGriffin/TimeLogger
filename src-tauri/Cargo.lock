@@ -66,7 +66,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "app"
-version = "0.7.88"
+version = "0.7.89"
 dependencies = [
  "log",
  "reqwest",
@@ -78,7 +78,6 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-notification",
  "tauri-plugin-process",
- "tauri-plugin-shell",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
  "url",
