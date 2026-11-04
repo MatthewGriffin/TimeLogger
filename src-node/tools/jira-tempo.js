@@ -97,7 +97,7 @@ export const reconcileTempoWorklogs = (localEntries, worklogs) => {
   const normalizeTicket = value => String(value || '').trim().toUpperCase();
   const normalizeDate = value => String(value || '').slice(0, 10);
   const normalizeTime = value => {
-    const match = /^(\\d{1,2}):(\\d{2})/.exec(String(value || '').trim());
+    const match = /^(\d{1,2}):(\d{2})/.exec(String(value || '').trim());
     return match ? `${match[1].padStart(2, '0')}:${match[2]}` : '';
   };
   const normalizeDescription = value => String(value || '').trim().toLowerCase().replace(/\\s+/g, ' ');
@@ -525,7 +525,7 @@ export const tools = [
         apiToken: { type: 'string', description: 'Jira API token' },
         tempoToken: { type: 'string', description: 'Tempo API token' },
         issueKey: { type: 'string', pattern: '^[A-Z][A-Z0-9]+-[0-9]+$', description: 'Jira issue key (e.g., TIME-359)' },
-        startDate: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Date in YYYY-MM-DD format' },
+        startDate: { type: 'string', pattern: '^\d{4}-\d{2}-\d{2}$', description: 'Date in YYYY-MM-DD format' },
         startTime: { type: 'string', description: 'Time in HH:MM:SS format (default: 09:00:00)' },
         timeSpentSeconds: { type: 'number', exclusiveMinimum: 0, description: 'Duration in seconds' },
         description: { type: 'string', description: 'Work description' },
@@ -797,7 +797,7 @@ export const tools = [
         email: { type: 'string', description: 'Jira user email (falls back to Settings)' },
         apiToken: { type: 'string', description: 'Jira API token (falls back to Settings)' },
         tempoToken: { type: 'string', description: 'Tempo API token (falls back to Settings)' },
-        date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Date in YYYY-MM-DD format' },
+        date: { type: 'string', pattern: '^\d{4}-\d{2}-\d{2}$', description: 'Date in YYYY-MM-DD format' },
         entryIds: { type: 'array', description: 'Optional: only submit these entry ids' },
         activityTypeId: { type: 'string', description: 'Optional: force one activity type for every entry' },
         activityTypeMap: { type: 'object', description: 'Optional: map of entry id to activity type UUID' },
@@ -1313,7 +1313,8 @@ export const tools = [
     },
     handler: async (args) => {
       try {
-        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(args.from || '') || !/^\\d{4}-\\d{2}-\\d{2}$/.test(args.to || '')) return { success: false, message: 'Both dates must use YYYY-MM-DD format.' };\n        if (args.from > args.to) return { success: false, message: 'Start date must be on or before end date.' };
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(args.from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(args.to || '')) return { success: false, message: 'Both dates must use YYYY-MM-DD format.' };
+        if (args.from > args.to) return { success: false, message: 'Start date must be on or before end date.' };
         const credentials = resolveJiraCredentials(args);
         const tempoToken = resolveTempoToken(args);
         const account = await getCurrentAccount(credentials);
@@ -1336,8 +1337,8 @@ export const tools = [
         email: { type: 'string', description: 'Jira user email (falls back to Settings)' },
         apiToken: { type: 'string', description: 'Jira API token (falls back to Settings)' },
         tempoToken: { type: 'string', description: 'Tempo API token (falls back to Settings)' },
-        from: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Start date (inclusive)' },
-        to: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'End date (inclusive)' }
+        from: { type: 'string', pattern: '^\d{4}-\d{2}-\d{2}$', description: 'Start date (inclusive)' },
+        to: { type: 'string', pattern: '^\d{4}-\d{2}-\d{2}$', description: 'End date (inclusive)' }
       },
       required: ['from', 'to']
     },
@@ -1495,8 +1496,8 @@ export const tools = [
         email: { type: 'string', description: 'Jira user email (falls back to Settings)' },
         apiToken: { type: 'string', description: 'Jira API token (falls back to Settings)' },
         tempoToken: { type: 'string', description: 'Tempo API token (falls back to Settings)' },
-        from: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Start date (inclusive)' },
-        to: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'End date (inclusive)' },
+        from: { type: 'string', pattern: '^\d{4}-\d{2}-\d{2}$', description: 'Start date (inclusive)' },
+        to: { type: 'string', pattern: '^\d{4}-\d{2}-\d{2}$', description: 'End date (inclusive)' },
         worklogIds: {
           type: 'array',
           items: { type: 'number' },
