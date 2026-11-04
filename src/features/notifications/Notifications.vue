@@ -7,7 +7,7 @@
       </div>
       <div class="header-actions">
         <span class="unread-count">{{ notifications.length }} unread</span>
-        <button v-if="notifications.length > 0" class="btn-range" type="button" @click="clearAll">Clear all</button>
+        <button v-if="notifications.length > 0" class="btn-secondary" type="button" @click="clearAll">Clear all</button>
       </div>
     </div>
 
@@ -93,7 +93,7 @@ const getIcon = (type: Notification['type']) => {
 .notification-success { border-left-color: var(--color-success); }
 .notification-error { border-left-color: var(--color-danger); }
 .notification-info { border-left-color: var(--color-info); }
-.notification-warning { border-left-color: #f59e0b; }
+.notification-warning { border-left-color: var(--color-warning); }
 .notification-icon { flex-shrink: 0; font-size: 1.2rem; font-weight: 700; }
 .notification-message { flex: 1; min-width: 0; line-height: 1.5; overflow-wrap: anywhere; }
 .notification-action { display: inline-flex; align-items: center; gap: .25rem; flex-shrink: 0; color: var(--color-accent); font-size: .85rem; font-weight: 600; }
