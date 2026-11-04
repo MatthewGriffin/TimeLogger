@@ -289,7 +289,7 @@ const loadSprintConfigHistory = async (): Promise<void> => {
   }
 }
 
-const loadSprintConfig = async (): Promise<void> {
+const loadSprintConfig = async (): Promise<void> => {
   try {
     const result = asRecord(await executeApi('sprint_get_config', {}))
     if (result.config) applySprintConfig(asRecord(result.config))
