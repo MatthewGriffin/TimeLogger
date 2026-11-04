@@ -150,14 +150,6 @@ onUnmounted(() => {
   unlistenTrayNavigate?.()
 })
 
-window.addEventListener('beforeunload', async () => {
-  try {
-    await invoke('stop_backend')
-  } catch {
-    // Best-effort shutdown only.
-  }
-})
-
 // Global notification functions accessible from other components
 window.showNotification = async (title: string, message: string) => {
   try {
