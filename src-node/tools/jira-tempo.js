@@ -1215,7 +1215,7 @@ export const tools = [
     },
     handler: async (args) => {
       try {
-        if (args.from > args.to) return { success: false, message: 'Start date must be on or before end date.' };
+        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(args.from || '') || !/^\\d{4}-\\d{2}-\\d{2}$/.test(args.to || '')) return { success: false, message: 'Both dates must use YYYY-MM-DD format.' };\n        if (args.from > args.to) return { success: false, message: 'Start date must be on or before end date.' };
         const credentials = resolveJiraCredentials(args);
         const tempoToken = resolveTempoToken(args);
         const account = await getCurrentAccount(credentials);
