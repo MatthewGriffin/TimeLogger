@@ -61,6 +61,36 @@ export { takeDuplicateWorklog, resolveJiraCredentials, jiraHeaders, daysAhead, l
  * worklog now represents the longer segment. Resolve strong shape matches
  * across the whole day/ticket pool before falling back to IDs or start times.
  */
+export const buildTempoTicketCorrectionPreview = (localEntries, worklogs) => {
+  const byId = new Map(worklogs.map(log => [String(log.tempoWorklogId ?? log.worklogId), log]));
+  const reviewRows = [];
+  const unmatchedStoredIds = [];
+  for (const entry of localEntries) {
+    const remote = byId.get(String(entry.tempo_worklog_id));
+    if (!remote) {
+      unmatchedStoredIds.push({
+        entryId: entry.id, date: entry.date, task: entry.name,
+        localTicket: entry.ticket_id, worklogId: entry.tempo_worklog_id,
+        reason: 'Stored Tempo worklog ID was not found in this date range'
+      });
+      continue;
+    }
+    const localTicket = String(entry.ticket_id || '').trim().toUpperCase();
+    const tempoTicket = String(remote.ticketId || '').trim().toUpperCase();
+    if (localTicket && tempoTicket && localTicket !== tempoTicket) {
+      reviewRows.push({
+        entryId: entry.id, date: entry.date, task: entry.name,
+        startTime: entry.start_time, durationMins: entry.duration_mins,
+        worklogId: remote.tempoWorklogId ?? remote.worklogId,
+        localTicket: entry.ticket_id, tempoTicket: remote.ticketId,
+        tempoDescription: remote.description, tempoStartTime: remote.startTime,
+        tempoDurationMins: remote.durationMins
+      });
+    }
+  }
+  return { reviewed: localEntries.length, mismatchCount: reviewRows.length, reviewRows, unmatchedStoredIds };
+};
+
 export const reconcileTempoWorklogs = (localEntries, worklogs) => {
   // Normalize keys and times before matching: API/local representations can
   // differ in case or include seconds, even though they identify the same slot.
@@ -1190,23 +1220,9 @@ export const tools = [
         const tempoToken = resolveTempoToken(args);
         const account = await getCurrentAccount(credentials);
         const worklogs = await fetchTempoWorklogs(credentials, tempoToken, account.accountId, args.from, args.to);
-        const byId = new Map(worklogs.map(log => [String(log.tempoWorklogId ?? log.worklogId), log]));
         const localEntries = db.prepare('SELECT id, date, name, ticket_id, start_time, duration_mins, tempo_worklog_id FROM daily_summary WHERE date >= ? AND date <= ? AND submitted = 1 AND tempo_worklog_id IS NOT NULL AND TRIM(tempo_worklog_id) <> \'\' AND COALESCE(is_lunch, 0) = 0 ORDER BY date ASC, start_time ASC').all(args.from, args.to);
-        const reviewRows = [];
-        const unmatchedStoredIds = [];
-        for (const entry of localEntries) {
-          const remote = byId.get(String(entry.tempo_worklog_id));
-          if (!remote) {
-            unmatchedStoredIds.push({ entryId: entry.id, date: entry.date, task: entry.name, localTicket: entry.ticket_id, worklogId: entry.tempo_worklog_id, reason: 'Stored Tempo worklog ID was not found in this date range' });
-            continue;
-          }
-          const localTicket = String(entry.ticket_id || '').trim().toUpperCase();
-          const tempoTicket = String(remote.ticketId || '').trim().toUpperCase();
-          if (localTicket && tempoTicket && localTicket !== tempoTicket) {
-            reviewRows.push({ entryId: entry.id, date: entry.date, task: entry.name, startTime: entry.start_time, durationMins: entry.duration_mins, worklogId: remote.tempoWorklogId ?? remote.worklogId, localTicket: entry.ticket_id, tempoTicket: remote.ticketId, tempoDescription: remote.description, tempoStartTime: remote.startTime, tempoDurationMins: remote.durationMins });
-          }
-        }
-        return { success: true, from: args.from, to: args.to, readOnly: true, reviewed: localEntries.length, mismatchCount: reviewRows.length, reviewRows, unmatchedStoredIds, message: 'Preview only: no Tempo worklogs or local entries were changed.' };
+        const preview = buildTempoTicketCorrectionPreview(localEntries, worklogs);
+        return { success: true, from: args.from, to: args.to, readOnly: true, ...preview, message: 'Preview only: no Tempo worklogs or local entries were changed.' };
       } catch (error) {
         return { success: false, message: 'Could not preview ticket corrections: ' + error.message };
       }
