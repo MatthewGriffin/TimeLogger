@@ -89,7 +89,7 @@
 </template>
 
 <script setup lang="ts">
-import { asList, asRecord, asString } from '@/shared/utils/schema'
+import { asArray, asRecord, asString } from '@/shared/utils/schema'
 import type { CurrentSprintSettingsForm } from '@/features/settings/models/settings'
 
 const props = defineProps<{
@@ -112,7 +112,7 @@ const formatHistoryDate = (value: string) => {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
 }
 const historyMappings = (config: Record<string, unknown>) =>
-  asList(config.mappings).map(raw => {
+  asArray(config.mappings).map(raw => {
     const mapping = asRecord(raw)
     return { id: asString(mapping.id, ''), label: asString(mapping.label, ''), ticketKey: asString(mapping.ticketKey, '') }
   })
