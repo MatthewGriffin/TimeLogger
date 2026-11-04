@@ -1190,7 +1190,7 @@ export const tools = [
         const tempoToken = resolveTempoToken(args);
         const account = await getCurrentAccount(credentials);
         const worklogs = await fetchTempoWorklogs(credentials, tempoToken, account.accountId, args.from, args.to);
-        const byId = new Map(worklogs.map(log => [String(log.worklogId), log]));
+        const byId = new Map(worklogs.map(log => [String(log.tempoWorklogId ?? log.worklogId), log]));
         const localEntries = db.prepare('SELECT id, date, name, ticket_id, start_time, duration_mins, tempo_worklog_id FROM daily_summary WHERE date >= ? AND date <= ? AND submitted = 1 AND tempo_worklog_id IS NOT NULL AND TRIM(tempo_worklog_id) <> \'\' AND COALESCE(is_lunch, 0) = 0 ORDER BY date ASC, start_time ASC').all(args.from, args.to);
         const reviewRows = [];
         const unmatchedStoredIds = [];
@@ -1203,7 +1203,7 @@ export const tools = [
           const localTicket = String(entry.ticket_id || '').trim().toUpperCase();
           const tempoTicket = String(remote.ticketId || '').trim().toUpperCase();
           if (localTicket && tempoTicket && localTicket !== tempoTicket) {
-            reviewRows.push({ entryId: entry.id, date: entry.date, task: entry.name, startTime: entry.start_time, durationMins: entry.duration_mins, worklogId: remote.worklogId, localTicket: entry.ticket_id, tempoTicket: remote.ticketId, tempoDescription: remote.description, tempoStartTime: remote.startTime, tempoDurationMins: remote.durationMins });
+            reviewRows.push({ entryId: entry.id, date: entry.date, task: entry.name, startTime: entry.start_time, durationMins: entry.duration_mins, worklogId: remote.tempoWorklogId ?? remote.worklogId, localTicket: entry.ticket_id, tempoTicket: remote.ticketId, tempoDescription: remote.description, tempoStartTime: remote.startTime, tempoDurationMins: remote.durationMins });
           }
         }
         return { success: true, from: args.from, to: args.to, readOnly: true, reviewed: localEntries.length, mismatchCount: reviewRows.length, reviewRows, unmatchedStoredIds, message: 'Preview only: no Tempo worklogs or local entries were changed.' };
