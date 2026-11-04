@@ -1126,6 +1126,30 @@ async function runTests() {
     cleanTestFixtures();
   });
 
+  test('calendar sync never assigns a Jira ticket, even when the meeting matches a configured PI ceremony', () => {
+    cleanTestFixtures();
+    db.prepare('INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)')
+      .run('sprint_config', JSON.stringify({
+        piNumber: '44',
+        projectKey: 'TIME',
+        mappings: [{ id: 'dailyScrum', label: 'Daily Scrum', jiraType: 'Daily Scrum', aliases: ['daily scrum'], ticketKey: 'TIME-4401' }]
+      }));
+
+    const result = syncDayFromEvents(
+      TEST_DATE,
+      [meetingEvent('evt-pi44', 'Daily Scrum', '09:00', '09:15')],
+      {},
+    );
+
+    assert.strictEqual(result.created, 1);
+    const row = db.prepare('SELECT ticket_id, from_calendar FROM daily_summary WHERE date = ? AND calendar_event_id = ?')
+      .get(TEST_DATE, 'evt-pi44');
+    assert(row, 'The calendar meeting should still be recorded');
+    assert.strictEqual(row.ticket_id, null, 'Calendar sync must not assign the PI44 ticket');
+    assert.strictEqual(row.from_calendar, 1);
+    cleanTestFixtures();
+  });
+
   test('two overlapping meetings are held back for the user to choose', () => {
     cleanTestFixtures();
     const result = syncDayFromEvents(
