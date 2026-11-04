@@ -46,9 +46,20 @@
           <strong>{{ item.previousPi ? 'PI' + item.previousPi : 'Initial configuration' }} → {{ item.nextPi ? 'PI' + item.nextPi : 'No PI' }}</strong>
           <span>{{ formatHistoryDate(item.changedAt) }}</span>
           <details>
-            <summary>View ticket mappings</summary>
-            <div v-for="mapping in historyMappings(item.nextConfig)" :key="mapping.id" class="history-mapping">
-              {{ mapping.label }}: {{ mapping.ticketKey || 'Not mapped' }}
+            <summary>Compare ticket mappings before and after</summary>
+            <div class="history-mapping-columns">
+              <div>
+                <strong>Before</strong>
+                <div v-for="mapping in historyMappings(item.previousConfig)" :key="'before-' + mapping.id" class="history-mapping">
+                  {{ mapping.label }}: {{ mapping.ticketKey || 'Not mapped' }}
+                </div>
+              </div>
+              <div>
+                <strong>After</strong>
+                <div v-for="mapping in historyMappings(item.nextConfig)" :key="'after-' + mapping.id" class="history-mapping">
+                  {{ mapping.label }}: {{ mapping.ticketKey || 'Not mapped' }}
+                </div>
+              </div>
             </div>
           </details>
         </div>
@@ -126,7 +137,7 @@ defineEmits<{
 .history-list { display: grid; gap: 0.65rem; margin-bottom: 1.5rem; }
 .history-row { display: grid; gap: 0.35rem; padding: 0.75rem; border: 1px solid var(--color-border); border-radius: 0.5rem; }
 .history-row > span, .history-empty { color: var(--color-text-subtle); font-size: 0.85rem; }
-.history-mapping { padding: 0.2rem 0; font-size: 0.85rem; }
+.history-mapping { padding: 0.2rem 0; font-size: 0.85rem; }\n.history-mapping-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-top: 0.5rem; }
 .history-row summary { cursor: pointer; font-size: 0.85rem; }
 
 /* Current Sprint */
