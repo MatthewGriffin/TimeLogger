@@ -177,6 +177,7 @@
       <!-- Tempo reconciliation follows the unsubmitted entries so it has the full content width. -->
       <div class="submit-reconciliation">
         <div class="reconciliation-heading">
+          <button class="btn-range" :disabled="ticketPreviewLoading" @click="previewTicketCorrections">{{ ticketPreviewLoading ? "Reviewing…" : "Preview PI ticket mismatches" }}</button>
           <button class="btn-range" :disabled="reconciliationLoading" @click="loadReconciliation">
             {{ reconciliationLoading ? 'Refreshing…' : 'Refresh Tempo status' }}
           </button>
