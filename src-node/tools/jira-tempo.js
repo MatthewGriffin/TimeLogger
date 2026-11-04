@@ -1203,6 +1203,103 @@ export const tools = [
     }
   },
   {
+    name: 'tempo_correct_worklog_ticket',
+    description: 'Move one exact linked Tempo worklog to the local entry Jira ticket after explicit user confirmation',
+    parameters: {
+      type: 'object',
+      properties: {
+        entryId: { type: 'integer' },
+        worklogId: { type: 'string' },
+        expectedCurrentTicket: { type: 'string' },
+        targetTicket: { type: 'string' }
+      },
+      required: ['entryId', 'worklogId', 'expectedCurrentTicket', 'targetTicket']
+    },
+    handler: async (args) => {
+      try {
+        const entry = db.prepare('SELECT id, submitted, ticket_id, tempo_worklog_id FROM daily_summary WHERE id = ?').get(args.entryId);
+        if (!entry || Number(entry.submitted) !== 1) throw new Error('The local entry is no longer marked as submitted.');
+        if (String(entry.tempo_worklog_id) !== String(args.worklogId)) throw new Error('The local entry is no longer linked to this Tempo worklog. Refresh the preview.');
+        if (String(entry.ticket_id || '').trim().toUpperCase() !== String(args.targetTicket || '').trim().toUpperCase()) {
+          throw new Error('The local entry ticket has changed since the preview. Refresh before correcting.');
+        }
+
+        const credentials = resolveJiraCredentials(args);
+        const tempoToken = resolveTempoToken(args);
+        const remoteResponse = await makeHttpRequest(`https://api.tempo.io/4/worklogs/${encodeURIComponent(args.worklogId)}`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${tempoToken}`, 'Content-Type': 'application/json' }
+        });
+        const remote = remoteResponse.data;
+        if (!remote || String(remote.tempoWorklogId) !== String(args.worklogId)) {
+          throw new Error('Tempo did not return the requested worklog. No changes were made.');
+        }
+        const currentIssueId = remote.issue?.id;
+        if (currentIssueId == null) throw new Error('Tempo worklog has no Jira issue ID. No changes were made.');
+        const currentIssues = await searchIssues(credentials, `id = ${Number(currentIssueId)}`, { limit: 2, fields: 'key' });
+        const currentTicket = currentIssues[0]?.key;
+        if (!currentTicket || currentTicket.toUpperCase() !== String(args.expectedCurrentTicket).toUpperCase()) {
+          throw new Error('The Tempo worklog ticket has changed since the preview. Refresh before correcting.');
+        }
+
+        const targetIssues = await searchIssues(credentials, `key = "${escapeJql(args.targetTicket)}"`, { limit: 2, fields: 'key' });
+        const targetIssue = targetIssues.find(issue => issue.key?.toUpperCase() === String(args.targetTicket).toUpperCase());
+        const targetIssueId = Number(targetIssue?.id);
+        if (!Number.isSafeInteger(targetIssueId) || targetIssueId <= 0) {
+          throw new Error(`Jira issue ${args.targetTicket} could not be resolved. No changes were made.`);
+        }
+        if (targetIssueId === Number(currentIssueId)) {
+          return { success: true, unchanged: true, message: 'Tempo worklog is already on the target ticket.' };
+        }
+
+        const authorAccountId = remote.author?.accountId || remote.authorAccountId;
+        if (!authorAccountId || !remote.startDate || !Number.isFinite(Number(remote.timeSpentSeconds)) || Number(remote.timeSpentSeconds) <= 0) {
+          throw new Error('Tempo returned an incomplete worklog record. No changes were made.');
+        }
+        const body = {
+          issueId: targetIssueId,
+          authorAccountId,
+          startDate: remote.startDate,
+          startTime: remote.startTime || '00:00:00',
+          timeSpentSeconds: Number(remote.timeSpentSeconds),
+          description: remote.description || ''
+        };
+        if (remote.billableSeconds !== undefined && remote.billableSeconds !== null) body.billableSeconds = Number(remote.billableSeconds);
+        if (remote.remainingEstimateSeconds !== undefined && remote.remainingEstimateSeconds !== null) body.remainingEstimateSeconds = Number(remote.remainingEstimateSeconds);
+        const attributes = Array.isArray(remote.attributes)
+          ? remote.attributes
+          : Array.isArray(remote.attributes?.values)
+            ? remote.attributes.values
+            : [];
+        if (attributes.length) body.attributes = attributes.map(({ key, value }) => ({ key, value }));
+
+        await makeHttpRequest(`https://api.tempo.io/4/worklogs/${encodeURIComponent(args.worklogId)}`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${tempoToken}`, 'Content-Type': 'application/json' },
+          body
+        });
+
+        const verifyResponse = await makeHttpRequest(`https://api.tempo.io/4/worklogs/${encodeURIComponent(args.worklogId)}`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${tempoToken}`, 'Content-Type': 'application/json' }
+        });
+        if (Number(verifyResponse.data?.issue?.id) !== targetIssueId) {
+          return {
+            success: false, changed: true, verificationFailed: true,
+            message: 'Tempo accepted the update, but verification did not confirm the target Jira issue. Refresh Tempo status and inspect this worklog before retrying.'
+          };
+        }
+        return {
+          success: true, changed: true, worklogId: args.worklogId,
+          previousTicket: currentTicket, targetTicket: targetIssue.key,
+          message: `Tempo worklog moved from ${currentTicket} to ${targetIssue.key} and verified.`
+        };
+      } catch (error) {
+        return { success: false, changed: false, message: `Could not correct Tempo worklog ticket: ${error.message}` };
+      }
+    }
+  },
+  {
     name: 'tempo_preview_ticket_corrections',
     description: 'Read-only preview of submitted local entries whose exact stored Tempo worklog ID is attached to a different Jira ticket',
     parameters: {
