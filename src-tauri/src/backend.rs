@@ -187,7 +187,7 @@ fn launch_backend() -> Result<String, String> {
         }
       }
       
-      // Fallback: try running node via PATH using cmd.exe
+      // Fallback: let Windows resolve node.exe through PATH.
       let result = found_node.unwrap_or_else(|| "node.exe".to_string());
       let _ = writeln!(log_file, "Will use node executable: {}", result);
       result
@@ -216,23 +216,13 @@ fn launch_backend() -> Result<String, String> {
     }
     let _ = std::fs::remove_file(&pid_file);
 
-    // The tracked PID misses backends left by a crash or an older build. Any
-    // survivor still owning the port would make the new process exit with
-    // EADDRINUSE, so reclaim it before spawning.
+    // Never terminate an arbitrary process just because it owns the configured
+    // port. If the previous TimeLogger PID did not release it, fail clearly
+    // and let the user decide what to close.
     if std::net::TcpStream::connect(format!("127.0.0.1:{}", backend_port())).is_ok() {
-      let _ = writeln!(log_file, "Port {} still in use; reclaiming it", backend_port());
-      let reclaim_command = format!("for /f \"tokens=5\" %a in ('netstat -ano ^| find \":{}\" ^| find \"LISTENING\"') do taskkill /PID %a /F", backend_port());
-      let _ = std::process::Command::new("cmd.exe")
-        .args(&["/c", &reclaim_command])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output();
-
-      for _ in 0..20 {
-        if std::net::TcpStream::connect(format!("127.0.0.1:{}", backend_port())).is_err() {
-          break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(250));
-      }
+      let message = backend_port_conflict_message(backend_port());
+      let _ = writeln!(log_file, "{}", message);
+      return Err(message);
     }
 
     for path in &possible_paths {
@@ -306,33 +296,71 @@ fn launch_backend() -> Result<String, String> {
   }
 }
 
+fn backend_port_conflict_message(port: u16) -> String {
+  format!(
+    "Cannot start the TimeLogger backend because port {} is already in use by another process. TimeLogger will not terminate a process it cannot verify it owns. Close the application using that port and try again.",
+    port
+  )
+}
+
+#[cfg(test)]
+mod tests {
+  use super::backend_port_conflict_message;
+
+  #[test]
+  fn port_conflict_explains_that_unowned_processes_are_not_killed() {
+    let message = backend_port_conflict_message(3001);
+    assert!(message.contains("port 3001"));
+    assert!(message.contains("will not terminate"));
+    assert!(message.contains("Close the application"));
+  }
+}
+
 #[tauri::command]
 pub fn stop_backend() -> Result<String, String> {
   #[cfg(target_os = "windows")]
   {
     use std::os::windows::process::CommandExt;
     let pid_file = runtime_pid_file();
-    if let Ok(pid_text) = std::fs::read_to_string(&pid_file) {
-      if let Ok(pid) = pid_text.trim().parse::<u32>() {
-        let _ = std::process::Command::new("taskkill")
-          .args(&["/PID", &pid.to_string(), "/F"])
-          .creation_flags(CREATE_NO_WINDOW)
-          .output();
+    let pid_text = match std::fs::read_to_string(&pid_file) {
+      Ok(value) => value,
+      Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+        if backend_is_listening() {
+          return Err(backend_port_conflict_message(backend_port()));
+        }
+        return Ok("Backend already stopped".to_string());
       }
-    }
-    let _ = std::fs::remove_file(&pid_file);
-    let reclaim_command = format!("for /f \"tokens=5\" %a in ('netstat -ano ^| find \":{}\" ^| find \"LISTENING\"') do taskkill /PID %a /F", backend_port());
-    let output = std::process::Command::new("cmd.exe")
-      .args(&["/c", &reclaim_command])
+      Err(error) => return Err(format!("Failed to read backend PID file: {}", error)),
+    };
+
+    let pid = pid_text
+      .trim()
+      .parse::<u32>()
+      .map_err(|_| "Backend PID file is invalid; refusing to terminate any process.".to_string())?;
+
+    let output = std::process::Command::new("taskkill")
+      .args(&["/PID", &pid.to_string(), "/F"])
       .creation_flags(CREATE_NO_WINDOW)
       .output()
-      .map_err(|e| format!("Failed to stop backend: {}", e))?;
+      .map_err(|e| format!("Failed to stop the tracked TimeLogger backend: {}", e))?;
 
-    if output.status.success() {
-      Ok("Backend stopped".to_string())
-    } else {
-      Err(String::from_utf8_lossy(&output.stderr).to_string())
+    if !output.status.success() && backend_is_listening() {
+      return Err(format!(
+        "Could not stop the tracked TimeLogger backend (PID {}). {}",
+        pid,
+        String::from_utf8_lossy(&output.stderr).trim()
+      ));
     }
+
+    let _ = std::fs::remove_file(&pid_file);
+    for _ in 0..20 {
+      if !backend_is_listening() {
+        return Ok("Backend stopped".to_string());
+      }
+      std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+
+    Err(backend_port_conflict_message(backend_port()))
   }
 
   #[cfg(not(target_os = "windows"))]
