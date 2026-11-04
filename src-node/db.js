@@ -62,6 +62,16 @@ db.exec(`
     submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
   CREATE INDEX IF NOT EXISTS idx_submission_history_date ON submission_history(date);
+  CREATE TABLE IF NOT EXISTS sprint_config_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    previous_pi TEXT,
+    next_pi TEXT,
+    previous_config TEXT NOT NULL,
+    next_config TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_sprint_config_history_changed
+    ON sprint_config_history(changed_at DESC);
   CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT,
