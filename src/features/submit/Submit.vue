@@ -926,6 +926,10 @@ const reconcileDuration = async (row: ReconciledRow) => {
 
 <style scoped>
 
+.ticket-preview-section { margin: 1rem 0; padding: 1rem; border: 1px solid var(--color-border); border-radius: 0.6rem; }
+.ticket-preview-row { display: grid; gap: 0.25rem; padding: 0.65rem; border: 1px solid var(--color-border); border-radius: 0.4rem; margin: 0.5rem 0; }
+.ticket-preview-row small { color: var(--color-text-subtle); }
+
 /* Page Header */
 .page-header h1 {
   font-size: 1.8rem;
