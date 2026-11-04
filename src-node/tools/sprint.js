@@ -97,8 +97,33 @@ export function readSprintConfig() {
 }
 
 function writeSprintConfig(config) {
+  const previous = readSprintConfig();
+  const previousJson = JSON.stringify(previous);
+  const nextJson = JSON.stringify(config);
+  if (previousJson !== nextJson) {
+    db.prepare(`
+      INSERT INTO sprint_config_history
+        (previous_pi, next_pi, previous_config, next_config)
+      VALUES (?, ?, ?, ?)
+    `).run(previous.piNumber || null, config.piNumber || null, previousJson, nextJson);
+  }
   db.prepare('INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)')
-    .run(SETTINGS_KEY, JSON.stringify(config));
+    .run(SETTINGS_KEY, nextJson);
+}
+
+export function readSprintConfigHistory(limit = 100) {
+  const safeLimit = Math.max(1, Math.min(500, Number(limit) || 100));
+  return db.prepare(`
+    SELECT id, changed_at AS changedAt, previous_pi AS previousPi,
+      next_pi AS nextPi, previous_config AS previousConfig, next_config AS nextConfig
+    FROM sprint_config_history
+    ORDER BY changed_at DESC, id DESC
+    LIMIT ?
+  `).all(safeLimit).map(row => ({
+    ...row,
+    previousConfig: JSON.parse(row.previousConfig),
+    nextConfig: JSON.parse(row.nextConfig)
+  }));
 }
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -148,6 +173,12 @@ export function matchMeetingTicket(subject, config = readSprintConfig()) {
 }
 
 export const tools = [
+  {
+    name: 'sprint_get_config_history',
+    description: 'Get the audit history of PI configuration and meeting-ticket mapping changes',
+    parameters: { type: 'object', properties: { limit: { type: 'integer' } }, required: [] },
+    handler: async (args) => ({ success: true, history: readSprintConfigHistory(args.limit) })
+  },
   {
     name: 'sprint_get_config',
     description: 'Get the current PI/sprint configuration and meeting-to-ticket mappings',
