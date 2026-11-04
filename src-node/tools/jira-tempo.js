@@ -1173,6 +1173,826 @@ export const tools = [
     }
   },
   {
+    name: 'tempo_preview_ticket_corrections',
+    description: 'Read-only preview of submitted local entries whose exact stored Tempo worklog ID is attached to a different Jira ticket',
+    parameters: {
+      type: 'object',
+      properties: {
+        from: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}
+    description: 'Read the worklogs actually recorded in Tempo for a date range and reconcile them against local entries',
+    parameters: {
+      type: 'object',
+      properties: {
+        baseUrl: { type: 'string', description: 'Jira base URL (falls back to Settings)' },
+        email: { type: 'string', description: 'Jira user email (falls back to Settings)' },
+        apiToken: { type: 'string', description: 'Jira API token (falls back to Settings)' },
+        tempoToken: { type: 'string', description: 'Tempo API token (falls back to Settings)' },
+        from: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Start date (inclusive)' },
+        to: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'End date (inclusive)' }
+      },
+      required: ['from', 'to']
+    },
+    handler: async (args) => {
+      try {
+        const credentials = resolveJiraCredentials(args);
+        const tempoToken = resolveTempoToken(args);
+        const account = await getCurrentAccount(credentials);
+
+        const worklogs = await fetchTempoWorklogs(
+          credentials, tempoToken, account.accountId, args.from, args.to
+        );
+
+        // Reconcile against what the app believes it has submitted. The local
+        // `submitted` flag is set when a POST succeeds but is never re-checked,
+        // so it drifts whenever a worklog is edited or deleted directly in
+        // Tempo. Matching on ticket + date is what surfaces that drift.
+        const localEntries = db.prepare(`
+          SELECT id, date, name, ticket_id, start_time, end_time, duration_mins, submitted, tempo_worklog_id
+          FROM daily_summary
+          WHERE date >= ? AND date <= ?
+            AND ticket_id IS NOT NULL
+            AND TRIM(ticket_id) <> ''
+            AND COALESCE(is_lunch, 0) = 0
+          ORDER BY date ASC, start_time ASC
+        `).all(args.from, args.to);
+
+        const { matchesByEntryId, unmatchedWorklogs } =
+          reconcileTempoWorklogs(localEntries, worklogs);
+
+        const reconciled = localEntries.map(entry => {
+          const match = matchesByEntryId.get(entry.id) ?? null;
+
+          if (match && String(entry.tempo_worklog_id || '') !== String(match.worklogId)) {
+            db.prepare(`
+              UPDATE daily_summary
+              SET tempo_worklog_id = ?, updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `).run(String(match.worklogId), entry.id);
+          }
+
+          let status;
+          if (match && entry.submitted) status = 'matched';
+          else if (match && !entry.submitted) status = 'in_tempo_not_marked';
+          else if (!match && entry.submitted) status = 'missing_from_tempo';
+          else status = 'not_submitted';
+
+          return {
+            entryId: entry.id,
+            date: entry.date,
+            name: entry.name,
+            ticketId: entry.ticket_id,
+            startTime: entry.start_time,
+            durationMins: entry.duration_mins,
+            submitted: Boolean(entry.submitted),
+            status,
+            worklogId: match?.worklogId ?? null,
+            tempoDurationMins: match?.durationMins ?? null,
+            durationDiffers: Boolean(match && match.durationMins !== entry.duration_mins),
+            activityTypeName: match?.activityTypeName ?? null
+          };
+        });
+
+        unmatchedWorklogs.sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
+
+        // The local entry list is authoritative. A Tempo-only worklog that
+        // overlaps one of our local entries is a duplicate, not something to
+        // import: importing it would preserve the overlap and make the next
+        // submission capable of creating another copy. Remove only these
+        // unambiguous duplicates; standalone Tempo worklogs remain available
+        // in the "In Tempo Only" section for deliberate import.
+        const duplicateRemoteWorklogs = [];
+        const deletionsFailed = [];
+        for (const log of unmatchedWorklogs) {
+          const start = timeToMinutes(log.startTime);
+          const end = start + log.durationMins;
+          const clash = localEntries.find(entry =>
+            entry.date === log.date &&
+            entry.start_time && entry.end_time &&
+            timeToMinutes(entry.start_time) < end &&
+            timeToMinutes(entry.end_time) > start
+          );
+          if (!clash) continue;
+
+          try {
+            await deleteTempoWorklog(log.worklogId, tempoToken);
+            duplicateRemoteWorklogs.push({
+              worklogId: log.worklogId,
+              date: log.date,
+              time: `${log.startTime}-${minutesToTime(end)}`,
+              conflictsWith: `${clash.name} (${clash.start_time}-${clash.end_time})`
+            });
+          } catch (error) {
+            deletionsFailed.push({
+              worklogId: log.worklogId,
+              reason: error.message
+            });
+          }
+        }
+
+        const deletedIds = new Set(duplicateRemoteWorklogs.map(item => String(item.worklogId)));
+        const remainingUnmatchedWorklogs = unmatchedWorklogs.filter(
+          log => !deletedIds.has(String(log.worklogId))
+        );
+        const activeWorklogs = worklogs.filter(
+          log => !deletedIds.has(String(log.worklogId))
+        );
+
+        const totalTempoMins = worklogs
+          .filter(log => !deletedIds.has(String(log.worklogId)))
+          .reduce((sum, w) => sum + w.durationMins, 0);
+        const counts = reconciled.reduce((acc, row) => {
+          acc[row.status] = (acc[row.status] || 0) + 1;
+          return acc;
+        }, {});
+
+        return {
+          success: true,
+          from: args.from,
+          to: args.to,
+          worklogs: activeWorklogs,
+          reconciled,
+          unmatchedWorklogs: remainingUnmatchedWorklogs,
+          deletedDuplicateWorklogs: duplicateRemoteWorklogs,
+          failedDuplicateDeletions: deletionsFailed,
+          counts: {
+            tempoWorklogs: activeWorklogs.length,
+            localEntries: localEntries.length,
+            matched: counts.matched || 0,
+            missingFromTempo: counts.missing_from_tempo || 0,
+            inTempoNotMarked: counts.in_tempo_not_marked || 0,
+            notSubmitted: counts.not_submitted || 0,
+            onlyInTempo: remainingUnmatchedWorklogs.length
+          },
+          totalTempoMins,
+          totalTempoHours: Math.round((totalTempoMins / 60) * 100) / 100,
+          message: `Found ${worklogs.length} Tempo worklog(s), removed ${duplicateRemoteWorklogs.length} overlapping duplicate(s), ` +
+            `totalling ${(totalTempoMins / 60).toFixed(2)}h between ${args.from} and ${args.to}`
+        };
+      } catch (error) {
+        return {
+          success: false,
+          message: `Failed to read Tempo worklogs: ${error.message}`
+        };
+      }
+    }
+  },
+  {
+    name: 'tempo_import_worklogs',
+    description: 'Pull worklogs that exist only in Tempo down into local time entries',
+    parameters: {
+      type: 'object',
+      properties: {
+        baseUrl: { type: 'string', description: 'Jira base URL (falls back to Settings)' },
+        email: { type: 'string', description: 'Jira user email (falls back to Settings)' },
+        apiToken: { type: 'string', description: 'Jira API token (falls back to Settings)' },
+        tempoToken: { type: 'string', description: 'Tempo API token (falls back to Settings)' },
+        from: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Start date (inclusive)' },
+        to: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'End date (inclusive)' },
+        worklogIds: {
+          type: 'array',
+          items: { type: 'number' },
+          description: 'Tempo worklog ids to import; omit to import every worklog in the range that has no local entry'
+        }
+      },
+      required: ['from', 'to']
+    },
+    handler: async (args) => {
+      try {
+        const credentials = resolveJiraCredentials(args);
+        const tempoToken = resolveTempoToken(args);
+        const account = await getCurrentAccount(credentials);
+
+        // Re-read from Tempo rather than trusting ids off a page that may have
+        // been open for hours; a worklog deleted since then must not be
+        // recreated locally.
+        const worklogs = await fetchTempoWorklogs(
+          credentials, tempoToken, account.accountId, args.from, args.to
+        );
+
+        const wanted = Array.isArray(args.worklogIds) && args.worklogIds.length > 0
+          ? new Set(args.worklogIds.map(Number))
+          : null;
+
+        let requested = wanted
+          ? worklogs.filter(log => wanted.has(Number(log.worklogId)))
+          : worklogs;
+
+        const missingIds = wanted
+          ? [...wanted].filter(id => !worklogs.some(log => Number(log.worklogId) === id))
+          : [];
+
+        const localEntries = db.prepare(`
+          SELECT id, date, name, ticket_id, start_time, end_time, duration_mins, submitted
+          FROM daily_summary
+          WHERE date >= ? AND date <= ?
+            AND COALESCE(is_lunch, 0) = 0
+        `).all(args.from, args.to);
+
+        // The local log is authoritative. Remove remote-only worklogs that
+        // overlap an existing local time range before importing anything, so
+        // an explicit "Pull down" action cannot preserve a duplicate.
+        const deletedDuplicates = [];
+        const deletionFailures = [];
+        const duplicateIds = new Set();
+        for (const log of requested) {
+          const start = timeToMinutes(log.startTime);
+          const end = start + log.durationMins;
+          const clash = localEntries.find(entry =>
+            entry.date === log.date && entry.start_time && entry.end_time &&
+            timeToMinutes(entry.start_time) < end &&
+            timeToMinutes(entry.end_time) > start &&
+            entry.ticket_id !== log.ticketId
+          );
+          if (!clash) continue;
+          try {
+            await deleteTempoWorklog(log.worklogId, tempoToken);
+            duplicateIds.add(String(log.worklogId));
+            deletedDuplicates.push({
+              worklogId: log.worklogId,
+              date: log.date,
+              time: `${log.startTime}-${minutesToTime(end)}`,
+              conflictsWith: `${clash.name} (${clash.start_time}-${clash.end_time})`
+            });
+          } catch (error) {
+            deletionFailures.push({ worklogId: log.worklogId, reason: error.message });
+          }
+        }
+        requested = requested.filter(log => !duplicateIds.has(String(log.worklogId)));
+
+        // Same date+ticket pairing the reconcile view uses, so anything it
+        // shows as already matched is not imported a second time.
+        const claimed = new Map();
+        for (const entry of localEntries) {
+          const key = `${entry.date}|${entry.ticket_id}`;
+          if (!claimed.has(key)) claimed.set(key, []);
+          claimed.get(key).push(entry);
+        }
+
+        const insert = db.prepare(`
+          INSERT OR IGNORE INTO daily_summary
+            (date, name, ticket_id, start_time, end_time, duration_mins, submitted, from_calendar)
+          VALUES (?, ?, ?, ?, ?, ?, 1, 0)
+        `);
+
+        const imported = [];
+        const skipped = [];
+        const overlapped = [];
+
+        const applyImport = db.transaction(() => {
+          for (const log of requested) {
+            if (!log.ticketId) {
+              skipped.push({ worklogId: log.worklogId, reason: 'Worklog has no resolvable ticket' });
+              continue;
+            }
+
+            const key = `${log.date}|${log.ticketId}`;
+            const pool = claimed.get(key) || [];
+            // Prefer an exact duration match, mirroring the reconciler, so a
+            // part-matched pair is not consumed by an unrelated entry.
+            const existing = pool.find(entry => entry.duration_mins === log.durationMins) || pool[0];
+            if (existing) {
+              // Already represented locally. Bring the flag into line with
+              // Tempo rather than adding a duplicate row.
+              if (!existing.submitted) {
+                db.prepare(
+                  'UPDATE daily_summary SET submitted = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+                ).run(existing.id);
+              }
+              pool.splice(pool.indexOf(existing), 1);
+              skipped.push({
+                worklogId: log.worklogId,
+                reason: existing.submitted
+                  ? 'Already exists locally'
+                  : 'Already exists locally; marked as submitted'
+              });
+              continue;
+            }
+
+            const startTime = log.startTime || '09:00';
+            const endTime = minutesToTime(
+              timeToMinutes(startTime) + (log.durationMins || 0)
+            );
+            const name = log.description?.trim()
+              || log.ticketSummary?.trim()
+              || log.ticketId;
+
+            const clash = localEntries.find(entry =>
+              entry.date === log.date && entry.start_time && entry.end_time &&
+              timeToMinutes(entry.start_time) < timeToMinutes(endTime) &&
+              timeToMinutes(entry.end_time) > timeToMinutes(startTime)
+            );
+
+            const result = insert.run(
+              log.date, name, log.ticketId, startTime, endTime, log.durationMins
+            );
+
+            if (result.changes === 0) {
+              // The unique index on (date, name, start_time, end_time) rejected
+              // it, so an identical row is already present.
+              skipped.push({ worklogId: log.worklogId, reason: 'Identical entry already exists' });
+              continue;
+            }
+
+            const record = {
+              id: result.lastInsertRowid,
+              worklogId: log.worklogId,
+              date: log.date,
+              name,
+              ticketId: log.ticketId,
+              startTime,
+              endTime,
+              durationMins: log.durationMins
+            };
+            imported.push(record);
+            localEntries.push({
+              id: record.id, date: log.date, name, ticket_id: log.ticketId,
+              start_time: startTime, end_time: endTime,
+              duration_mins: log.durationMins, submitted: 1
+            });
+
+            // Reported, not resolved. The time is genuinely booked in Tempo, so
+            // it is imported as-is; silently trimming the user's own entry to
+            // make room would destroy logged work.
+            if (clash) {
+              overlapped.push({
+                worklogId: log.worklogId,
+                date: log.date,
+                imported: `${startTime}-${endTime}`,
+                conflictsWith: `${clash.name} (${clash.start_time}-${clash.end_time})`
+              });
+            }
+          }
+        });
+
+        applyImport();
+
+        const parts = [];
+        if (imported.length > 0) parts.push(`Imported ${imported.length} worklog(s) from Tempo`);
+        if (skipped.length > 0) parts.push(`${skipped.length} already present`);
+        if (overlapped.length > 0) parts.push(`${overlapped.length} overlap an existing entry`);
+        if (missingIds.length > 0) parts.push(`${missingIds.length} no longer exist in Tempo`);
+        if (parts.length === 0) parts.push('Nothing to import');
+
+        return {
+          success: true,
+          imported: imported.length,
+          importedEntries: imported,
+          skipped: skipped.length,
+          skippedWorklogs: skipped,
+          overlapped: overlapped.length,
+          overlappedEntries: overlapped,
+          deletedDuplicates,
+          deletionFailures,
+          missingWorklogIds: missingIds,
+          message: parts.join('. ')
+        };
+      } catch (error) {
+        return {
+          success: false,
+          imported: 0,
+          message: `Failed to import Tempo worklogs: ${error.message}`
+        };
+      }
+    }
+  }
+];
+ },
+        to: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}
+    description: 'Read the worklogs actually recorded in Tempo for a date range and reconcile them against local entries',
+    parameters: {
+      type: 'object',
+      properties: {
+        baseUrl: { type: 'string', description: 'Jira base URL (falls back to Settings)' },
+        email: { type: 'string', description: 'Jira user email (falls back to Settings)' },
+        apiToken: { type: 'string', description: 'Jira API token (falls back to Settings)' },
+        tempoToken: { type: 'string', description: 'Tempo API token (falls back to Settings)' },
+        from: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Start date (inclusive)' },
+        to: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'End date (inclusive)' }
+      },
+      required: ['from', 'to']
+    },
+    handler: async (args) => {
+      try {
+        const credentials = resolveJiraCredentials(args);
+        const tempoToken = resolveTempoToken(args);
+        const account = await getCurrentAccount(credentials);
+
+        const worklogs = await fetchTempoWorklogs(
+          credentials, tempoToken, account.accountId, args.from, args.to
+        );
+
+        // Reconcile against what the app believes it has submitted. The local
+        // `submitted` flag is set when a POST succeeds but is never re-checked,
+        // so it drifts whenever a worklog is edited or deleted directly in
+        // Tempo. Matching on ticket + date is what surfaces that drift.
+        const localEntries = db.prepare(`
+          SELECT id, date, name, ticket_id, start_time, end_time, duration_mins, submitted, tempo_worklog_id
+          FROM daily_summary
+          WHERE date >= ? AND date <= ?
+            AND ticket_id IS NOT NULL
+            AND TRIM(ticket_id) <> ''
+            AND COALESCE(is_lunch, 0) = 0
+          ORDER BY date ASC, start_time ASC
+        `).all(args.from, args.to);
+
+        const { matchesByEntryId, unmatchedWorklogs } =
+          reconcileTempoWorklogs(localEntries, worklogs);
+
+        const reconciled = localEntries.map(entry => {
+          const match = matchesByEntryId.get(entry.id) ?? null;
+
+          if (match && String(entry.tempo_worklog_id || '') !== String(match.worklogId)) {
+            db.prepare(`
+              UPDATE daily_summary
+              SET tempo_worklog_id = ?, updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `).run(String(match.worklogId), entry.id);
+          }
+
+          let status;
+          if (match && entry.submitted) status = 'matched';
+          else if (match && !entry.submitted) status = 'in_tempo_not_marked';
+          else if (!match && entry.submitted) status = 'missing_from_tempo';
+          else status = 'not_submitted';
+
+          return {
+            entryId: entry.id,
+            date: entry.date,
+            name: entry.name,
+            ticketId: entry.ticket_id,
+            startTime: entry.start_time,
+            durationMins: entry.duration_mins,
+            submitted: Boolean(entry.submitted),
+            status,
+            worklogId: match?.worklogId ?? null,
+            tempoDurationMins: match?.durationMins ?? null,
+            durationDiffers: Boolean(match && match.durationMins !== entry.duration_mins),
+            activityTypeName: match?.activityTypeName ?? null
+          };
+        });
+
+        unmatchedWorklogs.sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
+
+        // The local entry list is authoritative. A Tempo-only worklog that
+        // overlaps one of our local entries is a duplicate, not something to
+        // import: importing it would preserve the overlap and make the next
+        // submission capable of creating another copy. Remove only these
+        // unambiguous duplicates; standalone Tempo worklogs remain available
+        // in the "In Tempo Only" section for deliberate import.
+        const duplicateRemoteWorklogs = [];
+        const deletionsFailed = [];
+        for (const log of unmatchedWorklogs) {
+          const start = timeToMinutes(log.startTime);
+          const end = start + log.durationMins;
+          const clash = localEntries.find(entry =>
+            entry.date === log.date &&
+            entry.start_time && entry.end_time &&
+            timeToMinutes(entry.start_time) < end &&
+            timeToMinutes(entry.end_time) > start
+          );
+          if (!clash) continue;
+
+          try {
+            await deleteTempoWorklog(log.worklogId, tempoToken);
+            duplicateRemoteWorklogs.push({
+              worklogId: log.worklogId,
+              date: log.date,
+              time: `${log.startTime}-${minutesToTime(end)}`,
+              conflictsWith: `${clash.name} (${clash.start_time}-${clash.end_time})`
+            });
+          } catch (error) {
+            deletionsFailed.push({
+              worklogId: log.worklogId,
+              reason: error.message
+            });
+          }
+        }
+
+        const deletedIds = new Set(duplicateRemoteWorklogs.map(item => String(item.worklogId)));
+        const remainingUnmatchedWorklogs = unmatchedWorklogs.filter(
+          log => !deletedIds.has(String(log.worklogId))
+        );
+        const activeWorklogs = worklogs.filter(
+          log => !deletedIds.has(String(log.worklogId))
+        );
+
+        const totalTempoMins = worklogs
+          .filter(log => !deletedIds.has(String(log.worklogId)))
+          .reduce((sum, w) => sum + w.durationMins, 0);
+        const counts = reconciled.reduce((acc, row) => {
+          acc[row.status] = (acc[row.status] || 0) + 1;
+          return acc;
+        }, {});
+
+        return {
+          success: true,
+          from: args.from,
+          to: args.to,
+          worklogs: activeWorklogs,
+          reconciled,
+          unmatchedWorklogs: remainingUnmatchedWorklogs,
+          deletedDuplicateWorklogs: duplicateRemoteWorklogs,
+          failedDuplicateDeletions: deletionsFailed,
+          counts: {
+            tempoWorklogs: activeWorklogs.length,
+            localEntries: localEntries.length,
+            matched: counts.matched || 0,
+            missingFromTempo: counts.missing_from_tempo || 0,
+            inTempoNotMarked: counts.in_tempo_not_marked || 0,
+            notSubmitted: counts.not_submitted || 0,
+            onlyInTempo: remainingUnmatchedWorklogs.length
+          },
+          totalTempoMins,
+          totalTempoHours: Math.round((totalTempoMins / 60) * 100) / 100,
+          message: `Found ${worklogs.length} Tempo worklog(s), removed ${duplicateRemoteWorklogs.length} overlapping duplicate(s), ` +
+            `totalling ${(totalTempoMins / 60).toFixed(2)}h between ${args.from} and ${args.to}`
+        };
+      } catch (error) {
+        return {
+          success: false,
+          message: `Failed to read Tempo worklogs: ${error.message}`
+        };
+      }
+    }
+  },
+  {
+    name: 'tempo_import_worklogs',
+    description: 'Pull worklogs that exist only in Tempo down into local time entries',
+    parameters: {
+      type: 'object',
+      properties: {
+        baseUrl: { type: 'string', description: 'Jira base URL (falls back to Settings)' },
+        email: { type: 'string', description: 'Jira user email (falls back to Settings)' },
+        apiToken: { type: 'string', description: 'Jira API token (falls back to Settings)' },
+        tempoToken: { type: 'string', description: 'Tempo API token (falls back to Settings)' },
+        from: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Start date (inclusive)' },
+        to: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'End date (inclusive)' },
+        worklogIds: {
+          type: 'array',
+          items: { type: 'number' },
+          description: 'Tempo worklog ids to import; omit to import every worklog in the range that has no local entry'
+        }
+      },
+      required: ['from', 'to']
+    },
+    handler: async (args) => {
+      try {
+        const credentials = resolveJiraCredentials(args);
+        const tempoToken = resolveTempoToken(args);
+        const account = await getCurrentAccount(credentials);
+
+        // Re-read from Tempo rather than trusting ids off a page that may have
+        // been open for hours; a worklog deleted since then must not be
+        // recreated locally.
+        const worklogs = await fetchTempoWorklogs(
+          credentials, tempoToken, account.accountId, args.from, args.to
+        );
+
+        const wanted = Array.isArray(args.worklogIds) && args.worklogIds.length > 0
+          ? new Set(args.worklogIds.map(Number))
+          : null;
+
+        let requested = wanted
+          ? worklogs.filter(log => wanted.has(Number(log.worklogId)))
+          : worklogs;
+
+        const missingIds = wanted
+          ? [...wanted].filter(id => !worklogs.some(log => Number(log.worklogId) === id))
+          : [];
+
+        const localEntries = db.prepare(`
+          SELECT id, date, name, ticket_id, start_time, end_time, duration_mins, submitted
+          FROM daily_summary
+          WHERE date >= ? AND date <= ?
+            AND COALESCE(is_lunch, 0) = 0
+        `).all(args.from, args.to);
+
+        // The local log is authoritative. Remove remote-only worklogs that
+        // overlap an existing local time range before importing anything, so
+        // an explicit "Pull down" action cannot preserve a duplicate.
+        const deletedDuplicates = [];
+        const deletionFailures = [];
+        const duplicateIds = new Set();
+        for (const log of requested) {
+          const start = timeToMinutes(log.startTime);
+          const end = start + log.durationMins;
+          const clash = localEntries.find(entry =>
+            entry.date === log.date && entry.start_time && entry.end_time &&
+            timeToMinutes(entry.start_time) < end &&
+            timeToMinutes(entry.end_time) > start &&
+            entry.ticket_id !== log.ticketId
+          );
+          if (!clash) continue;
+          try {
+            await deleteTempoWorklog(log.worklogId, tempoToken);
+            duplicateIds.add(String(log.worklogId));
+            deletedDuplicates.push({
+              worklogId: log.worklogId,
+              date: log.date,
+              time: `${log.startTime}-${minutesToTime(end)}`,
+              conflictsWith: `${clash.name} (${clash.start_time}-${clash.end_time})`
+            });
+          } catch (error) {
+            deletionFailures.push({ worklogId: log.worklogId, reason: error.message });
+          }
+        }
+        requested = requested.filter(log => !duplicateIds.has(String(log.worklogId)));
+
+        // Same date+ticket pairing the reconcile view uses, so anything it
+        // shows as already matched is not imported a second time.
+        const claimed = new Map();
+        for (const entry of localEntries) {
+          const key = `${entry.date}|${entry.ticket_id}`;
+          if (!claimed.has(key)) claimed.set(key, []);
+          claimed.get(key).push(entry);
+        }
+
+        const insert = db.prepare(`
+          INSERT OR IGNORE INTO daily_summary
+            (date, name, ticket_id, start_time, end_time, duration_mins, submitted, from_calendar)
+          VALUES (?, ?, ?, ?, ?, ?, 1, 0)
+        `);
+
+        const imported = [];
+        const skipped = [];
+        const overlapped = [];
+
+        const applyImport = db.transaction(() => {
+          for (const log of requested) {
+            if (!log.ticketId) {
+              skipped.push({ worklogId: log.worklogId, reason: 'Worklog has no resolvable ticket' });
+              continue;
+            }
+
+            const key = `${log.date}|${log.ticketId}`;
+            const pool = claimed.get(key) || [];
+            // Prefer an exact duration match, mirroring the reconciler, so a
+            // part-matched pair is not consumed by an unrelated entry.
+            const existing = pool.find(entry => entry.duration_mins === log.durationMins) || pool[0];
+            if (existing) {
+              // Already represented locally. Bring the flag into line with
+              // Tempo rather than adding a duplicate row.
+              if (!existing.submitted) {
+                db.prepare(
+                  'UPDATE daily_summary SET submitted = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+                ).run(existing.id);
+              }
+              pool.splice(pool.indexOf(existing), 1);
+              skipped.push({
+                worklogId: log.worklogId,
+                reason: existing.submitted
+                  ? 'Already exists locally'
+                  : 'Already exists locally; marked as submitted'
+              });
+              continue;
+            }
+
+            const startTime = log.startTime || '09:00';
+            const endTime = minutesToTime(
+              timeToMinutes(startTime) + (log.durationMins || 0)
+            );
+            const name = log.description?.trim()
+              || log.ticketSummary?.trim()
+              || log.ticketId;
+
+            const clash = localEntries.find(entry =>
+              entry.date === log.date && entry.start_time && entry.end_time &&
+              timeToMinutes(entry.start_time) < timeToMinutes(endTime) &&
+              timeToMinutes(entry.end_time) > timeToMinutes(startTime)
+            );
+
+            const result = insert.run(
+              log.date, name, log.ticketId, startTime, endTime, log.durationMins
+            );
+
+            if (result.changes === 0) {
+              // The unique index on (date, name, start_time, end_time) rejected
+              // it, so an identical row is already present.
+              skipped.push({ worklogId: log.worklogId, reason: 'Identical entry already exists' });
+              continue;
+            }
+
+            const record = {
+              id: result.lastInsertRowid,
+              worklogId: log.worklogId,
+              date: log.date,
+              name,
+              ticketId: log.ticketId,
+              startTime,
+              endTime,
+              durationMins: log.durationMins
+            };
+            imported.push(record);
+            localEntries.push({
+              id: record.id, date: log.date, name, ticket_id: log.ticketId,
+              start_time: startTime, end_time: endTime,
+              duration_mins: log.durationMins, submitted: 1
+            });
+
+            // Reported, not resolved. The time is genuinely booked in Tempo, so
+            // it is imported as-is; silently trimming the user's own entry to
+            // make room would destroy logged work.
+            if (clash) {
+              overlapped.push({
+                worklogId: log.worklogId,
+                date: log.date,
+                imported: `${startTime}-${endTime}`,
+                conflictsWith: `${clash.name} (${clash.start_time}-${clash.end_time})`
+              });
+            }
+          }
+        });
+
+        applyImport();
+
+        const parts = [];
+        if (imported.length > 0) parts.push(`Imported ${imported.length} worklog(s) from Tempo`);
+        if (skipped.length > 0) parts.push(`${skipped.length} already present`);
+        if (overlapped.length > 0) parts.push(`${overlapped.length} overlap an existing entry`);
+        if (missingIds.length > 0) parts.push(`${missingIds.length} no longer exist in Tempo`);
+        if (parts.length === 0) parts.push('Nothing to import');
+
+        return {
+          success: true,
+          imported: imported.length,
+          importedEntries: imported,
+          skipped: skipped.length,
+          skippedWorklogs: skipped,
+          overlapped: overlapped.length,
+          overlappedEntries: overlapped,
+          deletedDuplicates,
+          deletionFailures,
+          missingWorklogIds: missingIds,
+          message: parts.join('. ')
+        };
+      } catch (error) {
+        return {
+          success: false,
+          imported: 0,
+          message: `Failed to import Tempo worklogs: ${error.message}`
+        };
+      }
+    }
+  }
+];
+ }
+      },
+      required: ['from', 'to']
+    },
+    handler: async (args) => {
+      try {
+        if (args.from > args.to) return { success: false, message: 'Start date must be on or before end date.' };
+        const credentials = resolveJiraCredentials(args);
+        const tempoToken = resolveTempoToken(args);
+        const account = await getCurrentAccount(credentials);
+        const worklogs = await fetchTempoWorklogs(credentials, tempoToken, account.accountId, args.from, args.to);
+        const byId = new Map(worklogs.map(log => [String(log.worklogId), log]));
+        const localEntries = db.prepare(`
+          SELECT id, date, name, ticket_id, start_time, duration_mins, tempo_worklog_id
+          FROM daily_summary
+          WHERE date >= ? AND date <= ?
+            AND submitted = 1
+            AND tempo_worklog_id IS NOT NULL
+            AND TRIM(tempo_worklog_id) <> ''
+            AND COALESCE(is_lunch, 0) = 0
+          ORDER BY date ASC, start_time ASC
+        `).all(args.from, args.to);
+        const reviewRows = [];
+        const unmatchedStoredIds = [];
+        for (const entry of localEntries) {
+          const remote = byId.get(String(entry.tempo_worklog_id));
+          if (!remote) {
+            unmatchedStoredIds.push({
+              entryId: entry.id, date: entry.date, task: entry.name,
+              localTicket: entry.ticket_id, worklogId: entry.tempo_worklog_id,
+              reason: 'Stored Tempo worklog ID was not found in this date range'
+            });
+            continue;
+          }
+          const localTicket = String(entry.ticket_id || '').trim().toUpperCase();
+          const tempoTicket = String(remote.ticketId || '').trim().toUpperCase();
+          if (localTicket && tempoTicket && localTicket !== tempoTicket) {
+            reviewRows.push({
+              entryId: entry.id, date: entry.date, task: entry.name,
+              startTime: entry.start_time, durationMins: entry.duration_mins,
+              worklogId: remote.worklogId, localTicket: entry.ticket_id,
+              tempoTicket: remote.ticketId, tempoDescription: remote.description,
+              tempoStartTime: remote.startTime, tempoDurationMins: remote.durationMins
+            });
+          }
+        }
+        return {
+          success: true, from: args.from, to: args.to,
+          readOnly: true, reviewed: localEntries.length,
+          mismatchCount: reviewRows.length, reviewRows, unmatchedStoredIds,
+          message: 'Preview only: no Tempo worklogs or local entries were changed.'
+        };
+      } catch (error) {
+        return { success: false, message: `Could not preview ticket corrections: ${error.message}` };
+      }
+    }
+  },
+  {
     name: 'tempo_get_worklogs',
     description: 'Read the worklogs actually recorded in Tempo for a date range and reconcile them against local entries',
     parameters: {
