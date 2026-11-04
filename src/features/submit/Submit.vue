@@ -184,7 +184,7 @@
         </div>
         <section v-if="ticketPreviewLoaded" class="ticket-preview-section">
           <h2>PI Ticket Correction Review</h2>
-          <p class="section-note">Read-only review using each entry's exact stored Tempo worklog ID. No Tempo worklogs or local submission records are changed.</p>
+          <p class="section-note">Preview uses each entry's exact stored Tempo worklog ID. Nothing changes until you explicitly confirm an individual correction.</p>
           <p v-if="ticketPreviewError" class="range-error">{{ ticketPreviewError }}</p>
           <template v-else>
             <p>{{ ticketPreviewRows.length }} possible ticket mismatch(es) across {{ ticketPreviewReviewed }} submitted entries.</p>
@@ -192,7 +192,18 @@
               <strong>{{ row.date }} · {{ row.startTime || 'Time unknown' }} · {{ row.task }}</strong>
               <span>Local: <b>{{ row.localTicket }}</b> → Tempo: <b>{{ row.tempoTicket }}</b></span>
               <small>Worklog #{{ row.worklogId }} · {{ row.tempoDurationMins }}m</small>
+              <button class="btn-range" :disabled="ticketCorrectionLoading" @click="pendingTicketCorrection = row">Review correction</button>
             </div>
+            <div v-if="pendingTicketCorrection" class="ticket-correction-confirm">
+              <strong>Confirm Tempo ticket change</strong>
+              <p>Move worklog #{{ pendingTicketCorrection.worklogId }} from {{ pendingTicketCorrection.tempoTicket }} to {{ pendingTicketCorrection.localTicket }}?</p>
+              <p class="section-note">This updates the existing Tempo worklog in place. Its author, date, time, duration, description and available work attributes will be preserved. The local entry will not be resubmitted.</p>
+              <div class="reconciliation-heading">
+                <button class="btn-range" :disabled="ticketCorrectionLoading" @click="pendingTicketCorrection = null">Cancel</button>
+                <button class="btn-range" :disabled="ticketCorrectionLoading" @click="applyTicketCorrection">{{ ticketCorrectionLoading ? 'Updating Tempo…' : 'Confirm and update Tempo' }}</button>
+              </div>
+            </div>
+            <p v-if="ticketCorrectionMessage" class="section-note">{{ ticketCorrectionMessage }}</p>
             <p v-if="ticketPreviewRows.length === 0">No exact-ID ticket mismatches found.</p>
             <details v-if="ticketPreviewUnmatched.length">
               <summary>{{ ticketPreviewUnmatched.length }} stored worklog ID(s) need manual review</summary>
@@ -749,7 +760,7 @@ const ticketPreviewLoaded = ref(false)
 const ticketPreviewError = ref('')
 const ticketPreviewReviewed = ref(0)
 const ticketPreviewRows = ref<Array<{ entryId: number; date: string; task: string; startTime: string; worklogId: string; localTicket: string; tempoTicket: string; tempoDurationMins: number }>>([])
-const ticketPreviewUnmatched = ref<Array<{ entryId: number; date: string; task: string; reason: string }>>([])
+const ticketPreviewUnmatched = ref<Array<{ entryId: number; date: string; task: string; reason: string }>>([])\nconst pendingTicketCorrection = ref<TicketPreviewRow | null>(null)\nconst ticketCorrectionLoading = ref(false)\nconst ticketCorrectionMessage = ref('')
 
 const reconciliationLoading = ref(false)
 const reconciliationError = ref('')
@@ -833,6 +844,33 @@ const previewTicketCorrections = async () => {
     ticketPreviewError.value = err instanceof ApiError ? err.message : 'Failed to preview PI ticket mismatches'
   } finally {
     ticketPreviewLoading.value = false
+  }
+}
+
+const applyTicketCorrection = async () => {
+  const row = pendingTicketCorrection.value
+  if (!row || ticketCorrectionLoading.value) return
+  ticketCorrectionLoading.value = true
+  ticketCorrectionMessage.value = ''
+  try {
+    const result = asRecord(await executeApi('tempo_correct_worklog_ticket', {
+      entryId: row.entryId,
+      worklogId: row.worklogId,
+      expectedCurrentTicket: row.tempoTicket,
+      targetTicket: row.localTicket
+    }))
+    if (!asBoolean(result.success, false)) {
+      ticketCorrectionMessage.value = asString(result.message, 'Tempo ticket correction failed.')
+      return
+    }
+    ticketCorrectionMessage.value = asString(result.message, 'Tempo ticket correction completed.')
+    pendingTicketCorrection.value = null
+    await previewTicketCorrections()
+    await loadReconciliation()
+  } catch (err) {
+    ticketCorrectionMessage.value = err instanceof ApiError ? err.message : 'Tempo ticket correction failed.'
+  } finally {
+    ticketCorrectionLoading.value = false
   }
 }
 
@@ -928,7 +966,7 @@ const reconcileDuration = async (row: ReconciledRow) => {
 
 .ticket-preview-section { margin: 1rem 0; padding: 1rem; border: 1px solid var(--color-border); border-radius: 0.6rem; }
 .ticket-preview-row { display: grid; gap: 0.25rem; padding: 0.65rem; border: 1px solid var(--color-border); border-radius: 0.4rem; margin: 0.5rem 0; }
-.ticket-preview-row small { color: var(--color-text-subtle); }
+.ticket-preview-row small { color: var(--color-text-subtle); }\n.ticket-correction-confirm { margin-top: 0.85rem; padding: 0.85rem; border: 1px solid var(--color-border); border-radius: 0.5rem; }
 
 /* Page Header */
 .page-header h1 {
