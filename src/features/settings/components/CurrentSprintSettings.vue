@@ -37,6 +37,24 @@
         </small>
       </div>
 
+      <h3>PI Configuration History</h3>
+      <p class="section-intro">
+        Changes are recorded when settings are saved. Older changes made before this history was introduced cannot be reconstructed.
+      </p>
+      <div v-if="props.configHistory.length" class="history-list">
+        <div v-for="item in props.configHistory" :key="item.id" class="history-row">
+          <strong>{{ item.previousPi ? 'PI' + item.previousPi : 'Initial configuration' }} → {{ item.nextPi ? 'PI' + item.nextPi : 'No PI' }}</strong>
+          <span>{{ formatHistoryDate(item.changedAt) }}</span>
+          <details>
+            <summary>View ticket mappings</summary>
+            <div v-for="mapping in historyMappings(item.nextConfig)" :key="mapping.id" class="history-mapping">
+              {{ mapping.label }}: {{ mapping.ticketKey || 'Not mapped' }}
+            </div>
+          </details>
+        </div>
+      </div>
+      <p v-else class="history-empty">No PI changes have been recorded yet. The first saved change will appear here.</p>
+
       <h3>Meeting Ticket Mappings</h3>
       <p class="section-intro">
         A synced meeting is matched against these keywords to pick its ticket.
@@ -71,6 +89,7 @@
 </template>
 
 <script setup lang="ts">
+import { asList, asRecord, asString } from '@/shared/utils/schema'
 import type { CurrentSprintSettingsForm } from '@/features/settings/models/settings'
 
 const props = defineProps<{
@@ -78,7 +97,25 @@ const props = defineProps<{
   lookupBusy: boolean
   lookupMessage: string
   lookupOk: boolean
+  configHistory: Array<{
+    id: number
+    changedAt: string
+    previousPi: string | null
+    nextPi: string | null
+    previousConfig: Record<string, unknown>
+    nextConfig: Record<string, unknown>
+  }>
 }>()
+
+const formatHistoryDate = (value: string) => {
+  const date = new Date(value.replace(' ', 'T') + (value.endsWith('Z') ? '' : 'Z'))
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
+}
+const historyMappings = (config: Record<string, unknown>) =>
+  asList(config.mappings).map(raw => {
+    const mapping = asRecord(raw)
+    return { id: asString(mapping.id, ''), label: asString(mapping.label, ''), ticketKey: asString(mapping.ticketKey, '') }
+  })
 
 defineEmits<{
   'lookup-pi-tickets': []
@@ -86,6 +123,12 @@ defineEmits<{
 </script>
 
 <style scoped>
+.history-list { display: grid; gap: 0.65rem; margin-bottom: 1.5rem; }
+.history-row { display: grid; gap: 0.35rem; padding: 0.75rem; border: 1px solid var(--color-border); border-radius: 0.5rem; }
+.history-row > span, .history-empty { color: var(--color-text-subtle); font-size: 0.85rem; }
+.history-mapping { padding: 0.2rem 0; font-size: 0.85rem; }
+.history-row summary { cursor: pointer; font-size: 0.85rem; }
+
 /* Current Sprint */
 .section-intro {
   font-size: 0.875rem;
