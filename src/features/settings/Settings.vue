@@ -36,6 +36,7 @@
           :lookup-busy="sprintLookupBusy"
           :lookup-message="sprintLookupMessage"
           :lookup-ok="sprintLookupOk"
+          :config-history="sprintConfigHistory"
           @lookup-pi-tickets="lookupPiTickets"
         />
 
@@ -245,6 +246,7 @@ const originalSprint = ref('')
 const sprintLookupBusy = ref(false)
 const sprintLookupMessage = ref('')
 const sprintLookupOk = ref(false)
+const sprintConfigHistory = ref<Array<{ id: number; changedAt: string; previousPi: string | null; nextPi: string | null; previousConfig: Record<string, unknown>; nextConfig: Record<string, unknown> }>>([])
 
 const splitAliases = (text: string): string[] =>
   text.split(',').map(a => a.trim()).filter(Boolean)
@@ -268,7 +270,26 @@ const applySprintConfig = (config: Record<string, unknown>): void => {
   originalSprint.value = JSON.stringify(sprintForm.value)
 }
 
-const loadSprintConfig = async (): Promise<void> => {
+const loadSprintConfigHistory = async (): Promise<void> => {
+  try {
+    const result = asRecord(await executeApi('sprint_get_config_history', { limit: 100 }))
+    sprintConfigHistory.value = asList(result.history).map(raw => {
+      const row = asRecord(raw)
+      return {
+        id: asNumber(row.id, 0),
+        changedAt: asString(row.changedAt, ''),
+        previousPi: row.previousPi == null ? null : asString(row.previousPi, ''),
+        nextPi: row.nextPi == null ? null : asString(row.nextPi, ''),
+        previousConfig: asRecord(row.previousConfig),
+        nextConfig: asRecord(row.nextConfig)
+      }
+    })
+  } catch (err) {
+    console.error('Failed to load PI configuration history:', err)
+  }
+}
+
+const loadSprintConfig = async (): Promise<void> {
   try {
     const result = asRecord(await executeApi('sprint_get_config', {}))
     if (result.config) applySprintConfig(asRecord(result.config))
@@ -730,6 +751,7 @@ const saveSettings = async () => {
 onMounted(async () => {
   void refreshMicrosoftConnection()
   void loadSprintConfig()
+  void loadSprintConfigHistory()
   try {
     await configStore.loadConfigFromBackend()
     
