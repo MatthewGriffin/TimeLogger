@@ -14,16 +14,35 @@ use tauri_plugin_dialog::DialogExt;
 pub fn open_external_url(url: String) -> Result<String, String> {
   #[cfg(target_os = "windows")]
   {
-    use std::process::Command;
-    use std::os::windows::process::CommandExt;
-    // Deliberately avoids `cmd /C start`: cmd treats the `&` between query
-    // parameters as a command separator, which silently truncated OAuth URLs
-    // (Microsoft then rejected the request for a missing 'scope').
-    Command::new("rundll32.exe")
-      .args(["url.dll,FileProtocolHandler", &url])
-      .creation_flags(CREATE_NO_WINDOW)
-      .spawn()
-      .map_err(|e| format!("Failed to open URL: {}", e))?;
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+
+    let parsed = url::Url::parse(&url).map_err(|_| "Invalid URL.".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+      return Err("Only HTTP and HTTPS links can be opened.".to_string());
+    }
+
+    #[link(name = "shell32")]
+    unsafe extern "system" {
+      fn ShellExecuteW(
+        hwnd: *mut std::ffi::c_void,
+        operation: *const u16,
+        file: *const u16,
+        parameters: *const u16,
+        directory: *const u16,
+        show_command: i32,
+      ) -> isize;
+    }
+
+    let operation: Vec<u16> = OsStr::new("open").encode_wide().chain(Some(0)).collect();
+    let target: Vec<u16> = OsStr::new(parsed.as_str()).encode_wide().chain(Some(0)).collect();
+    let result = unsafe {
+      ShellExecuteW(std::ptr::null_mut(), operation.as_ptr(), target.as_ptr(),
+        std::ptr::null(), std::ptr::null(), 1)
+    };
+    if result <= 32 {
+      return Err(format!("Windows could not open the URL (ShellExecuteW: {}).", result));
+    }
     Ok("Opened".to_string())
   }
 
