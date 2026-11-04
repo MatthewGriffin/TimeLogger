@@ -1216,6 +1216,7 @@ export const tools = [
       required: ['entryId', 'worklogId', 'expectedCurrentTicket', 'targetTicket']
     },
     handler: async (args) => {
+      let updateAccepted = false;
       try {
         const entry = db.prepare('SELECT id, submitted, ticket_id, tempo_worklog_id FROM daily_summary WHERE id = ?').get(args.entryId);
         if (!entry || Number(entry.submitted) !== 1) throw new Error('The local entry is no longer marked as submitted.');
@@ -1279,6 +1280,7 @@ export const tools = [
           headers: { Authorization: `Bearer ${tempoToken}`, 'Content-Type': 'application/json' },
           body
         });
+        updateAccepted = true;
 
         const verifyResponse = await makeHttpRequest(`https://api.tempo.io/4/worklogs/${encodeURIComponent(args.worklogId)}`, {
           method: 'GET',
@@ -1296,7 +1298,9 @@ export const tools = [
           message: `Tempo worklog moved from ${currentTicket} to ${targetIssue.key} and verified.`
         };
       } catch (error) {
-        return { success: false, changed: false, message: `Could not correct Tempo worklog ticket: ${error.message}` };
+        return updateAccepted
+          ? { success: false, changed: true, verificationFailed: true, message: `Tempo accepted the update, but follow-up verification failed: ${error.message}. Inspect this worklog before retrying.` }
+          : { success: false, changed: false, message: `Could not correct Tempo worklog ticket: ${error.message}` };
       }
     }
   },
