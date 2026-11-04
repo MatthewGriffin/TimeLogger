@@ -1,7 +1,6 @@
 //! Lifecycle of the bundled Node sidecar: starting it, keeping it alive and
 //! stopping it on quit.
 
-use std::fs;
 use std::io::Write;
 
 use crate::platform::{host_log, runtime_pid_file};
@@ -70,34 +69,6 @@ pub(crate) fn start_backend_watchdog() {
   });
 }
 
-fn prune_non_target_binaries(root: &std::path::Path, log_file: &mut std::fs::File) {
-  #[cfg(target_os = "windows")]
-  {
-    let prebuilds_dir = root
-      .join("node_modules")
-      .join("better-sqlite3")
-      .join("prebuilds");
-
-    let arm64_prebuild = prebuilds_dir.join("win32-arm64.node");
-    let x64_prebuild = prebuilds_dir.join("win32-x64.node");
-
-    if arm64_prebuild.exists() {
-      match fs::remove_file(&arm64_prebuild) {
-        Ok(_) => {
-          let _ = writeln!(log_file, "Removed unused native addon: {}", arm64_prebuild.display());
-        }
-        Err(err) => {
-          let _ = writeln!(log_file, "Could not remove unused native addon {}: {}", arm64_prebuild.display(), err);
-        }
-      }
-    }
-
-    if x64_prebuild.exists() {
-      let _ = writeln!(log_file, "Keeping required native addon: {}", x64_prebuild.display());
-    }
-  }
-}
-
 #[tauri::command]
 pub async fn start_backend() -> Result<String, String> {
   // Must not return before the new backend is listening. Returning early lets
@@ -160,7 +131,6 @@ fn launch_backend() -> Result<String, String> {
     }
     
     // Also try development paths as fallback
-    possible_paths.push(std::path::PathBuf::from("C:\\repos\\TimeLogger\\timelogger-app\\src-node"));
     possible_paths.push(std::path::PathBuf::from("src-node"));
     possible_paths.push(std::path::PathBuf::from("../src-node"));
     possible_paths.push(std::path::PathBuf::from("../../src-node"));
@@ -232,7 +202,6 @@ fn launch_backend() -> Result<String, String> {
       if server_path.exists() {
         let _ = writeln!(log_file, "Found server.js at: {}", server_path.display());
         let _ = writeln!(log_file, "Starting backend from: {}", path.display());
-        prune_non_target_binaries(path, &mut log_file);
 
         let result = std::process::Command::new(&node_exe)
           .arg("server.js")
