@@ -79,10 +79,6 @@ pub fn show_calendar_reminder(event_title: &str, time_until: &str) -> Result<(),
     Notification::new("📅 Upcoming Event", format!("{} starts {}", event_title, time_until)).show()
 }
 
-pub fn show_generic(title: &str, message: &str) -> Result<(), String> {
-    Notification::new(title, message).show()
-}
-
 pub fn show_generic_with_url(title: &str, message: &str, url: Option<&str>) -> Result<(), String> {
     let notif = match url {
         Some(value) => Notification::new(title, message).with_url(value),
