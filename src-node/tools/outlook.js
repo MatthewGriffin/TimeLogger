@@ -5,7 +5,6 @@
 import { getLocalCalendarEvents } from '../api/outlook-com.js';
 import { db } from '../index.js';
 import { splitTimeRange, timeToMinutes } from '../utils/time-ranges.js';
-import { readSprintConfig, matchMeetingTicket } from './sprint.js';
 import { isoDaysFromToday } from './jira-tempo-future.js';
 import { localDateKey } from '../utils/dates.js';
 
@@ -369,11 +368,9 @@ export function syncDayFromEvents(date, events, calendarConfig) {
         VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
       `);
 
-      // Ceremonies are booked against per-PI placeholder issues. Without a
-      // ticket a synced meeting can never reach Tempo, because
-      // tempo_submit_day only considers rows that have one.
-      const sprintConfig = readSprintConfig();
-      const ticketFor = (subject) => matchMeetingTicket(subject, sprintConfig)?.ticketKey || null;
+      // Calendar sync records attendance and time only. A Jira ticket is
+      // deliberately not assigned here: the user chooses/creates the actual
+      // Daily Summary entry first, at which point the current PI mapping applies.
 
       // A meeting that lands on the lunch slot must not silently delete it:
       // ensure_lunch_entry only ever creates lunch once per day, so a carved-away
@@ -491,11 +488,10 @@ export function syncDayFromEvents(date, events, calendarConfig) {
         }
 
         segments.forEach((segment, index) => {
-          const ticketKey = ticketFor(event.subject);
           const result = insert.run(
             date,
             event.subject,
-            ticketKey,
+            null,
             segment.start,
             segment.end,
             segment.durationMins,
@@ -507,11 +503,11 @@ export function syncDayFromEvents(date, events, calendarConfig) {
           createdEntries.push({
             id: result.lastInsertRowid,
             name: event.subject,
-            ticketId: ticketKey,
+            ticketId: null,
             startTime: segment.start,
             endTime: segment.end
           });
-          if (!ticketKey) {
+          {
             const bucket = unmappedMeetings.get(event.subject)
               || { subject: event.subject, entryIds: [] };
             bucket.entryIds.push(result.lastInsertRowid);
