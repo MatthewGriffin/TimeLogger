@@ -158,9 +158,22 @@ export const reconcileTempoWorklogs = (localEntries, worklogs) => {
 
   // Last fallback: exact start time on the same date/ticket. The UI will show
   // duration drift, rather than incorrectly claiming a different slot exists.
+  // Do not assign a duration-mismatched worklog to this entry if another
+  // unmatched local entry on the same ticket has that worklog's duration:
+  // that other entry is a stronger candidate, even if its time/description
+  // no longer agrees. This avoids marking a short split entry as submitted
+  // merely because a longer worklog starts at the same time.
   for (const entry of localEntries) {
     if (matchesByEntryId.has(entry.id) || !normalizeTime(entry.start_time)) continue;
-    consumeMatch(entry, log => sameStart(entry, log));
+    consumeMatch(entry, log =>
+      sameStart(entry, log) &&
+      (sameDuration(entry, log) || !localEntries.some(other =>
+        other.id !== entry.id &&
+        !matchesByEntryId.has(other.id) &&
+        entryKey(other) === entryKey(entry) &&
+        sameDuration(other, log)
+      ))
+    );
   }
 
   // A stored Tempo ID is useful only when its time still agrees with the local
