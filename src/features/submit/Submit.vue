@@ -182,6 +182,24 @@
             {{ reconciliationLoading ? 'Refreshing…' : 'Refresh Tempo status' }}
           </button>
         </div>
+        <section v-if="ticketPreviewLoaded" class="ticket-preview-section">
+          <h2>PI Ticket Correction Review</h2>
+          <p class="section-note">Read-only review using each entry's exact stored Tempo worklog ID. No Tempo worklogs or local submission records are changed.</p>
+          <p v-if="ticketPreviewError" class="range-error">{{ ticketPreviewError }}</p>
+          <template v-else>
+            <p>{{ ticketPreviewRows.length }} possible ticket mismatch(es) across {{ ticketPreviewReviewed }} submitted entries.</p>
+            <div v-for="row in ticketPreviewRows" :key="row.entryId" class="ticket-preview-row">
+              <strong>{{ row.date }} · {{ row.startTime || 'Time unknown' }} · {{ row.task }}</strong>
+              <span>Local: <b>{{ row.localTicket }}</b> → Tempo: <b>{{ row.tempoTicket }}</b></span>
+              <small>Worklog #{{ row.worklogId }} · {{ row.tempoDurationMins }}m</small>
+            </div>
+            <p v-if="ticketPreviewRows.length === 0">No exact-ID ticket mismatches found.</p>
+            <details v-if="ticketPreviewUnmatched.length">
+              <summary>{{ ticketPreviewUnmatched.length }} stored worklog ID(s) need manual review</summary>
+              <p v-for="item in ticketPreviewUnmatched" :key="item.entryId">{{ item.date }} · {{ item.task }} · {{ item.reason }}</p>
+            </details>
+          </template>
+        </section>
         <p v-if="reconciliationLoading" class="range-summary">Checking Tempo worklogs…</p>
         <p v-else-if="reconciliationError" class="range-error">{{ reconciliationError }}</p>
         <template v-else>
