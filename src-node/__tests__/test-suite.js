@@ -1434,6 +1434,10 @@ async function runTests() {
     try { return await run(); } finally { httpClient.defaults.adapter = previous; }
   };
   const jqlOf = config => new URL(config.url).searchParams.get('jql') || '';
+  const isTempoUrl = (config, pathPrefix = '/') => {
+    const url = new URL(config.url);
+    return url.hostname === 'api.tempo.io' && url.pathname.startsWith(pathPrefix);
+  };
   const fakeJira = { baseUrl: 'https://jira.test', email: 'test@example.com', apiToken: 'jira-token', tempoToken: 'tempo-token' };
 
   await testAsync('PI ticket lookup reads every page of Jira results', async () => {
@@ -1466,10 +1470,10 @@ async function runTests() {
 
       const preview = await withStubbedHttp(config => {
         if (config.url.includes('/myself')) return { accountId: 'me' };
-        if (config.url.includes('api.tempo.io/4/worklogs/user/')) {
+        if (isTempoUrl(config, '/4/worklogs/user/')) {
           return { results: [{ tempoWorklogId: 9101, issue: { id: 1 }, startDate: TEST_DATE, timeSpentSeconds: 900 }], metadata: {} };
         }
-        if (config.url.includes('api.tempo.io')) return { results: [], values: [] };
+        if (isTempoUrl(config)) return { results: [], values: [] };
         return jqlOf(config).includes('PI43')
           ? { issues: [{ key: 'TIME-359', fields: { summary: 'PI43-Daily Scrum Discovery' } }] }
           : { issues: [{ id: '1', key: 'TIME-359', fields: { summary: 'PI43-Daily Scrum Discovery' } }] };
@@ -1491,10 +1495,10 @@ async function runTests() {
       const issuesFor = (pi, extra = []) => [{ key: pi === 'PI42' ? 'TIME-111' : 'TIME-359', fields: { summary: `${pi}-Daily Scrum Discovery` } }, ...extra];
       const tempoRoute = (config, piIssues) => {
         if (config.url.includes('/myself')) return { accountId: 'me' };
-        if (config.url.includes('api.tempo.io/4/worklogs/user/')) {
+        if (isTempoUrl(config, '/4/worklogs/user/')) {
           return { results: [{ tempoWorklogId: 9101, issue: { id: 1 }, startDate: TEST_DATE, timeSpentSeconds: 900 }], metadata: {} };
         }
-        if (config.url.includes('api.tempo.io')) return { results: [], values: [] };
+        if (isTempoUrl(config)) return { results: [], values: [] };
         const pi = /PI\d+/.exec(jqlOf(config))?.[0];
         return pi ? { issues: piIssues(pi) } : { issues: [{ id: '1', key: 'TIME-359', fields: { summary: 'x' } }] };
       };
@@ -1535,7 +1539,7 @@ async function runTests() {
     let puts = 0;
     let acceptMove = true;
     const route = config => {
-      if (config.url.includes('api.tempo.io')) {
+      if (isTempoUrl(config)) {
         if (config.method.toLowerCase() === 'put') {
           puts += 1;
           if (acceptMove) issueId = JSON.parse(config.data).issueId;
@@ -1568,7 +1572,7 @@ async function runTests() {
       issueId = 2;
       puts = 0;
       const localOnly = await withStubbedHttp(config => (
-        config.url.includes('api.tempo.io') ? route(config) : { issues: [{ id: '2', key: 'TIME-634' }] }
+        isTempoUrl(config) ? route(config) : { issues: [{ id: '2', key: 'TIME-634' }] }
       ), () => executeTool('tempo_correct_worklog_ticket', { ...request, expectedCurrentTicket: 'TIME-634', expectedLocalTicket: 'TIME-359' }));
       assert.strictEqual(localOnly.unchanged, true, localOnly.message);
       assert.strictEqual(puts, 0);
