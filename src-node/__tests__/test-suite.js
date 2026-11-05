@@ -1428,9 +1428,13 @@ async function runTests() {
   // Answers requests with `route` instead of the network.
   const withStubbedHttp = async (route, run) => {
     const previous = httpClient.defaults.adapter;
-    httpClient.defaults.adapter = async config => ({
-      data: JSON.stringify(route(config)), status: 200, statusText: 'OK', headers: {}, config
-    });
+    httpClient.defaults.adapter = async config => {
+      const data = route(config);
+      if (data?.failWithStatus) {
+        throw Object.assign(new Error('Request failed'), { response: { status: data.failWithStatus, data: '<html><body>Bad Gateway</body></html>' } });
+      }
+      return { data: JSON.stringify(data), status: 200, statusText: 'OK', headers: {}, config };
+    };
     try { return await run(); } finally { httpClient.defaults.adapter = previous; }
   };
   const jqlOf = config => new URL(config.url).searchParams.get('jql') || '';
@@ -1525,58 +1529,203 @@ async function runTests() {
     }
   });
 
-  await testAsync('correcting an old PI ticket moves the Tempo worklog and then the local entry', async () => {
+  // A small fake Tempo, so each test can check what really exists at the end.
+  const fakeTempoFor = worklogId => {
+    const state = {
+      calls: [],
+      logs: new Map([[String(worklogId), {
+        tempoWorklogId: Number(worklogId), issue: { id: 1 }, author: { accountId: 'me' }, startDate: TEST_DATE,
+        startTime: '09:00:00', timeSpentSeconds: 900, billableSeconds: 900, description: 'Discovery Daily Scrum',
+        attributes: { values: [{ key: '_ActivityType_', value: 'activity-1' }] }
+      }]]),
+      nextId: 7000,
+      // Set per test: return a response to override what the fake would do.
+      onDelete: () => null,
+      onCheck: () => null,
+      onPost: () => null,
+    };
+    state.route = config => {
+      if (!isTempoUrl(config)) {
+        return { issues: jqlOf(config).startsWith('id =') ? [{ id: '1', key: 'TIME-359' }] : [{ id: '2', key: 'TIME-634' }] };
+      }
+      const method = config.method.toLowerCase();
+      const id = new URL(config.url).pathname.split('/').pop();
+      if (isTempoUrl(config, '/4/worklogs/issue/')) {
+        state.calls.push('search');
+        return { results: [...state.logs.values()].filter(log => log.issue.id === Number(id)) };
+      }
+      state.calls.push(method);
+      if (method === 'delete') {
+        const override = state.onDelete(state);
+        if (override) return override;
+        state.logs.delete(id);
+        return {};
+      }
+      if (method === 'post') {
+        const input = JSON.parse(config.data);
+        const create = () => {
+          const log = { ...input, tempoWorklogId: state.nextId++, issue: { id: input.issueId }, author: { accountId: input.authorAccountId } };
+          state.logs.set(String(log.tempoWorklogId), log);
+          return log;
+        };
+        return state.onPost(state, create) ?? create();
+      }
+      const firstRead = state.calls.filter(call => call === 'get').length === 1;
+      if (!firstRead) {
+        const override = state.onCheck(state);
+        if (override) return override;
+      }
+      return state.logs.get(id) ?? { failWithStatus: 404 };
+    };
+    return state;
+  };
+
+  await testAsync('correcting an old PI ticket deletes the worklog, confirms it, then posts the replacement', async () => {
     cleanTestFixtures();
     const inserted = db.prepare(`
       INSERT INTO daily_summary (date, name, ticket_id, start_time, end_time, duration_mins, submitted, tempo_worklog_id, from_calendar)
       VALUES (?, 'Discovery Daily Scrum', 'TIME-359', '09:00', '09:15', 15, 1, '9102', 0)
     `).run(TEST_DATE);
     const id = Number(inserted.lastInsertRowid);
-    const ticketOf = () => db.prepare('SELECT ticket_id FROM daily_summary WHERE id = ?').get(id).ticket_id;
-    const request = { ...fakeJira, entryId: id, worklogId: '9102', expectedCurrentTicket: 'TIME-359', targetTicket: 'TIME-634' };
-
-    let issueId = 1;
-    let puts = 0;
-    let acceptMove = true;
-    const route = config => {
-      if (isTempoUrl(config)) {
-        if (config.method.toLowerCase() === 'put') {
-          puts += 1;
-          if (acceptMove) issueId = JSON.parse(config.data).issueId;
-        }
-        return { tempoWorklogId: 9102, issue: { id: issueId }, author: { accountId: 'me' }, startDate: TEST_DATE, startTime: '09:00:00', timeSpentSeconds: 900 };
-      }
-      return { issues: jqlOf(config).startsWith('id =') ? [{ id: '1', key: 'TIME-359' }] : [{ id: '2', key: 'TIME-634' }] };
-    };
-
+    const row = () => db.prepare('SELECT ticket_id, submitted, tempo_worklog_id FROM daily_summary WHERE id = ?').get(id);
+    const request = { ...fakeJira, entryId: id, worklogId: '9102', expectedCurrentTicket: 'TIME-359', expectedLocalTicket: 'TIME-359', targetTicket: 'TIME-634' };
     try {
-      const stale = await withStubbedHttp(route, () => executeTool('tempo_correct_worklog_ticket', { ...request, expectedLocalTicket: 'TIME-111' }));
-      assert.strictEqual(stale.success, false);
-      assert.strictEqual(puts, 0, 'A stale preview must not touch Tempo');
+      const stale = fakeTempoFor(9102);
+      const staleResult = await withStubbedHttp(stale.route, () => executeTool('tempo_correct_worklog_ticket', { ...request, expectedLocalTicket: 'TIME-111' }));
+      assert.strictEqual(staleResult.success, false);
+      assert.deepStrictEqual(stale.calls, [], 'A stale preview must not touch Tempo');
 
-      acceptMove = false;
-      const unverified = await withStubbedHttp(route, () => executeTool('tempo_correct_worklog_ticket', { ...request, expectedLocalTicket: 'TIME-359' }));
-      assert.strictEqual(unverified.verificationFailed, true);
-      assert.strictEqual(ticketOf(), 'TIME-359', 'The local entry must not change until the move is verified');
+      const tempo = fakeTempoFor(9102);
+      const original = tempo.logs.get('9102');
+      const result = await withStubbedHttp(tempo.route, () => executeTool('tempo_correct_worklog_ticket', request));
+      assert.strictEqual(result.success, true, result.message);
+      assert.deepStrictEqual(tempo.calls, ['get', 'delete', 'get', 'post'], 'It must confirm the delete before posting');
+      assert.strictEqual(tempo.logs.size, 1, 'Exactly one worklog should exist afterwards');
+      const created = tempo.logs.get('7000');
+      assert.strictEqual(created.issueId, 2);
+      for (const field of ['startDate', 'startTime', 'timeSpentSeconds', 'billableSeconds', 'description']) {
+        assert.strictEqual(created[field], original[field], `${field} should carry over`);
+      }
+      assert.strictEqual(created.authorAccountId, 'me');
+      assert.deepStrictEqual(created.attributes, [{ key: '_ActivityType_', value: 'activity-1' }]);
+      assert.deepStrictEqual(row(), { ticket_id: 'TIME-634', submitted: 1, tempo_worklog_id: '7000' });
 
-      acceptMove = true;
-      puts = 0;
-      const moved = await withStubbedHttp(route, () => executeTool('tempo_correct_worklog_ticket', { ...request, expectedLocalTicket: 'TIME-359' }));
-      assert.strictEqual(moved.success, true, moved.message);
-      assert.strictEqual(puts, 1);
-      assert.strictEqual(issueId, 2);
-      assert.strictEqual(ticketOf(), 'TIME-634');
-
-      // Tempo already on the target: only the stale local ticket needs to change.
-      db.prepare("UPDATE daily_summary SET ticket_id = 'TIME-359' WHERE id = ?").run(id);
-      issueId = 2;
-      puts = 0;
+      // Tempo already on the target: only the stale local ticket changes.
+      db.prepare("UPDATE daily_summary SET ticket_id = 'TIME-359', tempo_worklog_id = '9102' WHERE id = ?").run(id);
+      const done = fakeTempoFor(9102);
+      done.logs.get('9102').issue.id = 2;
       const localOnly = await withStubbedHttp(config => (
-        isTempoUrl(config) ? route(config) : { issues: [{ id: '2', key: 'TIME-634' }] }
-      ), () => executeTool('tempo_correct_worklog_ticket', { ...request, expectedCurrentTicket: 'TIME-634', expectedLocalTicket: 'TIME-359' }));
+        isTempoUrl(config) ? done.route(config) : { issues: [{ id: '2', key: 'TIME-634' }] }
+      ), () => executeTool('tempo_correct_worklog_ticket', { ...request, expectedCurrentTicket: 'TIME-634' }));
       assert.strictEqual(localOnly.unchanged, true, localOnly.message);
-      assert.strictEqual(puts, 0);
-      assert.strictEqual(ticketOf(), 'TIME-634');
+      assert.deepStrictEqual(done.calls, ['get'], 'Nothing should be written to Tempo');
+      assert.deepStrictEqual(row(), { ticket_id: 'TIME-634', submitted: 1, tempo_worklog_id: '9102' });
+    } finally {
+      cleanTestFixtures();
+    }
+  });
+
+  await testAsync('no replacement is posted unless the old worklog is confirmed deleted', async () => {
+    cleanTestFixtures();
+    const inserted = db.prepare(`
+      INSERT INTO daily_summary (date, name, ticket_id, start_time, end_time, duration_mins, submitted, tempo_worklog_id, from_calendar)
+      VALUES (?, 'Discovery Daily Scrum', 'TIME-359', '09:00', '09:15', 15, 1, '9103', 0)
+    `).run(TEST_DATE);
+    const id = Number(inserted.lastInsertRowid);
+    const row = () => db.prepare('SELECT ticket_id, submitted, tempo_worklog_id FROM daily_summary WHERE id = ?').get(id);
+    const untouched = { ticket_id: 'TIME-359', submitted: 1, tempo_worklog_id: '9103' };
+    const request = { ...fakeJira, entryId: id, worklogId: '9103', expectedCurrentTicket: 'TIME-359', expectedLocalTicket: 'TIME-359', targetTicket: 'TIME-634' };
+    const run = setup => {
+      const tempo = fakeTempoFor(9103);
+      setup(tempo);
+      return withStubbedHttp(tempo.route, () => executeTool('tempo_correct_worklog_ticket', request)).then(result => ({ tempo, result }));
+    };
+    const assertNothingPosted = (tempo, label) => {
+      assert.ok(!tempo.calls.includes('post'), `${label}: nothing should be posted`);
+      assert.deepStrictEqual([...tempo.logs.keys()], ['9103'], `${label}: the worklog should remain`);
+      assert.deepStrictEqual(row(), untouched, `${label}: the local entry should be unchanged`);
+    };
+    try {
+      const rejected = await run(tempo => { tempo.onDelete = () => ({ failWithStatus: 403 }); });
+      assert.strictEqual(rejected.result.success, false);
+      assert.strictEqual(rejected.result.changed, false);
+      assertNothingPosted(rejected.tempo, 'Delete rejected');
+
+      const down = await run(tempo => { tempo.onDelete = () => ({ failWithStatus: 502 }); });
+      assert.strictEqual(down.result.transient, true);
+      assert.strictEqual(down.result.changed, false);
+      assert.ok(!down.result.message.includes('<html'), 'The gateway page should not reach the message');
+      assertNothingPosted(down.tempo, 'Tempo down');
+
+      const unknown = await run(tempo => { tempo.onCheck = () => ({ failWithStatus: 502 }); });
+      assert.strictEqual(unknown.result.verificationFailed, true);
+      assert.ok(!unknown.tempo.calls.includes('post'), 'An unconfirmed delete must not be followed by a post');
+      assert.deepStrictEqual(row(), untouched);
+
+      const lingering = await run(tempo => { tempo.onDelete = () => ({}); });
+      assert.strictEqual(lingering.result.verificationFailed, true);
+      assertNothingPosted(lingering.tempo, 'Worklog still there');
+
+      // The delete landed despite the gateway error, so it carries on.
+      const landed = await run(tempo => { tempo.onDelete = state => { state.logs.clear(); return { failWithStatus: 502 }; }; });
+      assert.strictEqual(landed.result.success, true, landed.result.message);
+      assert.strictEqual(landed.tempo.logs.size, 1);
+      assert.strictEqual(row().ticket_id, 'TIME-634');
+    } finally {
+      cleanTestFixtures();
+    }
+  });
+
+  await testAsync('a failed replacement returns the entry to the Submit list and never duplicates', async () => {
+    cleanTestFixtures();
+    const inserted = db.prepare(`
+      INSERT INTO daily_summary (date, name, ticket_id, start_time, end_time, duration_mins, submitted, tempo_worklog_id, from_calendar)
+      VALUES (?, 'Discovery Daily Scrum', 'TIME-359', '09:00', '09:15', 15, 1, '9104', 0)
+    `).run(TEST_DATE);
+    const id = Number(inserted.lastInsertRowid);
+    const row = () => db.prepare('SELECT ticket_id, submitted, tempo_worklog_id FROM daily_summary WHERE id = ?').get(id);
+    const reset = () => db.prepare("UPDATE daily_summary SET ticket_id = 'TIME-359', submitted = 1, tempo_worklog_id = '9104' WHERE id = ?").run(id);
+    const returned = { ticket_id: 'TIME-634', submitted: 0, tempo_worklog_id: null };
+    const request = { ...fakeJira, entryId: id, worklogId: '9104', expectedCurrentTicket: 'TIME-359', expectedLocalTicket: 'TIME-359', targetTicket: 'TIME-634' };
+    const run = onPost => {
+      const tempo = fakeTempoFor(9104);
+      tempo.onPost = onPost;
+      return withStubbedHttp(tempo.route, () => executeTool('tempo_correct_worklog_ticket', request)).then(result => ({ tempo, result }));
+    };
+    const posts = tempo => tempo.calls.filter(call => call === 'post').length;
+    try {
+      // Rejected: not repeated.
+      const rejected = await run(() => ({ failWithStatus: 400 }));
+      assert.strictEqual(rejected.result.success, false);
+      assert.strictEqual(rejected.result.entryReturned, true);
+      assert.ok(rejected.result.message.includes('Submit list'), rejected.result.message);
+      assert.strictEqual(posts(rejected.tempo), 1);
+      assert.strictEqual(rejected.tempo.logs.size, 0);
+      assert.deepStrictEqual(row(), returned);
+
+      // Tempo stays down: gives up, nothing lost locally.
+      reset();
+      const down = await run(() => ({ failWithStatus: 502 }));
+      assert.strictEqual(down.result.entryReturned, true);
+      assert.strictEqual(posts(down.tempo), 3);
+      assert.ok(!down.result.message.includes('<html'), down.result.message);
+      assert.deepStrictEqual(row(), returned);
+
+      // The post landed despite the error: found, not repeated.
+      reset();
+      const landed = await run((state, create) => { create(); return { failWithStatus: 502 }; });
+      assert.strictEqual(landed.result.success, true, landed.result.message);
+      assert.strictEqual(posts(landed.tempo), 1, 'A post that landed must not be repeated');
+      assert.strictEqual(landed.tempo.logs.size, 1, 'Only one worklog should exist');
+      assert.deepStrictEqual(row(), { ticket_id: 'TIME-634', submitted: 1, tempo_worklog_id: '7000' });
+
+      // Recovers on a later attempt.
+      reset();
+      let attempts = 0;
+      const recovered = await run(() => (++attempts < 2 ? { failWithStatus: 502 } : null));
+      assert.strictEqual(recovered.result.success, true, recovered.result.message);
+      assert.strictEqual(recovered.tempo.logs.size, 1);
+      assert.strictEqual(row().submitted, 1);
     } finally {
       cleanTestFixtures();
     }

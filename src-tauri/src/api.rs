@@ -42,6 +42,7 @@ fn is_retryable(tool_name: &str) -> bool {
     "tempo_submit_day"
       | "tempo_post_worklog"
       | "tempo_update_worklog"
+      | "tempo_correct_worklog_ticket"
       | "tempo_delete_worklog"
       | "tempo_import_worklogs"
   )

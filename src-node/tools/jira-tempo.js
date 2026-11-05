@@ -54,6 +54,14 @@ import { readSprintConfig, lookupPiTickets, buildPiTicketMigration } from './spr
 
 export { takeDuplicateWorklog, resolveJiraCredentials, jiraHeaders, daysAhead, learnFutureLimit, isoDaysFromToday, classifyWorklogFailure };
 
+const WORKLOG_RETRY_ATTEMPTS = 3;
+const WORKLOG_RETRY_MS = 1000;
+
+// A gateway error's body is a whole HTML page, which is no use in a message.
+const describeHttpError = error => String(error?.message || 'Unknown error')
+  .replace(/:?\s*<[\s\S]*$/, '')
+  .slice(0, 300);
+
 /**
  * Match local entries to Tempo worklogs without letting a stale persisted ID
  * override a better duration/description match. Splitting a local task can
@@ -1250,7 +1258,7 @@ export const tools = [
   },
   {
     name: 'tempo_correct_worklog_ticket',
-    description: 'Move one exact linked Tempo worklog to a target Jira ticket after explicit user confirmation, and set the local entry to the same ticket',
+    description: 'Replace one exact linked Tempo worklog with an identical one on a target Jira ticket after explicit user confirmation, and set the local entry to match. Deletes the old worklog and confirms it is gone before posting.',
     parameters: {
       type: 'object',
       properties: {
@@ -1263,19 +1271,16 @@ export const tools = [
       required: ['entryId', 'worklogId', 'expectedCurrentTicket', 'targetTicket']
     },
     handler: async (args) => {
-      let updateAccepted = false;
+      let worklogDeleted = false;
+      let entryDate = '';
       try {
-        const entry = db.prepare('SELECT id, submitted, ticket_id, tempo_worklog_id FROM daily_summary WHERE id = ?').get(args.entryId);
+        const entry = db.prepare('SELECT id, date, submitted, ticket_id, tempo_worklog_id FROM daily_summary WHERE id = ?').get(args.entryId);
         if (!entry || Number(entry.submitted) !== 1) throw new Error('The local entry is no longer marked as submitted.');
+        entryDate = entry.date;
         if (String(entry.tempo_worklog_id) !== String(args.worklogId)) throw new Error('The local entry is no longer linked to this Tempo worklog. Refresh the preview.');
         if (String(entry.ticket_id || '').trim().toUpperCase() !== String(args.expectedLocalTicket || args.targetTicket || '').trim().toUpperCase()) {
           throw new Error('The local entry ticket has changed since the preview. Refresh before correcting.');
         }
-        // Reconciliation matches on date and ticket, so the local entry must
-        // follow the worklog or it would then show as missing from Tempo.
-        const updateLocalTicket = (ticketKey) => db
-          .prepare('UPDATE daily_summary SET ticket_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-          .run(ticketKey, args.entryId);
 
         const credentials = resolveJiraCredentials(args);
         const tempoToken = resolveTempoToken(args);
@@ -1303,7 +1308,9 @@ export const tools = [
           throw new Error(`Jira issue ${args.targetTicket} could not be resolved. No changes were made.`);
         }
         if (targetIssueId === Number(currentIssueId)) {
-          updateLocalTicket(targetIssue.key);
+          // Reconciliation matches on date and ticket, so the entry must follow Tempo.
+          db.prepare('UPDATE daily_summary SET ticket_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+            .run(targetIssue.key, args.entryId);
           return { success: true, unchanged: true, message: `Tempo worklog is already on ${targetIssue.key}. The local entry now matches it.` };
         }
 
@@ -1328,33 +1335,110 @@ export const tools = [
             : [];
         if (attributes.length) body.attributes = attributes.map(({ key, value }) => ({ key, value }));
 
-        await makeHttpRequest(`https://api.tempo.io/4/worklogs/${encodeURIComponent(args.worklogId)}`, {
-          method: 'PUT',
-          headers: { Authorization: `Bearer ${tempoToken}`, 'Content-Type': 'application/json' },
-          body
-        });
-        updateAccepted = true;
+        // Tempo's update schema has no issueId, and a PUT that sends one returns
+        // 200 without moving anything, so the worklog is replaced instead. It is
+        // deleted first, and only recreated once it is confirmed gone, so a
+        // failure can never leave the same time logged twice.
+        const worklogUrl = `https://api.tempo.io/4/worklogs/${encodeURIComponent(args.worklogId)}`;
+        const tempoHeaders = { Authorization: `Bearer ${tempoToken}`, 'Content-Type': 'application/json' };
+        const pause = () => new Promise(resolve => setTimeout(resolve, WORKLOG_RETRY_MS));
 
-        const verifyResponse = await makeHttpRequest(`https://api.tempo.io/4/worklogs/${encodeURIComponent(args.worklogId)}`, {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${tempoToken}`, 'Content-Type': 'application/json' }
-        });
-        if (Number(verifyResponse.data?.issue?.id) !== targetIssueId) {
-          return {
-            success: false, changed: true, verificationFailed: true,
-            message: 'Tempo accepted the update, but verification did not confirm the target Jira issue. Refresh Tempo status and inspect this worklog before retrying.'
-          };
+        let deleteError = null;
+        try {
+          await deleteTempoWorklog(args.worklogId, tempoToken);
+        } catch (error) {
+          if (error.status !== 404 && !isConnectivityError(error)) throw error;
+          // A gateway error doesn't say whether the delete landed, so the check below decides.
+          if (error.status !== 404) deleteError = error;
         }
-        updateLocalTicket(targetIssue.key);
+
+        let gone = false;
+        for (let attempt = 1; attempt <= WORKLOG_RETRY_ATTEMPTS && !gone; attempt += 1) {
+          try {
+            await makeHttpRequest(worklogUrl, { method: 'GET', headers: tempoHeaders });
+          } catch (error) {
+            if (error.status === 404) {
+              gone = true;
+              break;
+            }
+            return {
+              success: false, changed: true, verificationFailed: true,
+              message: `Couldn't confirm whether Tempo deleted this worklog (${describeHttpError(error)}), so no replacement was posted. Check worklog #${args.worklogId} in Tempo before retrying.`
+            };
+          }
+          if (attempt < WORKLOG_RETRY_ATTEMPTS) await pause();
+        }
+        if (!gone) {
+          return deleteError
+            ? {
+                success: false, changed: false, transient: true,
+                message: `Tempo isn't accepting changes right now (${describeHttpError(deleteError)}). The worklog is still on ${currentTicket}. Try again later, and check status.tempo.io if it keeps happening.`
+              }
+            : {
+                success: false, changed: true, verificationFailed: true,
+                message: `Tempo accepted the delete, but worklog #${args.worklogId} still exists, so no replacement was posted. Check it in Tempo before retrying.`
+              };
+        }
+
+        // From here the time is not in Tempo. The entry goes back to unsubmitted on
+        // the new ticket first, so a failed post or a crash leaves it in the Submit
+        // list rather than losing it.
+        worklogDeleted = true;
+        db.prepare(`
+          UPDATE daily_summary
+          SET ticket_id = ?, submitted = 0, tempo_worklog_id = NULL, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(targetIssue.key, args.entryId);
+
+        // A post can land despite a gateway error, and repeating it blindly would
+        // log the time twice, so Tempo is checked before each retry.
+        const findReplacement = async () => {
+          const search = await makeHttpRequest(
+            `https://api.tempo.io/4/worklogs/issue/${targetIssueId}?from=${body.startDate}&to=${body.startDate}&limit=1000`,
+            { method: 'GET', headers: tempoHeaders }
+          );
+          const results = Array.isArray(search.data?.results) ? search.data.results : [];
+          return results.find(log =>
+            log.author?.accountId === body.authorAccountId &&
+            log.startDate === body.startDate &&
+            (log.startTime || '') === (body.startTime || '') &&
+            Number(log.timeSpentSeconds) === body.timeSpentSeconds &&
+            (log.description || '') === body.description
+          ) ?? null;
+        };
+
+        let replacement = null;
+        let postError = null;
+        for (let attempt = 1; attempt <= WORKLOG_RETRY_ATTEMPTS && !replacement; attempt += 1) {
+          try {
+            const created = await makeHttpRequest('https://api.tempo.io/4/worklogs', { method: 'POST', headers: tempoHeaders, body });
+            replacement = created.data;
+          } catch (error) {
+            if (!isConnectivityError(error)) throw error;
+            postError = error;
+            await pause();
+            replacement = await findReplacement();
+          }
+        }
+        if (!replacement?.tempoWorklogId) throw postError ?? new Error('Tempo did not return the new worklog');
+
+        db.prepare(`
+          UPDATE daily_summary
+          SET submitted = 1, tempo_worklog_id = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(String(replacement.tempoWorklogId), args.entryId);
         return {
-          success: true, changed: true, worklogId: args.worklogId,
+          success: true, changed: true, worklogId: replacement.tempoWorklogId, previousWorklogId: args.worklogId,
           previousTicket: currentTicket, targetTicket: targetIssue.key,
-          message: `Tempo worklog moved from ${currentTicket} to ${targetIssue.key} and verified.`
+          message: `Tempo worklog replaced: moved from ${currentTicket} to ${targetIssue.key}.`
         };
       } catch (error) {
-        return updateAccepted
-          ? { success: false, changed: true, verificationFailed: true, message: `Tempo accepted the update, but follow-up verification failed: ${error.message}. Inspect this worklog before retrying.` }
-          : { success: false, changed: false, message: `Could not correct Tempo worklog ticket: ${error.message}` };
+        return worklogDeleted
+          ? {
+              success: false, changed: true, entryReturned: true,
+              message: `The worklog was deleted from ${args.expectedCurrentTicket}, but Tempo didn't accept its replacement (${describeHttpError(error)}). The ${entryDate} entry is back in your Submit list on ${args.targetTicket}, so submit it from there.`
+            }
+          : { success: false, changed: false, message: `Could not correct Tempo worklog ticket: ${describeHttpError(error)}` };
       }
     }
   },
