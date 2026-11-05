@@ -19,7 +19,7 @@ import { ukBankHolidays, isUkBankHoliday } from '../utils/uk-holidays.js';
 import { previousWorkingDay, isWorkingDay } from '../utils/working-days.js';
 import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, microsoftAuthorityUrl, escapeHtml } from '../utils/safe-url.js';
 import { backendPort } from '../utils/backend-port.js';
-import { extractTicketKeys, classifyPullRequest, isOpenUnmergedPullRequest } from '../tools/github-prs.js';
+import { extractTicketKeys, classifyPullRequest, isOpenUnmergedPullRequest, buildPullRequestSearches } from '../tools/github-prs.js';
 import { GraphClient, hasStoredGraphToken } from '../api/graph-client.js';
 import { fetchAllTempoPages } from '../tools/jira-tempo-worklogs.js';
 import { localDateKey, parseDateKey } from '../utils/dates.js';
@@ -307,6 +307,80 @@ async function runTests() {
     assert.strictEqual(isOpenUnmergedPullRequest({ state: 'closed', merged: false }), false);
     assert.strictEqual(isOpenUnmergedPullRequest({ state: 'merged', merged: true }), false);
     assert.strictEqual(isOpenUnmergedPullRequest({ state: 'open', merged_at: '2026-10-20T12:00:00Z' }), false);
+  });
+
+  const prQueries = filters => buildPullRequestSearches('me', filters).map(({ query }) => query);
+  const withGitHubStub = async (route, run) => {
+    const previous = httpClient.defaults.adapter;
+    httpClient.defaults.adapter = async config => ({
+      data: JSON.stringify(route(new URL(config.url))), status: 200, statusText: 'OK', headers: {}, config
+    });
+    try { return await run(); } finally { httpClient.defaults.adapter = previous; }
+  };
+
+  test('GitHub PR searches with no filters stay as polling needs them', () => {
+    assert.deepStrictEqual(prQueries(), [
+      'is:pr author:me',
+      'is:pr review-requested:me is:open',
+      'is:pr reviewed-by:me'
+    ]);
+  });
+
+  test('GitHub PR status filters map to qualifiers that match classifyPullRequest', () => {
+    assert.strictEqual(prQueries({ state: 'open', relationship: 'authored' })[0], 'is:pr author:me is:open draft:false');
+    assert.strictEqual(prQueries({ state: 'draft', relationship: 'authored' })[0], 'is:pr author:me is:open draft:true');
+    assert.strictEqual(prQueries({ state: 'merged', relationship: 'authored' })[0], 'is:pr author:me is:merged');
+    assert.strictEqual(prQueries({ state: 'closed', relationship: 'authored' })[0], 'is:pr author:me is:closed is:unmerged');
+  });
+
+  test('GitHub PR searches only run for the chosen relationship and status', () => {
+    const names = filters => buildPullRequestSearches('me', filters).map(({ name }) => name);
+    assert.deepStrictEqual(names({ relationship: 'authored' }), ['authored']);
+    assert.deepStrictEqual(names({ relationship: 'review' }), ['review-requested', 'reviewed-by-account']);
+    assert.deepStrictEqual(names({ state: 'merged' }), ['authored', 'reviewed-by-account']);
+    assert.deepStrictEqual(names({ state: 'closed', relationship: 'review' }), ['reviewed-by-account']);
+    assert.deepStrictEqual(prQueries({ relationship: 'review', state: 'open' }), [
+      'is:pr review-requested:me -author:me is:open draft:false',
+      'is:pr reviewed-by:me -author:me is:open draft:false'
+    ]);
+  });
+
+  test('GitHub PR search text cannot act as a qualifier or overrun the query limit', () => {
+    assert.strictEqual(prQueries({ relationship: 'authored', search: ' fix  is:issue ' })[0], 'is:pr author:me "fix" "is:issue"');
+    assert.strictEqual(prQueries({ relationship: 'authored', search: 'say "hi"' })[0], 'is:pr author:me "say" "hi"');
+    const longestLogin = 'x'.repeat(39);
+    const longest = buildPullRequestSearches(longestLogin, { relationship: 'review', state: 'closed', search: 'a'.repeat(500) })[0].query;
+    assert(longest.length <= 256, `Query is ${longest.length} characters`);
+    const manyWords = buildPullRequestSearches(longestLogin, { relationship: 'review', state: 'closed', search: 'word '.repeat(100) })[0].query;
+    assert(manyWords.length <= 256, `Query is ${manyWords.length} characters`);
+  });
+
+  await testAsync('github_pr_list sends the filters to GitHub and keeps review details for reviewed PRs', async () => {
+    const saved = db.prepare("SELECT value FROM settings WHERE key = 'github_config'").get();
+    const setConfig = db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('github_config', ?, CURRENT_TIMESTAMP)");
+    const queries = [];
+    try {
+      setConfig.run(JSON.stringify({ token: 'github-token', login: 'me' }));
+      const result = await withGitHubStub(url => {
+        if (url.pathname === '/user') return { login: 'me' };
+        if (url.pathname === '/search/issues') {
+          queries.push(url.searchParams.get('q'));
+          return { items: [{ number: 7, repository_url: 'https://api.github.com/repos/org/app', updated_at: '2026-11-01T00:00:00Z' }] };
+        }
+        if (url.pathname === '/repos/org/app/pulls/7') {
+          return { id: 70, number: 7, title: 'Other work', state: 'closed', merged_at: '2026-11-01T00:00:00Z', user: { login: 'someone' }, requested_reviewers: [] };
+        }
+        if (url.pathname === '/repos/org/app/pulls/7/reviews') return [{ user: { login: 'me' }, state: 'APPROVED' }];
+        throw new Error(`Unexpected request: ${url.pathname}`);
+      }, () => executeTool('github_pr_list', { relationship: 'review', state: 'merged', search: 'billing' }));
+      assert.deepStrictEqual(queries, ['is:pr reviewed-by:me -author:me is:merged "billing"']);
+      assert.strictEqual(result.prs.length, 1);
+      assert.strictEqual(result.prs[0].reviewedByAccount, true);
+      assert.strictEqual(result.prs[0].state, 'merged');
+    } finally {
+      if (saved) setConfig.run(saved.value);
+      else db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
+    }
   });
 
   test('GitHub integration exposes only read-oriented PR operations', () => {

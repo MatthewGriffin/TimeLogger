@@ -119,7 +119,47 @@ async function searchPrs(token, login, query) {
   return all;
 }
 
-async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS, diagnostics = null, openOnly = false) {
+// Each value matches one status from classifyPullRequest. is:closed alone would
+// also return merged PRs, and is:open alone would also return drafts.
+const STATE_QUALIFIERS = new Map([
+  ['open', 'is:open draft:false'],
+  ['draft', 'is:open draft:true'],
+  ['merged', 'is:merged'],
+  ['closed', 'is:closed is:unmerged']
+]);
+
+// Quoting each word keeps typed text such as "is:issue" from acting as a search
+// qualifier. The limits keep the query under GitHub's 256 character maximum.
+function quoteSearchText(search) {
+  return String(search || '').slice(0, 90).replace(/"/g, ' ').split(/\s+/).filter(Boolean)
+    .slice(0, 6).map(word => `"${word}"`).join(' ');
+}
+
+/**
+ * Build the GitHub searches for the given filters, skipping any that can't
+ * return a match. With no filters this is the full set that polling relies on.
+ */
+export function buildPullRequestSearches(login, { relationship = 'all', state = 'all', search = '' } = {}) {
+  const stateQualifier = STATE_QUALIFIERS.get(state) || '';
+  const text = quoteSearchText(search);
+  const query = (...parts) => parts.filter(Boolean).join(' ');
+  const searches = [];
+  if (relationship !== 'review') {
+    searches.push({ name: 'authored', query: query('is:pr', `author:${login}`, stateQualifier, text) });
+  }
+  if (relationship !== 'authored') {
+    // Own PRs are hidden from this filter, so they shouldn't use up the result limit.
+    const notAuthor = relationship === 'review' ? `-author:${login}` : '';
+    // A review request only exists while the PR is open.
+    if (state !== 'merged' && state !== 'closed') {
+      searches.push({ name: 'review-requested', query: query('is:pr', `review-requested:${login}`, notAuthor, stateQualifier || 'is:open', text) });
+    }
+    searches.push({ name: 'reviewed-by-account', query: query('is:pr', `reviewed-by:${login}`, notAuthor, stateQualifier, text) });
+  }
+  return searches;
+}
+
+async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS, diagnostics = null, filters = {}) {
   const login = await account(token);
   const searchAndRecord = async (name, query) => {
     try {
@@ -135,14 +175,11 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS,
       return [];
     }
   };
-  const openQualifier = openOnly ? ' is:open' : '';
-  const [authored, reviewRequested, reviewedByAccount] = await Promise.all([
-    searchAndRecord('authored', `is:pr author:${login}${openQualifier}`),
-    searchAndRecord('review-requested', `is:pr review-requested:${login} is:open`),
-    searchAndRecord('reviewed-by-account', `is:pr reviewed-by:${login}${openQualifier}`)
-  ]);
+  const searches = buildPullRequestSearches(login, filters);
+  const results = await Promise.all(searches.map(({ name, query }) => searchAndRecord(name, query)));
+  const reviewedByAccount = results[searches.findIndex(({ name }) => name === 'reviewed-by-account')] || [];
   const candidates = new Map();
-  for (const item of [...authored, ...reviewRequested, ...reviewedByAccount]) {
+  for (const item of results.flat()) {
     const repoUrl = String(item.repository_url || '');
     const match = repoUrl.match(/\/repos\/([^/]+\/[^/]+)$/);
     const number = Number(item.number);
@@ -461,16 +498,21 @@ export const tools = [
   },
   {
     name: 'github_pr_list',
-    description: 'List pull requests authored by the linked GitHub account or where it is currently requested as reviewer; includes state and ticket-key matches.',
+    description: 'List pull requests authored by the linked GitHub account, or where it is a requested or past reviewer, filtered on GitHub by relationship, status and search text; includes state and ticket-key matches.',
     parameters: {
       type: 'object',
-      properties: { ticketKeys: { type: 'array', items: { type: 'string' } } },
+      properties: {
+        ticketKeys: { type: 'array', items: { type: 'string' } },
+        relationship: { type: 'string', enum: ['all', 'authored', 'review'] },
+        state: { type: 'string', enum: ['all', 'open', 'draft', 'merged', 'closed'] },
+        search: { type: 'string', description: 'Words GitHub must find in the title, description or comments' }
+      },
       required: []
     },
-    handler: async ({ ticketKeys = [] }) => {
+    handler: async ({ ticketKeys = [], relationship, state, search }) => {
       try {
         const diagnostics = { searches: [], candidateCount: 0, detailFailures: [] };
-        const prs = await listRelevantPullRequests(requireToken(), extractTicketKeys(...ticketKeys), MAX_PRS, diagnostics);
+        const prs = await listRelevantPullRequests(requireToken(), extractTicketKeys(...ticketKeys), MAX_PRS, diagnostics, { relationship, state, search });
         return { success: true, prs, diagnostics };
       } catch (error) {
         return { success: false, message: error.message };
@@ -484,7 +526,7 @@ export const tools = [
     handler: async () => {
       try {
         const token = requireToken();
-        const prs = await listRelevantPullRequests(token, [], MAX_PRS, null, false);
+        const prs = await listRelevantPullRequests(token);
         const events = await pollReviewEvents(token, prs);
         return { success: true, events };
       } catch (error) {

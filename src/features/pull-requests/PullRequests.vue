@@ -12,6 +12,7 @@
 
     <div class="page-body pull-requests-body">
     <div v-if="message" class="notice" :class="{ error: hasError }" role="status">{{ message }}</div>
+    <div v-else-if="loadNotice" class="notice error" role="status">{{ loadNotice }}</div>
 
     <section v-if="!connected && !checkingConnection" class="connect-card">
       <h2>Connect GitHub to view pull requests</h2>
@@ -46,11 +47,11 @@
       </div>
 
       <div class="summary-row">
-        <span>{{ filteredPrs.length }} matching · showing {{ paginatedPrs.length }} on this page</span>
+        <span aria-live="polite">{{ filteredPrs.length }} matching · showing {{ paginatedPrs.length }} on this page<template v-if="loading"> · loading from GitHub…</template></span>
         <span v-if="login">Connected as @{{ login }}</span>
       </div>
 
-      <div v-if="loading && !prsLoaded" class="empty-state" aria-live="polite">Loading pull requests…</div>
+      <div v-if="loading && !filteredPrs.length" class="empty-state" aria-live="polite">Loading pull requests…</div>
       <section v-else-if="prsLoaded && filteredPrs.length" class="pr-list" aria-label="Pull requests">
         <PullRequestCard v-for="pr in paginatedPrs" :key="pr.id" :pr="pr" />
         <nav v-if="pageCount > 1" class="pagination" aria-label="Pull request pages">
@@ -69,7 +70,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { executeApi } from '@/shared/utils/api'
 import PullRequestCard from '@/features/pull-requests/components/PullRequestCard.vue'
 
@@ -93,83 +94,150 @@ interface PullRequest {
   pendingReview?: boolean
 }
 
+interface PullRequestListResult {
+  success?: boolean
+  message?: string
+  prs?: PullRequest[]
+  diagnostics?: { searches?: Array<{ name: string; count: number; error?: string }>; candidateCount?: number
+    detailFailures?: Array<{ repository: string; number: number; endpoint: string; message: string }> }
+}
+
+const SEARCH_DEBOUNCE_MS = 500
+const MIN_GITHUB_SEARCH_LENGTH = 2
+
 const connected = ref(false)
 const login = ref('')
 const checkingConnection = ref(false)
-const loading = ref(false)
 const hasError = ref(false)
 const message = ref('')
-const prs = ref<PullRequest[]>([])
-const prsLoaded = ref(false)
 const searchText = ref('')
 const relationshipFilter = ref('all')
-const stateFilter = ref('all')
+const stateFilter = ref('open')
 const currentPage = ref(1)
 const pageSize = 10
 
+const describeProblems = (result: PullRequestListResult): string => {
+  const diagnostics = result.diagnostics
+  const searches = diagnostics?.searches || []
+  const failures = diagnostics?.detailFailures || []
+  if (failures.length) {
+    const first = failures[0]
+    return `GitHub found ${diagnostics?.candidateCount || 0} candidate PR(s), but ${failures.length} detail request(s) failed. First failure: ${first.repository}#${first.number} (${first.endpoint}) — ${first.message}`
+  }
+  const failed = searches.filter(search => search.error)
+  if (failed.length) {
+    const counts = searches.map(search => `${search.name}: ${search.count}`).join(', ')
+    return `Some GitHub searches failed (${failed.map(search => search.name).join(', ')}). ${counts}`
+  }
+  if (!result.prs?.length && diagnostics?.candidateCount) {
+    return `GitHub found ${diagnostics.candidateCount} candidate PR(s), but none could be confirmed as linked to your account.`
+  }
+  return ''
+}
+
+// Holds the results of one kind of request. A newer run or a reset makes any
+// response still in flight stale, so a slow reply can't replace newer results.
+const createLoader = () => {
+  const items = ref<PullRequest[]>([])
+  const loaded = ref(false)
+  const busy = ref(false)
+  const notice = ref('')
+  let latest = 0
+  const run = async (search = '') => {
+    const request = ++latest
+    busy.value = true
+    try {
+      const result = await executeApi<PullRequestListResult>('github_pr_list', {
+        relationship: relationshipFilter.value,
+        state: stateFilter.value,
+        search
+      })
+      if (request !== latest) return
+      if (result.success === false) {
+        notice.value = result.message || 'GitHub could not load pull requests.'
+        return
+      }
+      items.value = Array.isArray(result.prs) ? result.prs : []
+      loaded.value = true
+      notice.value = describeProblems(result)
+    } catch (error) {
+      if (request === latest) notice.value = error instanceof Error ? error.message : 'Could not load pull requests.'
+    } finally {
+      if (request === latest) busy.value = false
+    }
+  }
+  const reset = () => {
+    latest++
+    items.value = []
+    loaded.value = false
+    busy.value = false
+    notice.value = ''
+  }
+  return { items, loaded, busy, notice, run, reset }
+}
+
+// GitHub's search only covers titles, descriptions and comments. So the list is
+// loaded once without the search text and matched here on repository, author,
+// branch and number, and GitHub's matches for the text are added to it.
+const list = createLoader()
+const githubMatches = createLoader()
+const prsLoaded = list.loaded
+const loading = computed(() => list.busy.value || githubMatches.busy.value)
+const loadNotice = computed(() => list.notice.value || githubMatches.notice.value)
+const githubSearch = computed(() => {
+  const text = searchText.value.trim()
+  return text.length >= MIN_GITHUB_SEARCH_LENGTH ? text : ''
+})
+
 const filteredPrs = computed(() => {
   const query = searchText.value.trim().toLowerCase()
-  return prs.value.filter(pr => {
+  const combined = new Map<string, PullRequest>()
+  for (const pr of list.items.value) {
+    const matches = !query || [pr.title, pr.repository, pr.author, pr.branch, String(pr.number)]
+      .some(value => String(value || '').toLowerCase().includes(query))
+    if (matches) combined.set(pr.id, pr)
+  }
+  if (query) for (const pr of githubMatches.items.value) combined.set(pr.id, pr)
+  // Results stay filtered here too, so the page responds as soon as a filter
+  // changes, and GitHub's search index being behind can't show the wrong status.
+  return [...combined.values()].filter(pr => {
     const relationshipMatches = relationshipFilter.value === 'all'
       || (relationshipFilter.value === 'authored' && pr.isAuthoredByAccount)
       || (relationshipFilter.value === 'review' && !pr.isAuthoredByAccount && (pr.requestedReviewer || pr.reviewedByAccount))
     const stateMatches = stateFilter.value === 'all' || pr.state === stateFilter.value
-    const searchMatches = !query || [pr.title, pr.repository, pr.author, pr.branch, String(pr.number)]
-      .some(value => String(value || '').toLowerCase().includes(query))
-    return relationshipMatches && stateMatches && searchMatches
-  })
+    return relationshipMatches && stateMatches
+  }).sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
 })
-
-watch([searchText, relationshipFilter, stateFilter], () => { currentPage.value = 1 })
 
 const pageCount = computed(() => Math.max(1, Math.ceil(filteredPrs.value.length / pageSize)))
 const paginatedPrs = computed(() => filteredPrs.value.slice((currentPage.value - 1) * pageSize, currentPage.value * pageSize))
 
-const loadPullRequests = async () => {
-  loading.value = true
-  hasError.value = false
-  try {
-    const result = await executeApi<{
-      success?: boolean
-      message?: string
-      prs?: PullRequest[]
-      diagnostics?: { searches?: Array<{ name: string; count: number; error?: string }>; candidateCount?: number
-        detailFailures?: Array<{ repository: string; number: number; endpoint: string; message: string }> }
-    }>('github_pr_list', {})
-    if (result.success === false) {
-      hasError.value = true
-      message.value = result.message || 'GitHub could not load pull requests.'
-      return
-    }
-    prs.value = Array.isArray(result.prs) ? result.prs : []
-    currentPage.value = 1
-    prsLoaded.value = true
-    const diagnostics = result.diagnostics
-    const failures = diagnostics?.detailFailures || []
-    if (failures.length) {
-      hasError.value = true
-      const first = failures[0]
-      message.value = `GitHub found ${diagnostics?.candidateCount || 0} candidate PR(s), but ${failures.length} detail request(s) failed. First failure: ${first.repository}#${first.number} (${first.endpoint}) — ${first.message}`
-    } else if (diagnostics && (diagnostics.searches || []).some(search => 'error' in search && search.error)) {
-      const failed = (diagnostics.searches || []).filter(search => 'error' in search && search.error)
-      const counts = (diagnostics.searches || []).map(search => `${search.name}: ${search.count}`).join(', ')
-      hasError.value = true
-      message.value = prs.value.length
-        ? `Loaded ${prs.value.length} pull request(s), but some GitHub searches failed (${failed.map(search => search.name).join(', ')}). ${counts}`
-        : `Some GitHub searches failed (${failed.map(search => search.name).join(', ')}). ${counts}`
-    } else if (!prs.value.length && diagnostics) {
-      const counts = (diagnostics.searches || []).map(search => `${search.name}: ${search.count}`).join(', ')
-      message.value = `No relevant pull requests returned. Search results — ${counts || 'none'}; candidates: ${diagnostics.candidateCount || 0}.`
-    } else {
-      message.value = ''
-    }
-  } catch (error) {
-    hasError.value = true
-    message.value = error instanceof Error ? error.message : 'Could not load pull requests.'
-  } finally {
-    loading.value = false
-  }
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+
+const loadGithubMatches = async () => {
+  clearTimeout(searchTimer)
+  if (githubSearch.value) await githubMatches.run(githubSearch.value)
+  else githubMatches.reset()
 }
+
+watch(searchText, () => { currentPage.value = 1 })
+watch(pageCount, count => { if (currentPage.value > count) currentPage.value = count })
+
+watch([relationshipFilter, stateFilter], () => {
+  currentPage.value = 1
+  void list.run()
+  void loadGithubMatches()
+})
+
+watch(githubSearch, text => {
+  clearTimeout(searchTimer)
+  githubMatches.reset()
+  if (!text) return
+  githubMatches.busy.value = true
+  searchTimer = setTimeout(() => { void loadGithubMatches() }, SEARCH_DEBOUNCE_MS)
+})
+
+onBeforeUnmount(() => clearTimeout(searchTimer))
 
 const refresh = async () => {
   checkingConnection.value = true
@@ -180,10 +248,11 @@ const refresh = async () => {
     login.value = result.login || ''
     if (connected.value) {
       message.value = ''
-      await loadPullRequests()
+      currentPage.value = 1
+      await Promise.all([list.run(), loadGithubMatches()])
     } else {
-      prs.value = []
-      prsLoaded.value = false
+      list.reset()
+      githubMatches.reset()
       message.value = result.message || ''
     }
   } catch (error) {
