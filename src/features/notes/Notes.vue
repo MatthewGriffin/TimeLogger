@@ -80,9 +80,10 @@
             v-for="note in visibleNotes"
             :key="note.id"
             :class="['note-item', { synced: note.oneNoteSynced }]"
+            @click="onNoteRowClick(note)"
           >
             <div class="note-header">
-              <h3>{{ note.title }}</h3>
+              <h3><button type="button" class="note-open" @click.stop="viewNote(note)">{{ note.title }}</button></h3>
               <span
                 v-if="note.isBlocker && !note.blockerResolvedAt"
                 class="blocker-badge"
@@ -95,7 +96,7 @@
               <span class="note-ai-spinner" aria-hidden="true"></span>
               AI is deciding this note's category…
             </div>
-            <div v-if="notesStore.pendingTopicSuggestions[note.id]" class="pending-topic">
+            <div v-if="notesStore.pendingTopicSuggestions[note.id]" class="pending-topic" @click.stop>
               <div class="pending-topic-copy">
                 <strong>AI category suggestion</strong>
                 <span>Review or edit the suggested category before filing this note.</span>
@@ -144,6 +145,30 @@
           <div class="empty-icon">📝</div>
           <p>No notes in {{ notesStore.selectedTopic }}</p>
           <p class="empty-hint">Create a new note to get started</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Note Viewer Modal -->
+    <div v-if="viewingNote" class="modal-overlay" @click.self="closeViewer">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="note-viewer-title">
+        <div class="modal-header">
+          <h2 id="note-viewer-title">{{ viewingNote.title }}</h2>
+          <button ref="viewerCloseButton" type="button" class="modal-close" aria-label="Close note" @click="closeViewer">✕</button>
+        </div>
+        <dl class="note-details">
+          <div><dt>Category</dt><dd>{{ viewingNote.topic }}</dd></div>
+          <div v-if="viewingNote.ticketId"><dt>Ticket</dt><dd>{{ viewingNote.ticketId }}</dd></div>
+          <div v-if="viewingNote.isBlocker">
+            <dt>Blocker</dt>
+            <dd>{{ viewingNote.blockerResolvedAt ? 'Resolved' : '🚧 Open' }}</dd>
+          </div>
+          <div><dt>Updated</dt><dd>{{ new Date(viewingNote.updatedAt).toLocaleString() }}</dd></div>
+        </dl>
+        <p class="note-full-text">{{ viewingNote.content }}</p>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" @click="closeViewer">Close</button>
+          <button type="button" class="btn-primary" @click="editViewedNote">Edit</button>
         </div>
       </div>
     </div>
@@ -290,10 +315,12 @@ const deleteCategoryFromMenu = async () => {
   categoryMenu.value = null
   if (topic) await deleteCategory(topic)
 }
-const onCategoryMenuKeydown = (event: KeyboardEvent) => {
-  if (event.key === 'Escape') closeCategoryMenu()
+const onEscapeKeydown = (event: KeyboardEvent) => {
+  if (event.key !== 'Escape') return
+  closeCategoryMenu()
+  closeViewer()
 }
-window.addEventListener('keydown', onCategoryMenuKeydown)
+window.addEventListener('keydown', onEscapeKeydown)
 const originalEditingNote = ref<{ id: string; title: string; content: string; topic: string } | null>(null)
 const editorTicketId = computed(() => (notesStore.editingNote?.ticketId || '').trim())
 
@@ -399,6 +426,30 @@ const editNote = (note: Note) => {
   originalEditingNote.value = { id: note.id, title: note.title, content: note.content, topic: note.topic }
   notesStore.setEditingNote({ ...note })
   notesStore.showNoteEditor = true
+}
+
+// Held by ID so the viewer closes by itself if the note is deleted.
+const viewingNoteId = ref<string | null>(null)
+const viewingNote = computed(() => notesStore.notes.find(note => note.id === viewingNoteId.value) ?? null)
+const viewerCloseButton = ref<HTMLButtonElement | null>(null)
+
+const viewNote = (note: Note) => {
+  viewingNoteId.value = note.id
+  nextTick(() => viewerCloseButton.value?.focus())
+}
+
+const onNoteRowClick = (note: Note) => {
+  // Dragging to select text in a row also ends in a click.
+  if (window.getSelection()?.toString()) return
+  viewNote(note)
+}
+
+const closeViewer = () => { viewingNoteId.value = null }
+
+const editViewedNote = () => {
+  const note = viewingNote.value
+  closeViewer()
+  if (note) editNote(note)
 }
 
 const createCategory = async () => {
@@ -586,7 +637,7 @@ const onFocusRequest = (event: Event) => {
 window.addEventListener('timelogger:focus-request', onFocusRequest)
 onUnmounted(() => {
   window.removeEventListener('timelogger:focus-request', onFocusRequest)
-  window.removeEventListener('keydown', onCategoryMenuKeydown)
+  window.removeEventListener('keydown', onEscapeKeydown)
 })
 </script>
 
@@ -885,6 +936,43 @@ onUnmounted(() => {
   font-weight: 600;
   color: var(--color-text);
   flex: 1;
+}
+
+.note-open {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.note-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+}
+
+.note-details dt {
+  color: var(--color-text-muted);
+}
+
+.note-details dd {
+  margin: 0;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.note-full-text {
+  margin: 0 0 1rem;
+  color: var(--color-text);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .sync-badge {
