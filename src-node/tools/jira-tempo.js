@@ -1353,7 +1353,7 @@ export const tools = [
         }
 
         let gone = false;
-        for (let attempt = 1; attempt <= WORKLOG_RETRY_ATTEMPTS && !gone; attempt += 1) {
+        for (let attempt = 1; attempt <= WORKLOG_RETRY_ATTEMPTS; attempt += 1) {
           try {
             await makeHttpRequest(worklogUrl, { method: 'GET', headers: tempoHeaders });
           } catch (error) {
