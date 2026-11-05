@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.7.97"
+version = "0.7.98"
 description = "Tempo time logging helper app"
 authors = ["Matthew Griffin"]
 license = "MIT"

@@ -64,7 +64,9 @@ export function normalizeNotes(value: unknown): Note[] {
     const updatedAt = String(note.updated_at ?? note.updatedAt ?? createdAt)
     return {
       id: String(id),
-      title: typeof note.title === 'string' ? note.title : content.split(/\r?\n/, 1)[0].slice(0, 80),
+      // Only notes from before titles were removed have one. This stays the saved
+      // value, so a heading made from the note's text is never written back.
+      title: typeof note.title === 'string' ? note.title : '',
       content,
       topic,
       createdAt,
