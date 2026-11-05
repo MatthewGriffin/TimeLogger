@@ -6,48 +6,36 @@
 
 use crate::platform::app_data_dir;
 #[cfg(target_os = "windows")]
-use crate::platform::CREATE_NO_WINDOW;
+use crate::platform::shell_open;
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
+/// The shell runs whatever it is handed, so anything other than a web link
+/// (a local path, `file:`, a custom protocol) must never reach it.
+fn web_url(raw: &str) -> Result<url::Url, String> {
+  let parsed = url::Url::parse(raw).map_err(|_| "That link is not a valid URL.".to_string())?;
+  match parsed.scheme() {
+    "http" | "https" => Ok(parsed),
+    _ => Err("Only http and https links can be opened.".to_string()),
+  }
+}
+
 #[tauri::command]
 pub fn open_external_url(url: String) -> Result<String, String> {
+  let target = web_url(&url)?;
+
   #[cfg(target_os = "windows")]
   {
-    use std::ffi::OsStr;
-    use std::os::windows::ffi::OsStrExt;
-
-    let parsed = url::Url::parse(&url).map_err(|_| "Invalid URL.".to_string())?;
-    if !matches!(parsed.scheme(), "http" | "https") {
-      return Err("Only HTTP and HTTPS links can be opened.".to_string());
-    }
-
-    #[link(name = "shell32")]
-    unsafe extern "system" {
-      fn ShellExecuteW(
-        hwnd: *mut std::ffi::c_void,
-        operation: *const u16,
-        file: *const u16,
-        parameters: *const u16,
-        directory: *const u16,
-        show_command: i32,
-      ) -> isize;
-    }
-
-    let operation: Vec<u16> = OsStr::new("open").encode_wide().chain(Some(0)).collect();
-    let target: Vec<u16> = OsStr::new(parsed.as_str()).encode_wide().chain(Some(0)).collect();
-    let result = unsafe {
-      ShellExecuteW(std::ptr::null_mut(), operation.as_ptr(), target.as_ptr(),
-        std::ptr::null(), std::ptr::null(), 1)
-    };
-    if result <= 32 {
-      return Err(format!("Windows could not open the URL (ShellExecuteW: {}).", result));
-    }
+    shell_open(std::ffi::OsStr::new(target.as_str()))
+      .map_err(|e| format!("Failed to open URL: {}", e))?;
     Ok("Opened".to_string())
   }
 
   #[cfg(not(target_os = "windows"))]
-  Err("Opening URLs is only supported on Windows in this build".to_string())
+  {
+    let _ = target;
+    Err("Opening URLs is only supported on Windows in this build".to_string())
+  }
 }
 
 /// Show the native save dialog and write the backup to the selected path.
@@ -122,18 +110,37 @@ pub fn open_logs_folder() -> Result<String, String> {
 
   #[cfg(target_os = "windows")]
   {
-    use std::process::Command;
-    use std::os::windows::process::CommandExt;
-    // explorer.exe returns a non-zero exit code even when it succeeds, so the
-    // status is deliberately not checked - only a spawn failure is a failure.
-    Command::new("explorer.exe")
-      .arg(&dir)
-      .creation_flags(CREATE_NO_WINDOW)
-      .spawn()
+    shell_open(dir.as_os_str())
       .map_err(|e| format!("Could not open the log folder: {}", e))?;
     Ok(dir.to_string_lossy().to_string())
   }
 
   #[cfg(not(target_os = "windows"))]
   Err("Opening the log folder is only supported on Windows in this build".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::web_url;
+
+  #[test]
+  fn web_links_keep_their_full_query_string() {
+    let url = "https://login.microsoftonline.com/a/oauth2/v2.0/authorize?client_id=x&scope=y%20z&state=1";
+    assert_eq!(web_url(url).unwrap().as_str(), url);
+    assert!(web_url("http://localhost:3001/health").is_ok());
+  }
+
+  #[test]
+  fn anything_the_shell_could_execute_is_rejected() {
+    for target in [
+      r"C:\Windows\System32\calc.exe",
+      "calc.exe",
+      "file:///C:/Windows/System32/calc.exe",
+      "ms-settings:windowsdefender",
+      "javascript:alert(1)",
+      "",
+    ] {
+      assert!(web_url(target).is_err(), "{target} should be rejected");
+    }
+  }
 }

@@ -32,8 +32,13 @@ const CANCELLED_MEETING_STATUS = new Set([5, 7]);
  * format, so the filter must be built with the current culture. Hardcoding a
  * pattern silently returns the wrong range on non-US locales (an en-GB machine
  * reads "09/04" as 9 April, not 4 September).
+ *
+ * The whole script is one "& { ... }" block followed by a blank line because
+ * PowerShell reads stdin like an interactive prompt: at the top level, a
+ * "catch" on its own line would be parsed as a new statement. Keep it ASCII,
+ * since stdin is decoded using the console code page.
  */
-const PS_SCRIPT = `
+const PS_SCRIPT = `& {
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -44,7 +49,7 @@ try {
   $outlook = New-Object -ComObject Outlook.Application
 } catch {
   Write-Output (ConvertTo-Json @{ ok = $false; code = 'OUTLOOK_UNAVAILABLE'; error = $_.Exception.Message } -Compress)
-  exit 0
+  return
 }
 
 try {
@@ -93,22 +98,23 @@ try {
 } catch {
   Write-Output (ConvertTo-Json @{ ok = $false; code = 'OUTLOOK_QUERY_FAILED'; error = $_.Exception.Message } -Compress)
 }
+}
+
 `;
 
 /**
  * Run the COM query in PowerShell.
  *
- * The script is passed as a base64 UTF-16LE -EncodedCommand so no quoting or
- * escaping of the script body is needed, and the dates go through the
- * environment so they can never be interpolated into the script text.
+ * The script is piped over stdin. -EncodedCommand and -ExecutionPolicy Bypass
+ * are avoided because antivirus treats them as strong malware indicators, and
+ * neither is needed: execution policy only governs script files. The dates go
+ * through the environment so they can never be interpolated into the script.
  */
 function runScript(startDate, endDate) {
   return new Promise((resolve, reject) => {
-    const encoded = Buffer.from(PS_SCRIPT, 'utf16le').toString('base64');
-
     const child = spawn(
       'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded],
+      ['-NoProfile', '-NonInteractive', '-Command', '-'],
       {
         windowsHide: true,
         env: { ...process.env, TL_START: startDate, TL_END: endDate }
@@ -124,6 +130,11 @@ function runScript(startDate, endDate) {
       child.kill();
       reject(new Error('Outlook did not respond within 60 seconds. Make sure Outlook is running and not showing a dialog.'));
     }, SCRIPT_TIMEOUT_MS);
+
+    // Without this, a PowerShell that fails to start would surface as an
+    // uncaught EPIPE and take the whole backend down.
+    child.stdin.on('error', () => {});
+    child.stdin.end(PS_SCRIPT);
 
     child.stdout.on('data', chunk => { stdout += chunk.toString(); });
     child.stderr.on('data', chunk => { stderr += chunk.toString(); });

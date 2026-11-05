@@ -1,104 +1,34 @@
-//! Registers and removes the Windows "run at login" entry using the
-//! in-process Windows Registry API (no hidden reg.exe child process).
+//! Registers and removes the Windows "run at login" entry.
+//!
+//! The registry is written in-process rather than through `reg.exe`: a hidden
+//! child process editing the Run key is what malware persistence looks like to
+//! antivirus behaviour monitoring.
 
 #[cfg(target_os = "windows")]
-mod windows_registry {
-  use std::ffi::c_void;
-  use std::io;
-
-  type HKey = *mut c_void;
-
-  const HKEY_CURRENT_USER: HKey = 0x8000_0001usize as HKey;
-  const KEY_SET_VALUE: u32 = 0x0002;
-  const REG_SZ: u32 = 1;
-  const ERROR_FILE_NOT_FOUND: i32 = 2;
-  const RUN_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-
-  #[link(name = "advapi32")]
-  unsafe extern "system" {
-    fn RegCreateKeyExW(
-      key: HKey,
-      sub_key: *const u16,
-      reserved: u32,
-      class: *mut u16,
-      options: u32,
-      desired_access: u32,
-      security_attributes: *const c_void,
-      result: *mut HKey,
-      disposition: *mut u32,
-    ) -> i32;
-    fn RegOpenKeyExW(key: HKey, sub_key: *const u16, options: u32, desired_access: u32, result: *mut HKey) -> i32;
-    fn RegSetValueExW(key: HKey, name: *const u16, reserved: u32, value_type: u32, data: *const u8, data_len: u32) -> i32;
-    fn RegDeleteValueW(key: HKey, name: *const u16) -> i32;
-    fn RegCloseKey(key: HKey) -> i32;
-  }
-
-  fn wide(value: &str) -> Vec<u16> {
-    value.encode_utf16().chain(Some(0)).collect()
-  }
-
-  pub fn enable(executable: &std::path::Path) -> Result<(), String> {
-    let sub_key = wide(RUN_KEY);
-    let value_name = wide("TimeLogger");
-    // The Run key expects a command line; quote the executable path so installs
-    // beneath "Program Files" remain valid.
-    let command = wide(&format!("\"{}\"", executable.display()));
-    let mut key: HKey = std::ptr::null_mut();
-    let mut disposition = 0u32;
-    let status = unsafe {
-      RegCreateKeyExW(
-        HKEY_CURRENT_USER, sub_key.as_ptr(), 0, std::ptr::null_mut(), 0,
-        KEY_SET_VALUE, std::ptr::null(), &mut key, &mut disposition
-      )
-    };
-    if status != 0 {
-      return Err(format!("Could not open the Windows startup registry key: {}", io::Error::from_raw_os_error(status)));
-    }
-
-    let bytes = (command.len() * std::mem::size_of::<u16>()) as u32;
-    let status = unsafe {
-      RegSetValueExW(key, value_name.as_ptr(), 0, REG_SZ, command.as_ptr().cast(), bytes)
-    };
-    unsafe { RegCloseKey(key); }
-    if status != 0 {
-      return Err(format!("Could not enable autostart: {}", io::Error::from_raw_os_error(status)));
-    }
-    Ok(())
-  }
-
-  pub fn disable() -> Result<(), String> {
-    let sub_key = wide(RUN_KEY);
-    let value_name = wide("TimeLogger");
-    let mut key: HKey = std::ptr::null_mut();
-    let status = unsafe {
-      RegOpenKeyExW(HKEY_CURRENT_USER, sub_key.as_ptr(), 0, KEY_SET_VALUE, &mut key)
-    };
-    if status == ERROR_FILE_NOT_FOUND {
-      return Ok(());
-    }
-    if status != 0 {
-      return Err(format!("Could not open the Windows startup registry key: {}", io::Error::from_raw_os_error(status)));
-    }
-
-    let status = unsafe { RegDeleteValueW(key, value_name.as_ptr()) };
-    unsafe { RegCloseKey(key); }
-    if status == ERROR_FILE_NOT_FOUND {
-      return Ok(());
-    }
-    if status != 0 {
-      return Err(format!("Could not disable autostart: {}", io::Error::from_raw_os_error(status)));
-    }
-    Ok(())
-  }
-}
+const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
+#[cfg(target_os = "windows")]
+const RUN_VALUE: &str = "TimeLogger";
 
 #[tauri::command]
 pub fn enable_autostart() -> Result<String, String> {
   #[cfg(target_os = "windows")]
   {
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+
     let app_path = std::env::current_exe()
       .map_err(|e| format!("Failed to get app path: {}", e))?;
-    windows_registry::enable(&app_path)?;
+
+    let (run_key, _) = RegKey::predef(HKEY_CURRENT_USER)
+      .create_subkey(RUN_KEY)
+      .map_err(|e| format!("Failed to open autostart registry key: {}", e))?;
+
+    // Quoted because Windows parses this value as a command line, and an
+    // unquoted path containing spaces can resolve to the wrong executable.
+    run_key
+      .set_value(RUN_VALUE, &format!("\"{}\"", app_path.display()))
+      .map_err(|e| format!("Failed to set autostart: {}", e))?;
+
     Ok("Autostart enabled".to_string())
   }
 
@@ -110,8 +40,19 @@ pub fn enable_autostart() -> Result<String, String> {
 pub fn disable_autostart() -> Result<String, String> {
   #[cfg(target_os = "windows")]
   {
-    windows_registry::disable()?;
-    Ok("Autostart disabled".to_string())
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_SET_VALUE};
+    use winreg::RegKey;
+
+    let run_key = RegKey::predef(HKEY_CURRENT_USER)
+      .open_subkey_with_flags(RUN_KEY, KEY_SET_VALUE)
+      .map_err(|e| format!("Failed to open autostart registry key: {}", e))?;
+
+    match run_key.delete_value(RUN_VALUE) {
+      Ok(()) => Ok("Autostart disabled".to_string()),
+      // Already absent is the state the user asked for.
+      Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok("Autostart disabled".to_string()),
+      Err(e) => Err(format!("Failed to remove autostart: {}", e)),
+    }
   }
 
   #[cfg(not(target_os = "windows"))]
