@@ -83,7 +83,7 @@
             @click="onNoteRowClick(note)"
           >
             <div class="note-header">
-              <h3><button type="button" class="note-open" @click.stop="viewNote(note)">{{ note.title }}</button></h3>
+              <h3><button type="button" class="note-open" @click.stop="viewNote(note)">{{ noteHeading(note) }}</button></h3>
               <span
                 v-if="note.isBlocker && !note.blockerResolvedAt"
                 class="blocker-badge"
@@ -104,7 +104,7 @@
               <div class="pending-topic-actions">
                 <input
                   type="text"
-                  :aria-label="`Edit suggested category for ${note.title}`"
+                  :aria-label="`Edit suggested category for ${noteHeading(note)}`"
                   :list="`note-categories-${note.id}`"
                   :value="pendingCategoryChoices[note.id] ?? notesStore.pendingTopicSuggestions[note.id].topic"
                   maxlength="30"
@@ -122,16 +122,16 @@
                 >Use category</button>
               </div>
             </div>
-            <p class="note-preview">{{ truncate(note.content, 100) }}</p>
+            <p v-if="notePreview(note)" class="note-preview">{{ notePreview(note) }}</p>
             <div class="note-footer">
               <span class="note-time">{{ formatDate(note.updatedAt) }}</span>
               <div class="note-actions">
-                <button type="button" class="btn-icon" @click.stop="editNote(note)" :aria-label="`Edit note: ${note.title}`" title="Edit">✏️</button>
+                <button type="button" class="btn-icon" @click.stop="editNote(note)" :aria-label="`Edit note: ${noteHeading(note)}`" title="Edit">✏️</button>
                 <button
                   class="btn-icon delete"
                   type="button"
                   @click.stop="deleteNote(note.id)"
-                  :aria-label="`Delete note: ${note.title}`"
+                  :aria-label="`Delete note: ${noteHeading(note)}`"
                   title="Delete"
                   :disabled="notesStore.isLoading"
                 >🗑️</button>
@@ -153,7 +153,7 @@
     <div v-if="viewingNote" class="modal-overlay" @click.self="closeViewer">
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="note-viewer-title">
         <div class="modal-header">
-          <h2 id="note-viewer-title">{{ viewingNote.title }}</h2>
+          <h2 id="note-viewer-title">{{ viewingNote.title || 'Note' }}</h2>
           <button ref="viewerCloseButton" type="button" class="modal-close" aria-label="Close note" @click="closeViewer">✕</button>
         </div>
         <dl class="note-details">
@@ -182,14 +182,17 @@
         </div>
 
         <form @submit.prevent="saveNote" class="note-form">
+          <p v-if="notesStore.editingNote?.title" class="field-hint">Title: {{ notesStore.editingNote.title }}</p>
+
           <div class="form-group">
-            <label>Title *</label>
-            <input
-              v-model="notesStore.editingNote!.title"
-              type="text"
-              placeholder="Note title"
+            <label for="note-content">Note *</label>
+            <textarea
+              id="note-content"
+              v-model="notesStore.editingNote!.content"
+              placeholder="Write your note here..."
               required
-              autofocus
+              rows="10"
+              ref="noteContentInput"
             />
           </div>
 
@@ -245,17 +248,6 @@
                 <span class="ticket-match-summary">{{ match.summary }}</span>
               </button>
             </div>
-          </div>
-
-          <div class="form-group">
-            <label>Content *</label>
-            <textarea
-              v-model="notesStore.editingNote!.content"
-              placeholder="Write your note here..."
-              required
-              rows="10"
-              ref="noteContentInput"
-            />
           </div>
 
           <div class="form-group checkbox blocker-toggle">
@@ -337,9 +329,9 @@ const recentTickets = computed(() => {
 const findJiraTicketForNote = async () => {
   const note = notesStore.editingNote
   if (!note) return
-  const query = (note.title || '').trim() || (note.ticketId || '').trim()
+  const query = (note.title || '').trim() || firstLine(note.content) || (note.ticketId || '').trim()
   if (!query) {
-    uiStore.showError('Enter a title or ticket ID to search for')
+    uiStore.showError('Write the note or enter a ticket ID to search for')
     return
   }
   try {
@@ -391,6 +383,20 @@ const truncate = (text: string, length: number) => {
   return text.length > length ? text.substring(0, length) + '...' : text
 }
 
+const firstLine = (text: string) => text.split(/\r?\n/).find(line => line.trim())?.trim().slice(0, 80) ?? ''
+
+const noteHeading = (note: Note) => note.title || firstLine(note.content)
+
+// A note without a title is headed by its first line, so the preview carries on from there.
+const notePreview = (note: Note) => {
+  if (note.title) return truncate(note.content, 100)
+  const text = note.content.trim()
+  const lineEnd = text.search(/\r?\n/)
+  const heading = firstLine(text)
+  const rest = lineEnd >= 0 && heading.length === lineEnd ? text.slice(lineEnd).trim() : text.slice(heading.length).trim()
+  return truncate(rest, 100)
+}
+
 const formatDate = (dateStr: string) => {
   const date = new Date(dateStr)
   const now = new Date()
@@ -420,6 +426,7 @@ const openNewNote = () => {
     isBlocker: false
   })
   notesStore.showNoteEditor = true
+  nextTick(() => noteContentInput.value?.focus())
 }
 
 const editNote = (note: Note) => {
@@ -631,7 +638,6 @@ onMounted(async () => {
 const onFocusRequest = (event: Event) => {
   if ((event as CustomEvent<string>).detail !== 'note') return
   openNewNote()
-  nextTick(() => noteContentInput.value?.focus())
 }
 
 window.addEventListener('timelogger:focus-request', onFocusRequest)
