@@ -176,70 +176,134 @@
 
       <!-- Tempo reconciliation follows the unsubmitted entries so it has the full content width. -->
       <div class="submit-reconciliation">
-        <section class="ticket-preview-section">
-          <h2>PI Ticket Correction Review</h2>
-          <p class="section-note">Finds entries in the date range that are on the old PI's tickets and proposes the same type of ticket from the PI to update to. It also lists entries whose ticket differs from their Tempo worklog. Nothing changes until you confirm a correction, or confirm them all.</p>
-          <div class="custom-range ticket-review-range">
-            <label class="range-field">
-              <span>Old PI</span>
-              <input v-model.trim="ticketReviewPi" type="text" inputmode="numeric" class="date-input ticket-review-pi" placeholder="e.g. 43" />
-            </label>
-            <label class="range-field">
-              <span>PI to update to</span>
-              <input v-model.trim="ticketReviewTargetPi" type="text" inputmode="numeric" class="date-input ticket-review-pi" placeholder="e.g. 44" />
-            </label>
-            <label class="range-field">
-              <span>From</span>
-              <input v-model="ticketReviewStart" type="date" :max="todayDate" class="date-input" />
-            </label>
-            <label class="range-field">
-              <span>To</span>
-              <input v-model="ticketReviewEnd" type="date" :min="ticketReviewStart || undefined" :max="todayDate" class="date-input" />
-            </label>
-            <button class="btn-range" :disabled="ticketPreviewLoading || ticketCorrectionLoading || !ticketReviewRange || !ticketReviewPiValid" @click="previewTicketCorrections">{{ ticketPreviewLoading ? "Reviewing…" : "Preview PI ticket mismatches" }}</button>
-          </div>
-          <p v-if="ticketReviewPiNote" class="section-note">{{ ticketReviewPiNote }}</p>
-          <p v-if="ticketReviewRangeNote" class="section-note">{{ ticketReviewRangeNote }}</p>
-          <p v-if="ticketPreviewError" class="range-error">{{ ticketPreviewError }}</p>
-          <template v-else-if="ticketPreviewLoaded && !ticketPreviewLoading">
-            <p>{{ ticketPreviewRows.length }} possible correction(s) across {{ ticketPreviewReviewed }} entries with a ticket, {{ ticketPreviewRangeLabel }}.{{ ticketPreviewComparedLabel }}</p>
-            <button v-if="ticketPreviewRows.length > 1" class="btn-range" :disabled="ticketCorrectionLoading" @click="openApproveAll">Approve all ({{ ticketPreviewRows.length }})</button>
-            <div v-if="approveAllPending" class="ticket-correction-confirm">
-              <strong>Confirm all {{ ticketPreviewRows.length }} ticket changes</strong>
-              <p>{{ approveAllSummary }}</p>
-              <p class="section-note">Check the list below first. Corrections run one at a time. If one fails, the rest still run, and it stays in the list so you can try it again. Tempo worklogs keep their author, date, time, duration, description and available work attributes.</p>
-              <div class="reconciliation-heading">
-                <button class="btn-range" :disabled="ticketCorrectionLoading" @click="approveAllPending = false">Cancel</button>
-                <button class="btn-range" :disabled="ticketCorrectionLoading" @click="applyAllTicketCorrections">Confirm all {{ ticketPreviewRows.length }}</button>
+        <section ref="piReviewSection" class="pi-review" aria-labelledby="pi-review-title">
+          <header class="pi-review-header">
+            <h2 id="pi-review-title">PI Ticket Correction Review</h2>
+            <p>Find entries still on an old PI's tickets and move them to the same type of ticket in another PI. Nothing changes until you confirm.</p>
+          </header>
+
+          <form class="pi-review-form" @submit.prevent="previewTicketCorrections">
+            <fieldset class="pi-review-group">
+              <legend>PI change</legend>
+              <div class="pi-review-fields">
+                <label class="range-field">
+                  <span>Old PI</span>
+                  <input v-model.trim="ticketReviewPi" type="text" inputmode="numeric" class="date-input pi-review-pi" placeholder="e.g. 43" :aria-invalid="ticketReviewPiProblem ? 'true' : undefined" />
+                </label>
+                <span class="pi-review-arrow" aria-hidden="true">→</span>
+                <label class="range-field">
+                  <span>Update to</span>
+                  <input v-model.trim="ticketReviewTargetPi" type="text" inputmode="numeric" class="date-input pi-review-pi" placeholder="e.g. 44" :aria-invalid="ticketReviewPiProblem ? 'true' : undefined" />
+                </label>
               </div>
-            </div>
-            <p v-if="approveAllProgress" class="section-note" role="status">{{ approveAllProgress }}</p>
-            <div v-for="row in ticketPreviewRows" :key="row.entryId" class="ticket-preview-row">
-              <strong>{{ row.date }} · {{ row.startTime || 'Time unknown' }} · {{ row.task }}</strong>
-              <span>Local: <b>{{ row.localTicket }}</b> · Tempo: <b>{{ row.worklogId ? row.tempoTicket : 'not submitted' }}</b> → Change to: <b>{{ row.targetTicket }}</b></span>
-              <small v-if="row.worklogId">Worklog #{{ row.worklogId }} · {{ row.tempoDurationMins }}m</small>
-              <button class="btn-range" :disabled="ticketCorrectionLoading" @click="approveAllPending = false; pendingTicketCorrection = row">Review correction</button>
-            </div>
-            <div v-if="pendingTicketCorrection" class="ticket-correction-confirm">
-              <strong>Confirm ticket change</strong>
-              <p>{{ pendingCorrectionSummary }}</p>
-              <p v-if="pendingCorrectionMovesTempo" class="section-note">This updates the existing Tempo worklog in place. Its author, date, time, duration, description and available work attributes will be preserved. The local entry will not be resubmitted.</p>
-              <div class="reconciliation-heading">
-                <button class="btn-range" :disabled="ticketCorrectionLoading" @click="pendingTicketCorrection = null">Cancel</button>
-                <button class="btn-range" :disabled="ticketCorrectionLoading" @click="applyTicketCorrection">{{ ticketCorrectionLoading ? 'Updating…' : pendingCorrectionMovesTempo ? 'Confirm and update Tempo' : 'Confirm and update entry' }}</button>
+            </fieldset>
+            <fieldset class="pi-review-group">
+              <legend>Entries dated</legend>
+              <div class="pi-review-fields">
+                <label class="range-field">
+                  <span>From</span>
+                  <input v-model="ticketReviewStart" type="date" :max="todayDate" class="date-input" />
+                </label>
+                <label class="range-field">
+                  <span>To</span>
+                  <input v-model="ticketReviewEnd" type="date" :min="ticketReviewStart || undefined" :max="todayDate" class="date-input" />
+                </label>
               </div>
+            </fieldset>
+            <button type="submit" class="btn-primary pi-review-find" :disabled="ticketPreviewLoading || ticketCorrectionLoading || !ticketReviewRange || !ticketReviewPiValid">
+              {{ ticketPreviewLoading ? 'Checking…' : 'Find corrections' }}
+            </button>
+          </form>
+
+          <p v-if="ticketReviewPiProblem" class="pi-review-note is-problem">{{ ticketReviewPiProblem }}</p>
+          <p v-else-if="ticketReviewPiNote" class="pi-review-note">{{ ticketReviewPiNote }}</p>
+          <p v-if="ticketReviewRangeNote" class="pi-review-note" :class="{ 'is-problem': ticketReviewRangeInvalid }">{{ ticketReviewRangeNote }}</p>
+
+          <p v-if="ticketPreviewError" class="pi-review-notice is-error" role="alert">{{ ticketPreviewError }}</p>
+          <p v-else-if="ticketPreviewLoading" class="pi-review-note" role="status">Checking entries against Jira and Tempo…</p>
+
+          <div v-else-if="ticketPreviewLoaded" class="pi-review-results">
+            <!-- Sticky so the outcome and the bulk action stay in view while scrolling a long list. -->
+            <div class="pi-review-bar">
+              <div class="pi-review-bar-main">
+                <div class="pi-review-summary">
+                  <strong>{{ ticketPreviewRows.length === 1 ? '1 correction' : `${ticketPreviewRows.length} corrections` }}</strong>
+                  <span>{{ ticketPreviewScope }}</span>
+                </div>
+                <button v-if="ticketPreviewRows.length > 1 && !approveAllPending" type="button" class="btn-primary" :disabled="ticketCorrectionLoading" @click="openApproveAll">
+                  Approve all {{ ticketPreviewRows.length }}
+                </button>
+              </div>
+
+              <div v-if="approveAllPending" class="pi-review-confirm" role="group" aria-label="Confirm all corrections">
+                <p><strong>{{ approveAllSummary }}</strong></p>
+                <p class="pi-review-confirm-note">Check the list first. Each worklog is deleted, confirmed gone, then recreated with a new ID on the new ticket. If a correction is refused, the rest still run. If Tempo is unavailable or a step can't be confirmed, the run stops.</p>
+                <div class="pi-review-actions">
+                  <button type="button" class="btn-secondary" @click="approveAllPending = false">Cancel</button>
+                  <button type="button" class="btn-primary" @click="applyAllTicketCorrections">Confirm all {{ ticketPreviewRows.length }}</button>
+                </div>
+              </div>
+
+              <div v-if="approveAllProgress" class="pi-review-progress" role="status">
+                <span>Updating {{ approveAllProgress.current }} of {{ approveAllProgress.total }}…</span>
+                <progress :value="approveAllProgress.current - 1" :max="approveAllProgress.total"></progress>
+              </div>
+
+              <p v-if="ticketCorrectionNotice" class="pi-review-notice" :class="`is-${ticketCorrectionNotice.tone}`" :role="ticketCorrectionNotice.tone === 'success' ? 'status' : 'alert'">
+                {{ ticketCorrectionNotice.text }}
+              </p>
             </div>
-            <p v-if="ticketCorrectionMessage" class="section-note">{{ ticketCorrectionMessage }}</p>
-            <details v-if="ticketCorrectionFailures.length" open>
-              <summary>{{ ticketCorrectionFailures.length === 1 ? '1 correction' : `${ticketCorrectionFailures.length} corrections` }} failed</summary>
-              <p v-for="failure in ticketCorrectionFailures" :key="failure">{{ failure }}</p>
-            </details>
-            <p v-if="ticketPreviewRows.length === 0">No ticket corrections found.</p>
-            <details v-if="ticketPreviewUnmatched.length">
+
+            <p v-if="ticketPreviewRows.length === 0 && !ticketCorrectionNotice" class="pi-review-empty">Nothing to correct in these dates.</p>
+
+            <section v-for="group in ticketPreviewGroups" :key="group.key" class="pi-review-list" :aria-label="`${group.from} to ${group.to}`">
+              <h3 class="pi-review-list-title">
+                <span class="pi-review-ticket">{{ group.from }}</span>
+                <span aria-hidden="true">→</span>
+                <span class="pi-review-ticket is-target">{{ group.to }}</span>
+                <span class="pi-review-count">{{ group.rows.length }}</span>
+              </h3>
+              <ul>
+                <li v-for="row in group.rows" :key="row.entryId" class="pi-review-row" :class="{ 'is-open': pendingTicketCorrection?.entryId === row.entryId }">
+                  <div class="pi-review-row-main">
+                    <span class="pi-review-date">{{ formatDate(row.date) }}</span>
+                    <span class="pi-review-time">{{ row.startTime || '—' }}</span>
+                    <span class="pi-review-task" :title="row.task">{{ row.task }}</span>
+                    <span class="pi-review-kind" :class="{ 'is-local': !correctionMovesTempo(row) }">{{ correctionKindLabel(row) }}</span>
+                    <button type="button" class="btn-secondary" :disabled="ticketCorrectionLoading" :aria-expanded="pendingTicketCorrection?.entryId === row.entryId" @click="toggleTicketCorrection(row)">
+                      {{ pendingTicketCorrection?.entryId === row.entryId ? 'Close' : 'Review' }}
+                    </button>
+                  </div>
+                  <p v-if="ticketCorrectionErrors[row.entryId]" class="pi-review-row-error" role="alert">{{ ticketCorrectionErrors[row.entryId] }}</p>
+                  <div v-if="pendingTicketCorrection?.entryId === row.entryId" class="pi-review-confirm" role="group" aria-label="Confirm ticket change">
+                    <p><strong>{{ pendingCorrectionSummary }}</strong></p>
+                    <dl class="pi-review-details">
+                      <div><dt>Local entry</dt><dd>{{ row.localTicket }}</dd></div>
+                      <div><dt>Tempo</dt><dd>{{ row.worklogId ? row.tempoTicket : 'Not submitted' }}</dd></div>
+                      <div v-if="row.worklogId"><dt>Worklog</dt><dd>#{{ row.worklogId }} · {{ formatReconciliationDuration(row.tempoDurationMins) }}</dd></div>
+                    </dl>
+                    <p v-if="correctionMovesTempo(row)" class="pi-review-confirm-note">The new worklog keeps the same author, date, time, duration, description and work attributes, but gets a new ID and created date. If Tempo refuses it, the entry goes back to your Submit list.</p>
+                    <div class="pi-review-actions">
+                      <button type="button" class="btn-secondary" :disabled="ticketCorrectionLoading" @click="pendingTicketCorrection = null">Cancel</button>
+                      <button type="button" class="btn-primary" :disabled="ticketCorrectionLoading" @click="applyTicketCorrection">
+                        {{ ticketCorrectionLoading ? 'Updating…' : correctionMovesTempo(row) ? 'Replace in Tempo' : 'Update entry' }}
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              </ul>
+            </section>
+
+            <details v-if="ticketPreviewUnmatched.length" class="pi-review-manual">
               <summary>{{ ticketPreviewUnmatched.length === 1 ? '1 entry needs' : `${ticketPreviewUnmatched.length} entries need` }} manual review</summary>
-              <p v-for="item in ticketPreviewUnmatched" :key="item.entryId">{{ item.date }} · {{ item.task }} · {{ item.reason }}</p>
+              <ul>
+                <li v-for="item in ticketPreviewUnmatched" :key="item.entryId">
+                  <strong>{{ formatDate(item.date) }} · {{ item.task }}</strong>
+                  <span>{{ item.reason }}</span>
+                </li>
+              </ul>
             </details>
-          </template>
+          </div>
         </section>
         <div class="reconciliation-heading">
           <button class="btn-range" :disabled="reconciliationLoading" @click="loadReconciliation">
@@ -356,7 +420,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useEntriesStore, TempoVerificationError, type ActivityType } from '@/shared/stores/entries'
 import { useUiStore } from '@/shared/stores/ui'
 import { localDate, startOfWeek } from '@/shared/utils/dates'
@@ -809,19 +873,32 @@ const ticketPreviewRows = ref<TicketPreviewRow[]>([])
 const ticketPreviewUnmatched = ref<Array<{ entryId: number; date: string; task: string; reason: string }>>([])
 const pendingTicketCorrection = ref<TicketPreviewRow | null>(null)
 const ticketCorrectionLoading = ref(false)
-const ticketCorrectionMessage = ref('')
+const ticketCorrectionNotice = ref<{ tone: 'success' | 'warning' | 'error'; text: string } | null>(null)
+const ticketCorrectionErrors = ref<Record<number, string>>({})
 const ticketReviewPi = ref('')
 const ticketReviewTargetPi = ref('')
 const ticketReviewCurrentPi = ref('')
 const ticketReviewStart = ref('')
 const ticketReviewEnd = ref('')
 const ticketReviewSuggestion = ref('')
-const ticketPreviewRangeLabel = ref('')
-const ticketPreviewComparedLabel = ref('')
+const ticketPreviewScope = ref('')
+
+// The page header is sticky and wraps at narrow widths, so the review's sticky
+// bar has to sit below whatever height it currently has.
+const piReviewSection = ref<HTMLElement | null>(null)
+let pageHeaderObserver: ResizeObserver | null = null
+onMounted(() => {
+  const header = document.querySelector('.page-header')
+  if (!header) return
+  pageHeaderObserver = new ResizeObserver(() => {
+    piReviewSection.value?.style.setProperty('--pi-review-sticky-top', `${header.getBoundingClientRect().height}px`)
+  })
+  pageHeaderObserver.observe(header)
+})
+onBeforeUnmount(() => pageHeaderObserver?.disconnect())
 
 const approveAllPending = ref(false)
-const approveAllProgress = ref('')
-const ticketCorrectionFailures = ref<string[]>([])
+const approveAllProgress = ref<{ current: number; total: number } | null>(null)
 
 const piDigits = (value: string) => value.replace(/^PI\s*/i, '')
 const isPiNumber = (value: string) => /^(PI)?\s*\d+$/i.test(value)
@@ -831,21 +908,49 @@ const ticketReviewPiValid = computed(() =>
   (!ticketReviewTargetPi.value || isPiNumber(ticketReviewTargetPi.value)) &&
   !ticketReviewPiSame.value)
 
-const ticketReviewPiNote = computed(() => {
-  if (ticketReviewPiSame.value) return 'Old PI and PI to update to must be different.'
+const ticketReviewPiProblem = computed(() => {
+  if (ticketReviewPiSame.value) return 'Old PI and Update to must be different.'
   if (!ticketReviewPiValid.value) return 'PI numbers must be a number such as 43.'
-  if (!ticketReviewPi.value) return 'No old PI chosen, so this only compares entries with their Tempo worklogs and will not find entries still on old PI tickets.'
+  return ''
+})
+
+const ticketReviewPiNote = computed(() => {
+  if (!ticketReviewPi.value) return 'With no old PI, this only finds entries whose ticket differs from their Tempo worklog.'
   const targetDigits = piDigits(ticketReviewTargetPi.value || ticketReviewCurrentPi.value)
   const target = targetDigits ? `PI ${targetDigits}` : 'the current PI'
-  const source = !targetDigits || targetDigits === piDigits(ticketReviewCurrentPi.value) ? 'from Settings' : 'looked up in Jira'
-  return `Entries in the date range on PI ${piDigits(ticketReviewPi.value)} tickets will be moved to the ${target} ticket of the same type, ${source}. Set the dates to when ${target} was running, because entries from when PI ${piDigits(ticketReviewPi.value)} was running are correct.`
+  const source = !targetDigits || targetDigits === piDigits(ticketReviewCurrentPi.value) ? 'Settings' : 'Jira'
+  return `${target} tickets come from ${source}. Start the dates when ${target} began, because entries from PI ${piDigits(ticketReviewPi.value)} itself are correct.`
+})
+
+const correctionMovesTempo = (row: TicketPreviewRow) =>
+  Boolean(row.worklogId) && row.tempoTicket.toUpperCase() !== row.targetTicket.toUpperCase()
+
+const correctionKindLabel = (row: TicketPreviewRow) => {
+  if (correctionMovesTempo(row)) return `Replace · ${formatReconciliationDuration(row.tempoDurationMins)}`
+  return row.worklogId ? 'Local only' : 'Not submitted'
+}
+
+// Grouped because a PI change produces many rows with the same change.
+const ticketPreviewGroups = computed(() => {
+  const groups = new Map<string, { key: string; from: string; to: string; rows: TicketPreviewRow[] }>()
+  for (const row of ticketPreviewRows.value) {
+    const from = row.localTicket.toUpperCase() !== row.targetTicket.toUpperCase() ? row.localTicket : row.tempoTicket
+    const key = `${from}|${row.targetTicket}`
+    const group = groups.get(key) ?? { key, from, to: row.targetTicket, rows: [] }
+    group.rows.push(row)
+    groups.set(key, group)
+  }
+  return [...groups.values()]
 })
 
 const approveAllSummary = computed(() => {
   const rows = ticketPreviewRows.value
-  const tempoMoves = rows.filter(row => row.worklogId && row.tempoTicket.toUpperCase() !== row.targetTicket.toUpperCase()).length
+  const tempoMoves = rows.filter(correctionMovesTempo).length
   const localOnly = rows.length - tempoMoves
-  return `This moves ${tempoMoves} Tempo worklog(s) and their entries, and updates ${localOnly} more local entr${localOnly === 1 ? 'y' : 'ies'} without changing Tempo.`
+  const parts: string[] = []
+  if (tempoMoves) parts.push(`replace ${tempoMoves} Tempo worklog${tempoMoves === 1 ? '' : 's'}`)
+  if (localOnly) parts.push(`update ${localOnly} ${tempoMoves ? 'other ' : ''}local entr${localOnly === 1 ? 'y' : 'ies'}`)
+  return `This will ${parts.join(' and ')}.`
 })
 
 const openApproveAll = () => {
@@ -853,18 +958,21 @@ const openApproveAll = () => {
   approveAllPending.value = true
 }
 
-const pendingCorrectionMovesTempo = computed(() => {
-  const row = pendingTicketCorrection.value
-  return Boolean(row?.worklogId) && row?.tempoTicket.toUpperCase() !== row?.targetTicket.toUpperCase()
-})
+const toggleTicketCorrection = async (row: TicketPreviewRow) => {
+  approveAllPending.value = false
+  pendingTicketCorrection.value = pendingTicketCorrection.value?.entryId === row.entryId ? null : row
+  if (!pendingTicketCorrection.value) return
+  // A row near the bottom of the window would otherwise open its panel off screen.
+  await nextTick()
+  document.querySelector('.pi-review-row.is-open .pi-review-confirm')?.scrollIntoView({ block: 'nearest' })
+}
 
 const pendingCorrectionSummary = computed(() => {
   const row = pendingTicketCorrection.value
   if (!row) return ''
-  if (!row.worklogId) return `Change this entry from ${row.localTicket} to ${row.targetTicket}? It has not been submitted, so Tempo is not affected.`
-  if (!pendingCorrectionMovesTempo.value) return `Worklog #${row.worklogId} is already on ${row.targetTicket} in Tempo. Change the local entry from ${row.localTicket} to match?`
-  const localChange = row.localTicket.toUpperCase() === row.targetTicket.toUpperCase() ? '' : `, and change the local entry from ${row.localTicket}`
-  return `Move worklog #${row.worklogId} from ${row.tempoTicket} to ${row.targetTicket}${localChange}?`
+  if (!row.worklogId) return `Change this entry to ${row.targetTicket}? It hasn't been submitted, so Tempo isn't affected.`
+  if (!correctionMovesTempo(row)) return `Tempo is already on ${row.targetTicket}. Update the local entry to match?`
+  return `Delete this worklog from ${row.tempoTicket} and recreate it on ${row.targetTicket}?`
 })
 
 const ticketReviewRange = computed(() => {
@@ -873,6 +981,8 @@ const ticketReviewRange = computed(() => {
   if (!start || !end || start > end || end > todayDate) return null
   return { start, end }
 })
+
+const ticketReviewRangeInvalid = computed(() => Boolean(ticketReviewStart.value && ticketReviewEnd.value) && !ticketReviewRange.value)
 
 const ticketReviewRangeNote = computed(() => {
   if (!ticketReviewStart.value || !ticketReviewEnd.value) return 'Choose a start and end date.'
@@ -885,7 +995,7 @@ const ticketReviewRangeNote = computed(() => {
 // It never overwrites dates the user has already entered.
 const loadTicketReviewRange = async () => {
   let start = ''
-  let suggestion = 'No PI change is recorded, so the suggested start is the first of this month. Change the dates to cover the entries you want to check.'
+  let suggestion = 'No PI change is recorded, so From defaults to the first of this month.'
   try {
     const record = asRecord(await executeApi('sprint_get_last_pi_change', {}))
     if (!asBoolean(record.success, false)) throw new Error('PI change history unavailable')
@@ -894,10 +1004,10 @@ const loadTicketReviewRange = async () => {
       start = asString(change.changedOn)
       const previous = asString(change.previousPi)
       const pi = previous ? `PI ${previous} to PI ${asString(change.nextPi)}` : `PI ${asString(change.nextPi)}`
-      suggestion = `Suggested start is the last recorded PI change (${pi}, ${formatDate(start)}). Change the dates if this looks wrong.`
+      suggestion = `From defaults to the last recorded PI change (${pi}, ${formatDate(start)}).`
     }
   } catch {
-    suggestion = 'Could not read the PI change history, so the suggested start is the first of this month. Change the dates to cover the entries you want to check.'
+    suggestion = "Couldn't read the PI change history, so From defaults to the first of this month."
   }
   ticketReviewSuggestion.value = suggestion
   if (ticketReviewStart.value || ticketReviewEnd.value) return
@@ -988,8 +1098,8 @@ const previewTicketCorrections = async () => {
   ticketPreviewUnmatched.value = []
   pendingTicketCorrection.value = null
   approveAllPending.value = false
-  ticketPreviewRangeLabel.value = `${formatDate(resolved.start)} – ${formatDate(resolved.end)}`
-  ticketPreviewComparedLabel.value = ''
+  ticketCorrectionNotice.value = null
+  ticketCorrectionErrors.value = {}
   try {
     const record = asRecord(await executeApi('tempo_preview_ticket_corrections', { from: resolved.start, to: resolved.end, comparePi: ticketReviewPi.value, targetPi: ticketReviewTargetPi.value }))
     if (!asBoolean(record.success, false)) {
@@ -997,10 +1107,13 @@ const previewTicketCorrections = async () => {
       return
     }
     ticketPreviewReviewed.value = asNumber(record.reviewed)
-    if (asString(record.comparePi)) {
-      const target = asString(record.targetPi)
-      ticketPreviewComparedLabel.value = ` Checked against ${asNumber(record.oldTicketCount)} PI ${asString(record.comparePi)} ticket(s)${target ? `, updating to PI ${target}` : ''}.`
-    }
+    const dates = `${formatDate(resolved.start)} – ${formatDate(resolved.end)}`
+    const reviewed = `${ticketPreviewReviewed.value} entries checked`
+    const comparePi = asString(record.comparePi)
+    const targetPi = asString(record.targetPi)
+    ticketPreviewScope.value = comparePi
+      ? `PI ${comparePi} to ${targetPi ? `PI ${targetPi}` : 'the current PI'} · ${dates} · ${reviewed}`
+      : `${dates} · ${reviewed}`
     ticketPreviewRows.value = readList(record.reviewRows, undefined, item => ({
       entryId: asNumber(item.entryId), date: asString(item.date), task: asString(item.task),
       startTime: asString(item.startTime), worklogId: asString(item.worklogId),
@@ -1018,8 +1131,8 @@ const previewTicketCorrections = async () => {
   }
 }
 
-// Throws when the correction did not complete, including when Tempo accepted a
-// change that could not then be verified (see isUncertainCorrection).
+// Throws when the correction did not complete. The error's response says why,
+// including when Tempo is unavailable or a change could not be verified.
 const runTicketCorrection = async (row: TicketPreviewRow): Promise<string> => {
   if (row.worklogId) {
     const result = asRecord(await executeApi('tempo_correct_worklog_ticket', {
@@ -1037,22 +1150,49 @@ const runTicketCorrection = async (row: TicketPreviewRow): Promise<string> => {
   return asString(result.message, 'Ticket correction completed.')
 }
 
-const isUncertainCorrection = (err: unknown) =>
-  err instanceof ApiError && asBoolean(asRecord(err.response).verificationFailed, false)
+const correctionFailureFlag = (err: unknown, flag: 'verificationFailed' | 'transient' | 'entryReturned') =>
+  err instanceof ApiError && asBoolean(asRecord(err.response)[flag], false)
+
+// A returned entry is no longer a correction: it is waiting to be submitted.
+const showReturnedEntry = async (row: TicketPreviewRow) => {
+  removeTicketRow(row)
+  const resolved = activeRange.value
+  if (resolved) await entriesStore.loadEntriesRange(resolved.start, resolved.end)
+}
+
+const correctionFailureText = (err: unknown) => err instanceof ApiError ? err.message : 'Ticket correction failed.'
+
+// Rows are removed as they complete rather than reloading the list, so it doesn't
+// jump and lose the scroll position. Find corrections reads everything afresh.
+const removeTicketRow = (row: TicketPreviewRow) => {
+  ticketPreviewRows.value = ticketPreviewRows.value.filter(item => item.entryId !== row.entryId)
+}
+
+const clearTicketRowError = (row: TicketPreviewRow) => {
+  const { [row.entryId]: _cleared, ...rest } = ticketCorrectionErrors.value
+  ticketCorrectionErrors.value = rest
+}
 
 const applyTicketCorrection = async () => {
   const row = pendingTicketCorrection.value
   if (!row || ticketCorrectionLoading.value) return
   ticketCorrectionLoading.value = true
-  ticketCorrectionMessage.value = ''
-  ticketCorrectionFailures.value = []
+  ticketCorrectionNotice.value = null
+  clearTicketRowError(row)
   try {
-    ticketCorrectionMessage.value = await runTicketCorrection(row)
+    const message = await runTicketCorrection(row)
+    removeTicketRow(row)
     pendingTicketCorrection.value = null
-    await previewTicketCorrections()
+    ticketCorrectionNotice.value = { tone: 'success', text: message }
     await loadReconciliation()
   } catch (err) {
-    ticketCorrectionMessage.value = err instanceof ApiError ? err.message : 'Ticket correction failed.'
+    pendingTicketCorrection.value = null
+    if (correctionFailureFlag(err, 'entryReturned')) {
+      ticketCorrectionNotice.value = { tone: 'error', text: correctionFailureText(err) }
+      await showReturnedEntry(row)
+    } else {
+      ticketCorrectionErrors.value = { ...ticketCorrectionErrors.value, [row.entryId]: correctionFailureText(err) }
+    }
   } finally {
     ticketCorrectionLoading.value = false
   }
@@ -1063,35 +1203,46 @@ const applyAllTicketCorrections = async () => {
   const rows = [...ticketPreviewRows.value]
   ticketCorrectionLoading.value = true
   approveAllPending.value = false
-  ticketCorrectionMessage.value = ''
-  ticketCorrectionFailures.value = []
-  const failures: string[] = []
+  ticketCorrectionNotice.value = null
+  ticketCorrectionErrors.value = {}
   let corrected = 0
-  let stopped = false
+  let failed = 0
+  let stoppedBecause = ''
   try {
     for (const [index, row] of rows.entries()) {
-      approveAllProgress.value = `Updating ${index + 1} of ${rows.length}…`
+      approveAllProgress.value = { current: index + 1, total: rows.length }
       try {
         await runTicketCorrection(row)
+        removeTicketRow(row)
         corrected += 1
       } catch (err) {
-        const reason = err instanceof ApiError ? err.message : 'Ticket correction failed.'
-        failures.push(`${row.date} · ${row.task}: ${reason}`)
-        // Tempo's state is unknown, so don't change anything else until it's checked.
-        if (isUncertainCorrection(err)) {
-          stopped = true
+        failed += 1
+        // Going on would repeat the failure, or change more while Tempo's state is unknown.
+        if (correctionFailureFlag(err, 'entryReturned')) {
+          await showReturnedEntry(row)
+          stoppedBecause = correctionFailureText(err)
           break
         }
+        ticketCorrectionErrors.value = { ...ticketCorrectionErrors.value, [row.entryId]: correctionFailureText(err) }
+        if (correctionFailureFlag(err, 'verificationFailed')) {
+          stoppedBecause = "Tempo couldn't confirm a change. Check that worklog in Tempo before continuing."
+        } else if (correctionFailureFlag(err, 'transient')) {
+          stoppedBecause = "Tempo isn't accepting changes right now. Try again later."
+        }
+        if (stoppedBecause) break
       }
     }
-    approveAllProgress.value = ''
-    ticketCorrectionFailures.value = failures
-    const remaining = rows.length - corrected - failures.length
-    ticketCorrectionMessage.value = `Corrected ${corrected} of ${rows.length}.${stopped ? ` Stopped with ${remaining} not attempted, because Tempo could not confirm a change. Check that worklog in Tempo before continuing.` : ''}`
-    await previewTicketCorrections()
+    if (stoppedBecause) {
+      ticketCorrectionNotice.value = { tone: 'error', text: `Stopped after correcting ${corrected} of ${rows.length}. ${stoppedBecause}` }
+    } else if (failed) {
+      ticketCorrectionNotice.value = { tone: 'warning', text: `Corrected ${corrected} of ${rows.length}. ${failed} failed, with the reason shown on each row.` }
+    } else {
+      ticketCorrectionNotice.value = { tone: 'success', text: `Corrected all ${rows.length}.` }
+    }
+    approveAllProgress.value = null
     await loadReconciliation()
   } finally {
-    approveAllProgress.value = ''
+    approveAllProgress.value = null
     ticketCorrectionLoading.value = false
   }
 }
@@ -1186,11 +1337,165 @@ const reconcileDuration = async (row: ReconciledRow) => {
 
 <style scoped>
 
-.ticket-preview-section { margin: 1rem 0; padding: 1rem; border: 1px solid var(--color-border); border-radius: 0.6rem; }
-.ticket-review-range { margin: 0.75rem 0; }
-.ticket-preview-row { display: grid; gap: 0.25rem; padding: 0.65rem; border: 1px solid var(--color-border); border-radius: 0.4rem; margin: 0.5rem 0; }
-.ticket-preview-row small { color: var(--color-text-subtle); }
-.ticket-correction-confirm { margin-top: 0.85rem; padding: 0.85rem; border: 1px solid var(--color-border); border-radius: 0.5rem; }
+/* PI ticket correction review */
+.pi-review {
+  margin: var(--space-md) 0 var(--space-xl);
+  padding: var(--space-lg);
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+}
+.pi-review-header h2 { font-size: 1.3rem; font-weight: 700; }
+.pi-review-header p { margin-top: var(--space-2xs); color: var(--color-text-subtle); }
+
+.pi-review .btn-primary,
+.pi-review .btn-secondary { padding: var(--space-xs) var(--space-md); white-space: nowrap; }
+.pi-review .btn-primary:disabled,
+.pi-review .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+.pi-review .btn-secondary:hover:not(:disabled) { background: var(--color-control-hover); }
+.pi-review .btn-primary:focus-visible,
+.pi-review .btn-secondary:focus-visible,
+.pi-review-manual summary:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+.pi-review-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-md) var(--space-lg);
+  margin-top: var(--space-md);
+}
+.pi-review-group { min-width: 0; margin: 0; padding: 0; border: 0; }
+.pi-review-group legend {
+  padding: 0;
+  margin-bottom: var(--space-xs);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+.pi-review-fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-sm); }
+.pi-review-arrow { padding-bottom: 0.65rem; color: var(--color-text-subtle); }
+.range-field input.pi-review-pi { min-width: 0; width: 5.5rem; }
+.range-field input.pi-review-pi[aria-invalid="true"] { border-color: var(--color-danger); }
+.pi-review-find { margin-left: auto; }
+
+.pi-review-note { margin-top: var(--space-xs); font-size: 0.85rem; color: var(--color-text-subtle); }
+.pi-review-form + .pi-review-note { margin-top: var(--space-md); }
+.pi-review-note.is-problem { color: var(--color-danger-soft); }
+
+.pi-review-results { margin-top: var(--space-lg); padding-top: var(--space-lg); border-top: 1px solid var(--color-border); }
+
+/* Opaque, because rows scroll underneath it. */
+.pi-review-bar {
+  position: sticky;
+  top: calc(var(--pi-review-sticky-top, 0px) + var(--space-xs));
+  z-index: 2;
+  display: grid;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+}
+.pi-review-bar-main { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-sm); }
+.pi-review-summary { display: grid; gap: 0.1rem; min-width: 0; }
+.pi-review-summary span { font-size: 0.85rem; color: var(--color-text-subtle); }
+
+.pi-review-progress { display: grid; gap: var(--space-2xs); font-size: 0.85rem; color: var(--color-text-muted); }
+.pi-review-progress progress { width: 100%; height: 0.4rem; accent-color: var(--color-accent); }
+
+.pi-review-notice {
+  margin-top: 0;
+  padding: var(--space-xs) var(--space-sm);
+  border-left: 3px solid var(--color-info);
+  border-radius: var(--radius-sm);
+  background: var(--color-control);
+  color: var(--color-text);
+  font-size: 0.9rem;
+}
+.pi-review > .pi-review-notice { margin-top: var(--space-md); }
+.pi-review-notice.is-success { border-left-color: var(--color-success); }
+.pi-review-notice.is-warning { border-left-color: var(--color-warning); }
+.pi-review-notice.is-error { border-left-color: var(--color-danger); }
+
+.pi-review-empty { margin-top: var(--space-md); color: var(--color-text-subtle); }
+
+.pi-review-list { margin-top: var(--space-lg); }
+.pi-review-list-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-xs);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-text-subtle);
+}
+.pi-review-ticket { font-family: var(--font-mono); color: var(--color-text-muted); }
+.pi-review-ticket.is-target { color: var(--color-accent); }
+.pi-review-count {
+  padding: 0 var(--space-xs);
+  background: var(--color-control);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+.pi-review-list ul,
+.pi-review-manual ul { margin: 0; padding: 0; list-style: none; }
+.pi-review-list ul { border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+.pi-review-row + .pi-review-row { border-top: 1px solid var(--color-border); }
+.pi-review-row:hover,
+.pi-review-row.is-open { background: var(--color-control); }
+.pi-review-row-main {
+  display: grid;
+  grid-template-columns: 6.5rem 3rem minmax(0, 1fr) auto 5rem;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+}
+.pi-review-row-main .btn-secondary { padding: var(--space-2xs) var(--space-sm); justify-self: end; }
+.pi-review-time { color: var(--color-text-subtle); font-variant-numeric: tabular-nums; }
+.pi-review-task { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pi-review-kind { font-size: 0.8rem; color: var(--color-text-muted); white-space: nowrap; }
+.pi-review-kind.is-local { color: var(--color-text-subtle); }
+.pi-review-row-error {
+  margin: 0;
+  padding: 0 var(--space-sm) var(--space-xs);
+  font-size: 0.85rem;
+  color: var(--color-danger-soft);
+}
+
+.pi-review-confirm {
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-accent-soft);
+  border-radius: var(--radius-sm);
+}
+.pi-review-row .pi-review-confirm { margin: 0 var(--space-sm) var(--space-sm); scroll-margin-bottom: var(--space-md); }
+.pi-review-confirm p { margin: 0; }
+.pi-review-confirm-note { font-size: 0.85rem; color: var(--color-text-subtle); }
+.pi-review-details { display: flex; flex-wrap: wrap; gap: var(--space-2xs) var(--space-lg); margin: 0; font-size: 0.85rem; }
+.pi-review-details dt { color: var(--color-text-subtle); }
+.pi-review-details dd { margin: 0; color: var(--color-text-muted); }
+.pi-review-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-xs); }
+
+.pi-review-manual { margin-top: var(--space-lg); }
+.pi-review-manual summary { cursor: pointer; font-weight: 600; color: var(--color-warning); }
+.pi-review-manual li { display: grid; gap: 0.1rem; padding: var(--space-xs) 0; font-size: 0.9rem; }
+.pi-review-manual li + li { border-top: 1px solid var(--color-border); }
+.pi-review-manual li span { color: var(--color-text-subtle); }
+
+@media (max-width: 768px) {
+  .pi-review { padding: var(--space-md); }
+  .pi-review-find { margin-left: 0; width: 100%; }
+  .pi-review-row-main { grid-template-columns: minmax(0, 1fr) auto; row-gap: var(--space-2xs); }
+  .pi-review-date { grid-area: 1 / 1; }
+  .pi-review-time { display: none; }
+  .pi-review-task { grid-area: 2 / 1 / 2 / -1; white-space: normal; }
+  .pi-review-kind { grid-area: 3 / 1 / 3 / -1; }
+  .pi-review-row-main .btn-secondary { grid-area: 1 / 2; }
+}
 
 /* Page Header */
 .page-header h1 {
@@ -1245,11 +1550,6 @@ const reconcileDuration = async (row: ReconciledRow) => {
 
 .range-field .date-input {
   min-width: 10.5rem;
-}
-
-.range-field .ticket-review-pi {
-  min-width: 0;
-  width: 6rem;
 }
 
 .range-field {

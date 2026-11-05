@@ -29,7 +29,9 @@ export async function makeHttpRequest(url, options = {}) {
   } catch (error) {
     if (error.response) {
       const body = error.response.data;
-      throw new Error(`HTTP ${error.response.status}: ${typeof body === 'string' ? body : JSON.stringify(body)}`);
+      const failure = new Error(`HTTP ${error.response.status}: ${typeof body === 'string' ? body : JSON.stringify(body)}`);
+      failure.status = error.response.status;
+      throw failure;
     }
     if (error.code === 'ECONNABORTED') throw new Error(`Request timeout after ${timeout}ms`);
     throw error;
