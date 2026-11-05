@@ -83,6 +83,19 @@ jobs:
         run: npm ci --ignore-scripts
         working-directory: src-node
 
+      # Done here rather than at runtime: an app deleting native binaries from
+      # its own install folder on launch is itself an antivirus heuristic.
+      - name: Remove native addons for other platforms
+        if: steps.existing.outputs.exists == 'false'
+        shell: pwsh
+        working-directory: src-node/node_modules/better-sqlite3/prebuilds
+        run: |
+          if (-not (Test-Path win32-x64.node)) {
+            Write-Error "win32-x64.node is missing, so the backend would not start."
+            exit 1
+          }
+          Get-ChildItem -Filter *.node | Where-Object Name -ne 'win32-x64.node' | Remove-Item
+
       - name: Cache cargo
         if: steps.existing.outputs.exists == 'false'
         uses: actions/cache@v4

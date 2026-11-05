@@ -82,6 +82,8 @@ dependencies = [
  "tauri-plugin-updater",
  "url",
  "urlencoding",
+ "windows-sys 0.61.2",
+ "winreg",
 ]
 
 [[package]]

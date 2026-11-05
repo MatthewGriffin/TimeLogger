@@ -98,6 +98,12 @@ pub fn run() {
       notifications::show_daily_reminder_notification,
       notifications::show_tempo_reminder_notification
     ])
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+    .build(tauri::generate_context!())
+    .expect("error while building tauri application")
+    .run(|_app, event| {
+      if let tauri::RunEvent::Exit = event {
+        backend::SHUTTING_DOWN.store(true, std::sync::atomic::Ordering::SeqCst);
+        let _ = backend::stop_backend();
+      }
+    });
 }

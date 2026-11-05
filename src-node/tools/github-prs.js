@@ -346,11 +346,16 @@ export async function getPullRequestsWithMajorUpdatesOnDate(date) {
   const token = String(readConfig().token || '');
   if (!token || !/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return [];
   const login = await account(token);
-  // GitHub search does not support OR between qualifier-only clauses. The updated
-  // qualifier includes PRs created, merged, or otherwise changed on this date;
-  // the timeline below narrows those candidates to major lifecycle events.
-  const query = `is:pr updated:${date}`;
-  const items = await searchPrs(token, login, query);
+  // GitHub rejects OR between qualifiers (HTTP 422), so each is its own search.
+  // updated: alone is not enough because it only matches a PR's latest update,
+  // and every search must be scoped or it would cover all of GitHub.
+  const searches = await Promise.all([
+    `is:pr involves:${login} created:${date}`,
+    `is:pr involves:${login} merged:${date}`,
+    `is:pr involves:${login} updated:${date}`,
+    `is:pr review-requested:${login} is:open`
+  ].map(query => searchPrs(token, login, query)));
+  const items = searches.flat();
   const candidates = new Map();
   for (const item of items) {
     const repoUrl = String(item.repository_url || '');

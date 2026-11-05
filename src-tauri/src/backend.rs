@@ -1,11 +1,9 @@
 //! Lifecycle of the bundled Node sidecar: starting it, keeping it alive and
 //! stopping it on quit.
 
-use std::io::Write;
-
-use crate::platform::{host_log, runtime_pid_file};
+use crate::platform::{app_data_dir, host_log, runtime_pid_file};
 #[cfg(target_os = "windows")]
-use crate::platform::CREATE_NO_WINDOW;
+use crate::platform::{terminate_node_process, CREATE_NO_WINDOW};
 
 /// Serializes backend restarts. Concurrent failed calls would otherwise each
 /// spawn a backend and kill the previous one, leaving nothing listening.
@@ -86,17 +84,12 @@ fn launch_backend() -> Result<String, String> {
     use std::fs::OpenOptions;
     use std::io::Write;
     
-    // Create a log file in the app data directory
-    let log_path = if let Ok(exe_path) = std::env::current_exe() {
-      if let Some(exe_dir) = exe_path.parent() {
-        exe_dir.join("backend_debug.log")
-      } else {
-        std::path::PathBuf::from("backend_debug.log")
-      }
-    } else {
-      std::path::PathBuf::from("backend_debug.log")
-    };
-    
+    // Kept with the other logs: the install directory may not be writable, and
+    // an app modifying its own install folder at launch looks suspicious.
+    let log_dir = app_data_dir();
+    let _ = std::fs::create_dir_all(&log_dir);
+    let log_path = log_dir.join("backend_debug.log");
+
     let mut log_file = match OpenOptions::new()
       .create(true)
       .append(true)
@@ -168,11 +161,11 @@ fn launch_backend() -> Result<String, String> {
     let pid_file = runtime_pid_file();
     if let Ok(pid_text) = std::fs::read_to_string(&pid_file) {
       if let Ok(pid) = pid_text.trim().parse::<u32>() {
-        let _ = writeln!(log_file, "Stopping previous backend PID: {}", pid);
-        let _ = std::process::Command::new("taskkill")
-          .args(&["/PID", &pid.to_string(), "/F"])
-          .creation_flags(CREATE_NO_WINDOW)
-          .output();
+        match terminate_node_process(pid) {
+          Ok(true) => { let _ = writeln!(log_file, "Stopped previous backend PID: {}", pid); }
+          Ok(false) => { let _ = writeln!(log_file, "PID {} is not a running backend; leaving it alone", pid); }
+          Err(e) => { let _ = writeln!(log_file, "Could not stop previous backend PID {}: {}", pid, e); }
+        }
 
         // The port lingers briefly after the kill; starting before it frees
         // makes the new process die with EADDRINUSE.
@@ -289,7 +282,6 @@ mod tests {
 pub fn stop_backend() -> Result<String, String> {
   #[cfg(target_os = "windows")]
   {
-    use std::os::windows::process::CommandExt;
     let pid_file = runtime_pid_file();
     let pid_text = match std::fs::read_to_string(&pid_file) {
       Ok(value) => value,
@@ -307,18 +299,13 @@ pub fn stop_backend() -> Result<String, String> {
       .parse::<u32>()
       .map_err(|_| "Backend PID file is invalid; refusing to terminate any process.".to_string())?;
 
-    let output = std::process::Command::new("taskkill")
-      .args(&["/PID", &pid.to_string(), "/F"])
-      .creation_flags(CREATE_NO_WINDOW)
-      .output()
-      .map_err(|e| format!("Failed to stop the tracked TimeLogger backend: {}", e))?;
-
-    if !output.status.success() && backend_is_listening() {
-      return Err(format!(
-        "Could not stop the tracked TimeLogger backend (PID {}). {}",
-        pid,
-        String::from_utf8_lossy(&output.stderr).trim()
-      ));
+    if let Err(error) = terminate_node_process(pid) {
+      if backend_is_listening() {
+        return Err(format!(
+          "Could not stop the tracked TimeLogger backend (PID {}). {}",
+          pid, error
+        ));
+      }
     }
 
     let _ = std::fs::remove_file(&pid_file);
