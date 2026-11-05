@@ -383,6 +383,38 @@ async function runTests() {
     }
   });
 
+  await testAsync('a requested PR that left the GitHub searches is still announced when it merges', async () => {
+    const settingKeys = ['github_config', 'github_pr_poll_initialized', 'github_pr_lifecycle_initialized'];
+    const savedSettings = settingKeys.map(key => [key, db.prepare('SELECT value FROM settings WHERE key = ?').get(key)]);
+    const setSetting = db.prepare('INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)');
+    const key = 'org/app#12';
+    const github = url => {
+      if (url.pathname === '/user') return { login: 'me' };
+      if (url.pathname === '/search/issues') return { items: [] };
+      if (url.pathname === '/repos/org/app/pulls/12') {
+        return { id: 120, number: 12, title: 'Reviewed work', state: 'closed', merged_at: '2026-11-01T00:00:00Z', user: { login: 'someone' }, base: { repo: { full_name: 'org/app' } }, requested_reviewers: [] };
+      }
+      throw new Error(`Unexpected request: ${url.pathname}`);
+    };
+    try {
+      setSetting.run('github_config', JSON.stringify({ token: 'github-token', login: 'me' }));
+      setSetting.run('github_pr_lifecycle_initialized', 'true');
+      // The first poll creates the tables, with nothing tracked yet.
+      await withGitHubStub(github, () => executeTool('github_pr_poll_activity', {}));
+      db.prepare('INSERT OR REPLACE INTO github_pr_lifecycle (pr_key, state, requested_reviewer) VALUES (?, ?, 1)').run(key, 'open');
+      const result = await withGitHubStub(github, () => executeTool('github_pr_poll_activity', {}));
+      assert.deepStrictEqual(result.events.map(event => event.id), [`pr-merged:${key}`]);
+      assert.strictEqual(db.prepare('SELECT state FROM github_pr_lifecycle WHERE pr_key = ?').get(key).state, 'merged');
+    } finally {
+      db.prepare('DELETE FROM github_pr_lifecycle WHERE pr_key = ?').run(key);
+      db.prepare('DELETE FROM github_pr_seen_events WHERE event_id = ?').run(`pr-merged:${key}`);
+      for (const [name, saved] of savedSettings) {
+        if (saved) setSetting.run(name, saved.value);
+        else db.prepare('DELETE FROM settings WHERE key = ?').run(name);
+      }
+    }
+  });
+
   test('GitHub integration exposes only read-oriented PR operations', () => {
     const names = tools.map(tool => tool.name).filter(name => name.startsWith('github_pr_'));
     assert(names.includes('github_pr_list'));

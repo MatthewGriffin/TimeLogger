@@ -267,7 +267,7 @@ async function pollReviewEvents(token, prs) {
     "SELECT pr_key FROM github_pr_lifecycle WHERE state = 'open' AND requested_reviewer = 1"
   ).all().map(row => row.pr_key).filter(key => !currentKeys.has(key)).slice(0, EVENT_PR_LIMIT);
   const priorDetails = await Promise.all(previouslyRequested.map(async key => {
-    const match = key.match(/^(.+)#(\\d+)$/);
+    const match = key.match(/^(.+)#(\d+)$/);
     if (!match) return null;
     try {
       const raw = await githubGet(`/repos/${match[1]}/pulls/${match[2]}`, token);

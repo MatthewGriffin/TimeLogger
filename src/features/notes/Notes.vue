@@ -534,7 +534,7 @@ const setPendingCategoryChoice = (id: string, topic: string) => {
 const applyPendingTopic = async (id: string, topic: string) => {
   const suggestion = notesStore.pendingTopicSuggestions[id]
   const note = notesStore.notes.find(existing => existing.id === id)
-  const requestedTopic = topic.trim().replace(/\\s+/g, ' ')
+  const requestedTopic = topic.trim().replace(/\s+/g, ' ')
   if (!suggestion || !note || !requestedTopic) return
   if (requestedTopic.length > 30) {
     uiStore.showError('Category names must be 30 characters or fewer')
