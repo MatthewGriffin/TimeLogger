@@ -141,7 +141,7 @@ export const reconcileTempoWorklogs = (localEntries, worklogs) => {
     const match = /^(\d{1,2}):(\d{2})/.exec(String(value || '').trim());
     return match ? `${match[1].padStart(2, '0')}:${match[2]}` : '';
   };
-  const normalizeDescription = value => String(value || '').trim().toLowerCase().replace(/\\s+/g, ' ');
+  const normalizeDescription = value => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
   const keyFor = (date, ticket) => `${normalizeDate(date)}|${normalizeTicket(ticket)}`;
   const remaining = new Map();
   for (const log of worklogs) {
