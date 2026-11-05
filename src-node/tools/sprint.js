@@ -126,6 +126,22 @@ export function readSprintConfigHistory(limit = 100) {
   }));
 }
 
+/**
+ * The most recent change of PI number, ignoring edits that only touched the
+ * mappings. Null when none is recorded. `changedOn` is a local date because
+ * changed_at is stored in UTC and entries are dated in local time.
+ */
+export function readLastPiChange() {
+  return db.prepare(`
+    SELECT date(changed_at, 'localtime') AS changedOn,
+      previous_pi AS previousPi, next_pi AS nextPi
+    FROM sprint_config_history
+    WHERE next_pi IS NOT NULL AND next_pi IS NOT previous_pi
+    ORDER BY changed_at DESC, id DESC
+    LIMIT 1
+  `).get() ?? null;
+}
+
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
@@ -178,6 +194,12 @@ export const tools = [
     description: 'Get the audit history of PI configuration and meeting-ticket mapping changes',
     parameters: { type: 'object', properties: { limit: { type: 'integer' } }, required: [] },
     handler: async (args) => ({ success: true, history: readSprintConfigHistory(args.limit) })
+  },
+  {
+    name: 'sprint_get_last_pi_change',
+    description: 'Get the date of the most recently recorded PI number change, if any',
+    parameters: { type: 'object', properties: {}, required: [] },
+    handler: async () => ({ success: true, lastChange: readLastPiChange() })
   },
   {
     name: 'sprint_get_config',

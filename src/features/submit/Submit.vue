@@ -176,18 +176,24 @@
 
       <!-- Tempo reconciliation follows the unsubmitted entries so it has the full content width. -->
       <div class="submit-reconciliation">
-        <div class="reconciliation-heading">
-          <button class="btn-range" :disabled="ticketPreviewLoading" @click="previewTicketCorrections">{{ ticketPreviewLoading ? "Reviewing…" : "Preview PI ticket mismatches" }}</button>
-          <button class="btn-range" :disabled="reconciliationLoading" @click="loadReconciliation">
-            {{ reconciliationLoading ? 'Refreshing…' : 'Refresh Tempo status' }}
-          </button>
-        </div>
-        <section v-if="ticketPreviewLoaded" class="ticket-preview-section">
+        <section class="ticket-preview-section">
           <h2>PI Ticket Correction Review</h2>
           <p class="section-note">Preview uses each entry's exact stored Tempo worklog ID. Nothing changes until you explicitly confirm an individual correction.</p>
+          <div class="custom-range ticket-review-range">
+            <label class="range-field">
+              <span>From</span>
+              <input v-model="ticketReviewStart" type="date" :max="todayDate" class="date-input" />
+            </label>
+            <label class="range-field">
+              <span>To</span>
+              <input v-model="ticketReviewEnd" type="date" :min="ticketReviewStart || undefined" :max="todayDate" class="date-input" />
+            </label>
+            <button class="btn-range" :disabled="ticketPreviewLoading || !ticketReviewRange" @click="previewTicketCorrections">{{ ticketPreviewLoading ? "Reviewing…" : "Preview PI ticket mismatches" }}</button>
+          </div>
+          <p v-if="ticketReviewRangeNote" class="section-note">{{ ticketReviewRangeNote }}</p>
           <p v-if="ticketPreviewError" class="range-error">{{ ticketPreviewError }}</p>
-          <template v-else>
-            <p>{{ ticketPreviewRows.length }} possible ticket mismatch(es) across {{ ticketPreviewReviewed }} submitted entries.</p>
+          <template v-else-if="ticketPreviewLoaded && !ticketPreviewLoading">
+            <p>{{ ticketPreviewRows.length }} possible ticket mismatch(es) across {{ ticketPreviewReviewed }} submitted entries, {{ ticketPreviewRangeLabel }}.</p>
             <div v-for="row in ticketPreviewRows" :key="row.entryId" class="ticket-preview-row">
               <strong>{{ row.date }} · {{ row.startTime || 'Time unknown' }} · {{ row.task }}</strong>
               <span>Local: <b>{{ row.localTicket }}</b> → Tempo: <b>{{ row.tempoTicket }}</b></span>
@@ -211,6 +217,11 @@
             </details>
           </template>
         </section>
+        <div class="reconciliation-heading">
+          <button class="btn-range" :disabled="reconciliationLoading" @click="loadReconciliation">
+            {{ reconciliationLoading ? 'Refreshing…' : 'Refresh Tempo status' }}
+          </button>
+        </div>
         <p v-if="reconciliationLoading" class="range-summary">Checking Tempo worklogs…</p>
         <p v-else-if="reconciliationError" class="range-error">{{ reconciliationError }}</p>
         <template v-else>
@@ -764,6 +775,50 @@ const ticketPreviewUnmatched = ref<Array<{ entryId: number; date: string; task: 
 const pendingTicketCorrection = ref<{ entryId: number; date: string; task: string; startTime: string; worklogId: string; localTicket: string; tempoTicket: string; tempoDurationMins: number } | null>(null)
 const ticketCorrectionLoading = ref(false)
 const ticketCorrectionMessage = ref('')
+const ticketReviewStart = ref('')
+const ticketReviewEnd = ref('')
+const ticketReviewSuggestion = ref('')
+const ticketPreviewRangeLabel = ref('')
+
+const ticketReviewRange = computed(() => {
+  const start = ticketReviewStart.value
+  const end = ticketReviewEnd.value
+  if (!start || !end || start > end || end > todayDate) return null
+  return { start, end }
+})
+
+const ticketReviewRangeNote = computed(() => {
+  if (!ticketReviewStart.value || !ticketReviewEnd.value) return 'Choose a start and end date.'
+  if (ticketReviewStart.value > ticketReviewEnd.value) return 'Start date must be on or before end date.'
+  if (ticketReviewEnd.value > todayDate) return 'End date cannot be in the future.'
+  return ticketReviewSuggestion.value
+})
+
+// The history can be empty or wrong, so this only fills in a starting point.
+// It never overwrites dates the user has already entered.
+const loadTicketReviewRange = async () => {
+  let start = ''
+  let suggestion = 'No PI change is recorded, so the suggested start is the first of this month. Change the dates to cover the entries you want to check.'
+  try {
+    const record = asRecord(await executeApi('sprint_get_last_pi_change', {}))
+    if (!asBoolean(record.success, false)) throw new Error('PI change history unavailable')
+    if (record.lastChange) {
+      const change = asRecord(record.lastChange)
+      start = asString(change.changedOn)
+      const previous = asString(change.previousPi)
+      const pi = previous ? `PI ${previous} to PI ${asString(change.nextPi)}` : `PI ${asString(change.nextPi)}`
+      suggestion = `Suggested start is the last recorded PI change (${pi}, ${formatDate(start)}). Change the dates if this looks wrong.`
+    }
+  } catch {
+    suggestion = 'Could not read the PI change history, so the suggested start is the first of this month. Change the dates to cover the entries you want to check.'
+  }
+  ticketReviewSuggestion.value = suggestion
+  if (ticketReviewStart.value || ticketReviewEnd.value) return
+  ticketReviewStart.value = start || resolveRange('This Month')?.start || todayDate
+  ticketReviewEnd.value = todayDate
+}
+
+onMounted(loadTicketReviewRange)
 
 const reconciliationLoading = ref(false)
 const reconciliationError = ref('')
@@ -819,13 +874,15 @@ const formatReconciliationDuration = (mins: number | null) => {
 }
 
 const previewTicketCorrections = async () => {
-  const resolved = activeRange.value
+  const resolved = ticketReviewRange.value
   if (!resolved) return
   ticketPreviewLoading.value = true
   ticketPreviewLoaded.value = true
   ticketPreviewError.value = ''
   ticketPreviewRows.value = []
   ticketPreviewUnmatched.value = []
+  pendingTicketCorrection.value = null
+  ticketPreviewRangeLabel.value = `${formatDate(resolved.start)} – ${formatDate(resolved.end)}`
   try {
     const record = asRecord(await executeApi('tempo_preview_ticket_corrections', { from: resolved.start, to: resolved.end }))
     if (!asBoolean(record.success, false)) {
@@ -968,6 +1025,7 @@ const reconcileDuration = async (row: ReconciledRow) => {
 <style scoped>
 
 .ticket-preview-section { margin: 1rem 0; padding: 1rem; border: 1px solid var(--color-border); border-radius: 0.6rem; }
+.ticket-review-range { margin: 0.75rem 0; }
 .ticket-preview-row { display: grid; gap: 0.25rem; padding: 0.65rem; border: 1px solid var(--color-border); border-radius: 0.4rem; margin: 0.5rem 0; }
 .ticket-preview-row small { color: var(--color-text-subtle); }
 .ticket-correction-confirm { margin-top: 0.85rem; padding: 0.85rem; border: 1px solid var(--color-border); border-radius: 0.5rem; }
