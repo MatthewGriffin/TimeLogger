@@ -2,7 +2,10 @@
  * Notes management tools
  */
 
+import { appendFileSync } from 'fs';
+import { join } from 'path';
 import { db } from '../index.js';
+import { APP_DATA_DIR } from '../db.js';
 import { ollamaClient } from '../api/ollama-client.js';
 
 // The only built-in topic. Every other topic comes from actual use, so an
@@ -62,9 +65,49 @@ function normalizeTopicAnswer(raw) {
   return String(raw || '')
     .trim()
     .split('\n')[0]
-    .replace(/^\s*(?:the\s+)?(?:topic|category|answer)\s*[:\-]\s*/i, '')
+    .replace(/^\s*(?:the\s+)?(?:topic|category|answer|subject|product|application|system|technology|activity|area)\s*(?::|\s-\s)\s*/i, '')
     .replace(/^["'`*\s]+|["'`*.\s]+$/g, '')
     .trim();
+}
+
+/**
+ * Turn a raw model answer into a subject of at most two words, or null if it
+ * isn't usable. Names keep their punctuation (Node.js, C#, .NET) but lose
+ * version numbers ("Node.js 22"). An answer written as a sentence is rejected,
+ * because its first two words would be something like "This Note".
+ */
+export function subjectFromModelAnswer(raw) {
+  const answer = normalizeTopicAnswer(raw);
+  if (!answer || /^(?:this|that|the|a|an|it|i|note|subject|main)\s/i.test(answer)) return null;
+  const words = answer.replace(/[^\w\s.#+-]/g, ' ').split(/\s+/)
+    .map(word => word.replace(/^-+|[-.]+$/g, ''))
+    .filter(word => word && !/^[\d.]+$/.test(word));
+  if (words.length === 0 || words.length > 6) return null;
+  return words.slice(0, 2).join(' ');
+}
+
+// Words that say nothing about what a note is about. Small models fall back on
+// these, some of them copied from the prompt's own wording.
+const GENERIC_TOPIC_WORDS = new Set([
+  'activity', 'application', 'area', 'category', 'development', 'error', 'general', 'idea', 'issue',
+  'management', 'meeting', 'misc', 'note', 'notes', 'other', 'problem', 'product', 'software',
+  'subject', 'system', 'task', 'technology', 'todo', 'topic', 'work'
+]);
+
+const topicWords = topic => String(topic).toLowerCase().split(/\s+/).filter(Boolean);
+
+function isGenericTopic(topic) {
+  return topicWords(topic).every(word => GENERIC_TOPIC_WORDS.has(word));
+}
+
+/**
+ * A new category should come from what the note says. If none of the answer's
+ * meaningful words appear in the note, the model has invented or guessed it:
+ * a note about lunch answered with "Order", or "ok" with "Software Development".
+ */
+export function isTopicSupportedByNote(topic, text) {
+  const haystack = String(text || '').toLowerCase();
+  return topicWords(topic).some(word => !GENERIC_TOPIC_WORDS.has(word) && haystack.includes(word));
 }
 
 /**
@@ -74,7 +117,7 @@ function normalizeTopicAnswer(raw) {
  */
 function isReusableTopic(topic) {
   const trimmed = topic.trim();
-  if (trimmed.length < 3 || trimmed.length > 30) return false;
+  if (trimmed.length < 2 || trimmed.length > 30) return false;
   if (/\d/.test(trimmed)) return false;
   return trimmed.split(/\s+/).length <= 2;
 }
@@ -124,7 +167,7 @@ function findTopicMentionedInNote(text, knownTopics) {
 function topicKey(topic) {
   return String(topic)
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/[^a-z0-9\s#+]/g, '')
     .trim()
     .replace(/\s+/g, ' ')
     .replace(/s\b/g, '');
@@ -173,6 +216,20 @@ async function withinBudget(deadline, run) {
 }
 
 /**
+ * Keep a local record so a strange category can be traced to the model's answer
+ * or our handling of it. This has the answer but not the note. It goes to a file
+ * because the app discards the backend's console output once it's running.
+ */
+function logCategoryDecision(decision) {
+  const line = `${JSON.stringify({ at: new Date().toISOString(), ...decision })}\n`;
+  try {
+    appendFileSync(join(APP_DATA_DIR, 'note_categories.log'), line);
+  } catch (error) {
+    console.warn('Could not write the note category log:', error.message);
+  }
+}
+
+/**
  * Work out which topic a note belongs to, judging the title and body
  * together. Rather than forcing the note into a fixed list (which pushed
  * almost everything into "General"), the model is asked what the note is
@@ -206,19 +263,28 @@ async function suggestTopic(note, knownTopics, title) {
   if (mentioned) return { topic: mentioned, isNew: false, available: true };
 
   try {
-    let subject = await withinBudget(deadline, timeoutMs => extractSubject(cleanTitle, body, timeoutMs));
+    const answer = await withinBudget(deadline, timeoutMs => askModelForSubject(cleanTitle, body, timeoutMs));
+    const subject = subjectFromModelAnswer(answer);
+    const decide = (topic, isNew, step) => {
+      logCategoryDecision({ answer: answer == null ? null : String(answer).slice(0, 200), subject, step, topic });
+      return { topic, isNew, available: true };
+    };
 
-    // A generic model answer is not a useful proposal: recover the main area
-    // from structured titles such as "Release Process - Filling in Risk Assessment".
-    if (!subject || isCatchAll(subject)) subject = inferTopicFromTitle(cleanTitle);
-    if (!subject) return { topic: 'General', isNew: false, available: true };
+    if (subject && !isCatchAll(subject) && !isGenericTopic(subject)) {
+      // A subject naming a topic that already exists reuses it as-is.
+      const named = matchKnownTopic(subject, knownTopics);
+      if (named) return decide(named, false, 'existing-topic');
+      if (isReusableTopic(subject) && isTopicSupportedByNote(subject, `${cleanTitle}\n${body}`)) {
+        return decide(toTitleCase(subject), true, 'model');
+      }
+    }
 
-    // A subject naming a topic that already exists reuses it as-is.
-    const named = matchKnownTopic(subject, knownTopics);
-    if (named) return { topic: named, isNew: false, available: true };
-
-    if (!isReusableTopic(subject) || isCatchAll(subject)) return { topic: 'General', isNew: false, available: true };
-    return { topic: toTitleCase(subject), isNew: true, available: true };
+    // The answer isn't useful, so recover the main area from a structured title
+    // such as "Release Process - Filling in Risk Assessment".
+    const fromTitle = inferTopicFromTitle(cleanTitle);
+    if (!fromTitle || isGenericTopic(fromTitle)) return decide('General', false, 'no-usable-subject');
+    const named = matchKnownTopic(fromTitle, knownTopics);
+    return named ? decide(named, false, 'title-existing-topic') : decide(fromTitle, true, 'title');
   } catch {
     return { topic: 'General', isNew: false, available: true };
   }
@@ -229,16 +295,11 @@ async function suggestTopic(note, knownTopics, title) {
  * candidate topics up front anchors a small model and it simply echoes one
  * back. The answer is capped at two words to keep topics broad.
  */
-async function extractSubject(title, body, timeoutMs) {
+async function askModelForSubject(title, body, timeoutMs) {
   const prompt = `Identify the main subject of this work note.\n\nNote title: ${title || '(none)'}\nNote content: ${body}\n\nName the product, application, system, technology, activity or broad area the note is about. Use the title as a strong clue when it names a subject directly. Do not choose a category based on unrelated words or invent a different product. Do not describe what happened in the note, and do not include names of people, ticket numbers or error messages. If the subject is a specific product or technology, use its proper name. Answer with a concise category name of 1 or 2 words only.`;
 
   const result = await ollamaClient.generate(prompt, null, { options: { temperature: 0 }, timeoutMs });
-  const answer = normalizeTopicAnswer(result?.response);
-  if (!answer) return null;
-  // Small models sometimes still answer in a sentence; take the leading words.
-  const words = answer.replace(/[^\w\s-]/g, ' ').trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0 || words.length > 6) return null;
-  return words.slice(0, 2).join(' ');
+  return result?.response;
 }
 
 function toTitleCase(text) {

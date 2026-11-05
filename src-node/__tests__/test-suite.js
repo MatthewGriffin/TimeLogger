@@ -4,7 +4,9 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { tools, db, executeTool, healthCheck } from '../index.js';
-import { inferTopicFromTitle } from '../tools/notes.js';
+import { inferTopicFromTitle, subjectFromModelAnswer, isTopicSupportedByNote } from '../tools/notes.js';
+import { ollamaClient } from '../api/ollama-client.js';
+import { APP_DATA_DIR } from '../db.js';
 import { syncDayFromEvents, applyConflictResolutions } from '../tools/outlook.js';
 import {
   takeDuplicateWorklog,
@@ -482,6 +484,61 @@ async function runTests() {
   // SECTION 3: Utility Function Tests
   // ============================================================
   log(colors.yellow, '\n🔧 SECTION 3: Utilities\n');
+
+  // These answers were all returned by llama3.2:1b for made-up notes.
+  test('note category answers keep real names and lose prompt labels and version numbers', () => {
+    assert.strictEqual(subjectFromModelAnswer('Node.js 22'), 'Node.js');
+    assert.strictEqual(subjectFromModelAnswer('C#'), 'C#');
+    assert.strictEqual(subjectFromModelAnswer('.NET 8'), '.NET');
+    assert.strictEqual(subjectFromModelAnswer('Product: README\nApplication: Setup\nSystem: Git'), 'README');
+    assert.strictEqual(subjectFromModelAnswer('Azure DevOps board'), 'Azure DevOps');
+    assert.strictEqual(subjectFromModelAnswer('CI-CD.'), 'CI-CD');
+  });
+
+  test('note category answers written as a sentence are rejected', () => {
+    assert.strictEqual(subjectFromModelAnswer('This note is about Copilot'), null);
+    assert.strictEqual(subjectFromModelAnswer('The main subject is billing'), null);
+    assert.strictEqual(subjectFromModelAnswer('one two three four five six seven'), null);
+    assert.strictEqual(subjectFromModelAnswer(''), null);
+    assert.strictEqual(subjectFromModelAnswer(null), null);
+  });
+
+  test('a new note category needs a meaningful word from the note', () => {
+    assert.strictEqual(isTopicSupportedByNote('Order', 'Lunch\nTry the new sandwich place on Friday.'), false);
+    assert.strictEqual(isTopicSupportedByNote('Software Development', 'ok'), false);
+    assert.strictEqual(isTopicSupportedByNote('Software Development', 'Software development planning'), false);
+    assert.strictEqual(isTopicSupportedByNote('Contract Management', 'Chase the contract renewal'), true);
+    assert.strictEqual(isTopicSupportedByNote('Node.js', 'Upgraded the backend to Node.js 22'), true);
+  });
+
+  await testAsync('suggest_note_topic files invented answers under General and keeps real subjects', async () => {
+    const generate = ollamaClient.generate;
+    const initialize = ollamaClient.initialize;
+    const suggest = async (response, args) => {
+      ollamaClient.generate = async () => ({ response });
+      return executeTool('suggest_note_topic', args);
+    };
+    try {
+      ollamaClient.initialize = async () => true;
+      const invented = await suggest('Order', { note: 'Try the new sandwich place on Friday.' });
+      assert.deepStrictEqual([invented.topic, invented.isNew], ['General', false]);
+      const generic = await suggest('Error', { note: 'Error: connection refused when starting up' });
+      assert.deepStrictEqual([generic.topic, generic.isNew], ['General', false]);
+      const named = await suggest('Node.js 22', { note: 'Upgraded the backend to Node.js 22' });
+      assert.deepStrictEqual([named.topic, named.isNew], ['Node.js', true]);
+      const fromTitle = await suggest('Order', { note: 'Try the new sandwich place.', title: 'Lunch' });
+      assert.deepStrictEqual([fromTitle.topic, fromTitle.isNew], ['Lunch', true]);
+      const genericTitle = await suggest('Order', { note: 'Try the new sandwich place.', title: 'Meeting notes' });
+      assert.deepStrictEqual([genericTitle.topic, genericTitle.isNew], ['General', false]);
+      const logged = fs.readFileSync(path.join(APP_DATA_DIR, 'note_categories.log'), 'utf8').trim().split('\n');
+      assert.deepStrictEqual(JSON.parse(logged.at(-1)).answer, 'Order');
+      assert.strictEqual(JSON.parse(logged.at(-1)).step, 'no-usable-subject');
+      assert(!logged.join('\n').includes('sandwich'), 'The log must not hold note text');
+    } finally {
+      ollamaClient.generate = generate;
+      ollamaClient.initialize = initialize;
+    }
+  });
 
   test('Structured note titles provide a useful category when AI returns General', () => {
     assert.strictEqual(
