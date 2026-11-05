@@ -1861,6 +1861,39 @@ async function runTests() {
     assert.strictEqual(result.count, 0, 'Future appointments should stay in the calendar without prompting for a ticket');
     assert.deepStrictEqual(result.unmappedMeetings, []);
   });
+
+  await testAsync('the last PI change ignores mapping-only edits and uses the local date', async () => {
+    const saved = db.prepare('SELECT * FROM sprint_config_history').all();
+    const insert = db.prepare(`
+      INSERT INTO sprint_config_history (changed_at, previous_pi, next_pi, previous_config, next_config)
+      VALUES (?, ?, ?, '{}', '{}')
+    `);
+    try {
+      db.prepare('DELETE FROM sprint_config_history').run();
+      let result = await executeTool('sprint_get_last_pi_change', {});
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(result.lastChange, null, 'Empty history should report no change rather than a guessed date');
+
+      insert.run('2026-05-01 09:00:00', null, '43');
+      insert.run('2026-07-15 23:30:00', '43', '44');
+      insert.run('2026-08-01 09:00:00', '44', '44');
+      insert.run('2026-08-02 09:00:00', '44', null);
+      result = await executeTool('sprint_get_last_pi_change', {});
+      assert.deepStrictEqual(result.lastChange, {
+        changedOn: localDateKey(new Date('2026-07-15T23:30:00Z')),
+        previousPi: '43',
+        nextPi: '44'
+      });
+    } finally {
+      db.prepare('DELETE FROM sprint_config_history').run();
+      const restore = db.prepare(`
+        INSERT INTO sprint_config_history (id, changed_at, previous_pi, next_pi, previous_config, next_config)
+        VALUES (@id, @changed_at, @previous_pi, @next_pi, @previous_config, @next_config)
+      `);
+      for (const row of saved) restore.run(row);
+    }
+  });
+
   await testAsync('an open blocker reaches the scrum summary text', async () => {
     const created = await executeTool('create_note', {
       title: 'Blocked on review',
