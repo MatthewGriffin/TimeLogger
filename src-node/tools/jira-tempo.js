@@ -50,7 +50,7 @@ import {
   deleteTempoWorklog,
   isConnectivityError
 } from './jira-tempo-worklogs.js';
-import { readSprintConfig } from './sprint.js';
+import { readSprintConfig, lookupPiTickets, buildPiTicketMigration } from './sprint.js';
 
 export { takeDuplicateWorklog, resolveJiraCredentials, jiraHeaders, daysAhead, learnFutureLimit, isoDaysFromToday, classifyWorklogFailure };
 
@@ -61,32 +61,65 @@ export { takeDuplicateWorklog, resolveJiraCredentials, jiraHeaders, daysAhead, l
  * worklog now represents the longer segment. Resolve strong shape matches
  * across the whole day/ticket pool before falling back to IDs or start times.
  */
-export const buildTempoTicketCorrectionPreview = (localEntries, worklogs) => {
+export const buildTempoTicketCorrectionPreview = (localEntries, worklogs, piMigration = new Map()) => {
   const byId = new Map(worklogs.map(log => [String(log.tempoWorklogId ?? log.worklogId), log]));
   const reviewRows = [];
   const unmatchedStoredIds = [];
   for (const entry of localEntries) {
-    const remote = byId.get(String(entry.tempo_worklog_id));
-    if (!remote) {
-      unmatchedStoredIds.push({
-        entryId: entry.id, date: entry.date, task: entry.name,
-        localTicket: entry.ticket_id, worklogId: entry.tempo_worklog_id,
-        reason: 'Stored Tempo worklog ID was not found in this date range'
-      });
+    const localTicket = String(entry.ticket_id || '').trim().toUpperCase();
+    const storedId = String(entry.tempo_worklog_id || '').trim();
+    const submitted = Number(entry.submitted) === 1;
+    const migration = piMigration.get(localTicket);
+    const needsManualReview = (reason) => unmatchedStoredIds.push({
+      entryId: entry.id, date: entry.date, task: entry.name,
+      localTicket: entry.ticket_id, worklogId: entry.tempo_worklog_id, reason
+    });
+
+    if (submitted && storedId && !byId.has(storedId)) {
+      needsManualReview('Stored Tempo worklog ID was not found in this date range');
       continue;
     }
-    const localTicket = String(entry.ticket_id || '').trim().toUpperCase();
-    const tempoTicket = String(remote.ticketId || '').trim().toUpperCase();
-    if (localTicket && tempoTicket && localTicket !== tempoTicket) {
-      reviewRows.push({
-        entryId: entry.id, date: entry.date, task: entry.name,
-        startTime: entry.start_time, durationMins: entry.duration_mins,
-        worklogId: remote.tempoWorklogId ?? remote.worklogId,
-        localTicket: entry.ticket_id, tempoTicket: remote.ticketId,
-        tempoDescription: remote.description, tempoStartTime: remote.startTime,
-        tempoDurationMins: remote.durationMins
-      });
+    if (migration && !migration.targetTicket) {
+      needsManualReview(`${entry.ticket_id} is an old ${migration.label} ticket, but the PI being updated to has no ${migration.label} ticket`);
+      continue;
     }
+    if (submitted && !storedId) {
+      if (migration) needsManualReview(`On old ticket ${entry.ticket_id}, but marked as submitted with no stored Tempo worklog ID. Refresh Tempo status to link it.`);
+      continue;
+    }
+    if (!submitted && storedId) {
+      if (migration) needsManualReview(`On old ticket ${entry.ticket_id} and linked to a Tempo worklog, but not marked as submitted`);
+      continue;
+    }
+
+    const base = {
+      entryId: entry.id, date: entry.date, task: entry.name,
+      startTime: entry.start_time, durationMins: entry.duration_mins,
+      localTicket: entry.ticket_id
+    };
+    if (!submitted) {
+      // Not in Tempo yet, so only the local entry needs to change.
+      if (migration) {
+        reviewRows.push({ ...base, worklogId: null, tempoTicket: null, targetTicket: migration.targetTicket, oldPiLabel: migration.label });
+      }
+      continue;
+    }
+
+    const remote = byId.get(storedId);
+    const tempoTicket = String(remote.ticketId || '').trim().toUpperCase();
+    if (!localTicket || !tempoTicket) continue;
+    // An old PI ticket is never a valid target, even when it is what the local
+    // entry says. Otherwise the local ticket is the one the user chose.
+    const targetTicket = migration ? migration.targetTicket : localTicket;
+    if (localTicket === targetTicket && tempoTicket === targetTicket) continue;
+    reviewRows.push({
+      ...base,
+      worklogId: remote.tempoWorklogId ?? remote.worklogId,
+      tempoTicket: remote.ticketId, targetTicket,
+      oldPiLabel: migration?.label ?? null,
+      tempoDescription: remote.description, tempoStartTime: remote.startTime,
+      tempoDurationMins: remote.durationMins
+    });
   }
   return { reviewed: localEntries.length, mismatchCount: reviewRows.length, reviewRows, unmatchedStoredIds };
 };
@@ -1217,13 +1250,14 @@ export const tools = [
   },
   {
     name: 'tempo_correct_worklog_ticket',
-    description: 'Move one exact linked Tempo worklog to the local entry Jira ticket after explicit user confirmation',
+    description: 'Move one exact linked Tempo worklog to a target Jira ticket after explicit user confirmation, and set the local entry to the same ticket',
     parameters: {
       type: 'object',
       properties: {
         entryId: { type: 'integer' },
         worklogId: { type: 'string' },
         expectedCurrentTicket: { type: 'string' },
+        expectedLocalTicket: { type: 'string', description: 'Ticket the local entry had in the preview (defaults to targetTicket)' },
         targetTicket: { type: 'string' }
       },
       required: ['entryId', 'worklogId', 'expectedCurrentTicket', 'targetTicket']
@@ -1234,9 +1268,14 @@ export const tools = [
         const entry = db.prepare('SELECT id, submitted, ticket_id, tempo_worklog_id FROM daily_summary WHERE id = ?').get(args.entryId);
         if (!entry || Number(entry.submitted) !== 1) throw new Error('The local entry is no longer marked as submitted.');
         if (String(entry.tempo_worklog_id) !== String(args.worklogId)) throw new Error('The local entry is no longer linked to this Tempo worklog. Refresh the preview.');
-        if (String(entry.ticket_id || '').trim().toUpperCase() !== String(args.targetTicket || '').trim().toUpperCase()) {
+        if (String(entry.ticket_id || '').trim().toUpperCase() !== String(args.expectedLocalTicket || args.targetTicket || '').trim().toUpperCase()) {
           throw new Error('The local entry ticket has changed since the preview. Refresh before correcting.');
         }
+        // Reconciliation matches on date and ticket, so the local entry must
+        // follow the worklog or it would then show as missing from Tempo.
+        const updateLocalTicket = (ticketKey) => db
+          .prepare('UPDATE daily_summary SET ticket_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+          .run(ticketKey, args.entryId);
 
         const credentials = resolveJiraCredentials(args);
         const tempoToken = resolveTempoToken(args);
@@ -1264,7 +1303,8 @@ export const tools = [
           throw new Error(`Jira issue ${args.targetTicket} could not be resolved. No changes were made.`);
         }
         if (targetIssueId === Number(currentIssueId)) {
-          return { success: true, unchanged: true, message: 'Tempo worklog is already on the target ticket.' };
+          updateLocalTicket(targetIssue.key);
+          return { success: true, unchanged: true, message: `Tempo worklog is already on ${targetIssue.key}. The local entry now matches it.` };
         }
 
         const authorAccountId = remote.author?.accountId || remote.authorAccountId;
@@ -1305,6 +1345,7 @@ export const tools = [
             message: 'Tempo accepted the update, but verification did not confirm the target Jira issue. Refresh Tempo status and inspect this worklog before retrying.'
           };
         }
+        updateLocalTicket(targetIssue.key);
         return {
           success: true, changed: true, worklogId: args.worklogId,
           previousTicket: currentTicket, targetTicket: targetIssue.key,
@@ -1319,12 +1360,14 @@ export const tools = [
   },
   {
     name: 'tempo_preview_ticket_corrections',
-    description: 'Read-only preview of submitted local entries whose exact stored Tempo worklog ID is attached to a different Jira ticket',
+    description: 'Read-only preview of entries still on an old PI ticket, and of submitted entries whose exact stored Tempo worklog ID is attached to a different Jira ticket',
     parameters: {
       type: 'object',
       properties: {
         from: { type: 'string', description: 'Start date YYYY-MM-DD' },
-        to: { type: 'string', description: 'End date YYYY-MM-DD' }
+        to: { type: 'string', description: 'End date YYYY-MM-DD' },
+        comparePi: { type: 'string', description: 'Old PI number whose tickets should be replaced, e.g. 43' },
+        targetPi: { type: 'string', description: 'PI number to move those entries to (defaults to the current PI in Settings)' }
       },
       required: ['from', 'to']
     },
@@ -1334,11 +1377,45 @@ export const tools = [
         if (args.from > args.to) return { success: false, message: 'Start date must be on or before end date.' };
         const credentials = resolveJiraCredentials(args);
         const tempoToken = resolveTempoToken(args);
+
+        const config = readSprintConfig();
+        const normalizePi = value => String(value ?? '').trim().replace(/^PI/i, '').trim();
+        const comparePi = normalizePi(args.comparePi);
+        const currentPi = normalizePi(config.piNumber);
+        const targetPi = normalizePi(args.targetPi) || currentPi;
+        let piMigration = new Map();
+        if (comparePi) {
+          if (comparePi === targetPi) {
+            return { success: false, message: `The old PI and the PI to update to are both PI ${comparePi}. Choose two different PIs.` };
+          }
+          // Lookup failures are reported as failures: carrying on would look
+          // like nothing needs correcting when the tickets were never found.
+          const lookupPi = piNumber => lookupPiTickets({ ...args, piNumber, projectKey: config.projectKey, teamLabel: config.teamLabel });
+          const oldLookup = await lookupPi(comparePi);
+          if (!oldLookup.success) return { success: false, message: `Could not get the PI ${comparePi} tickets: ${oldLookup.message}` };
+
+          // Settings holds the current PI's tickets, including any manual edits.
+          let targetMappings = config.mappings;
+          if (targetPi !== currentPi) {
+            const targetLookup = await lookupPi(targetPi);
+            if (!targetLookup.success) return { success: false, message: `Could not get the PI ${targetPi} tickets: ${targetLookup.message}` };
+            // Without a team in Settings the lookup can return every team's
+            // ticket for a type, and guessing would book time to another team.
+            const seen = new Set();
+            const duplicate = targetLookup.matched.find(ticket => seen.has(ticket.id) || !seen.add(ticket.id));
+            if (duplicate) {
+              return { success: false, message: `PI ${targetPi} has more than one ${duplicate.label} ticket. Set your team in Settings so the right one can be chosen.` };
+            }
+            targetMappings = targetLookup.matched;
+          }
+          piMigration = buildPiTicketMigration(oldLookup.matched, { mappings: targetMappings });
+        }
+
         const account = await getCurrentAccount(credentials);
         const worklogs = await fetchTempoWorklogs(credentials, tempoToken, account.accountId, args.from, args.to);
-        const localEntries = db.prepare('SELECT id, date, name, ticket_id, start_time, duration_mins, tempo_worklog_id FROM daily_summary WHERE date >= ? AND date <= ? AND submitted = 1 AND tempo_worklog_id IS NOT NULL AND TRIM(tempo_worklog_id) <> \'\' AND COALESCE(is_lunch, 0) = 0 ORDER BY date ASC, start_time ASC').all(args.from, args.to);
-        const preview = buildTempoTicketCorrectionPreview(localEntries, worklogs);
-        return { success: true, from: args.from, to: args.to, readOnly: true, ...preview, message: 'Preview only: no Tempo worklogs or local entries were changed.' };
+        const localEntries = db.prepare('SELECT id, date, name, ticket_id, start_time, duration_mins, submitted, tempo_worklog_id FROM daily_summary WHERE date >= ? AND date <= ? AND ticket_id IS NOT NULL AND TRIM(ticket_id) <> \'\' AND COALESCE(is_lunch, 0) = 0 ORDER BY date ASC, start_time ASC').all(args.from, args.to);
+        const preview = buildTempoTicketCorrectionPreview(localEntries, worklogs, piMigration);
+        return { success: true, from: args.from, to: args.to, readOnly: true, comparePi, targetPi, oldTicketCount: piMigration.size, ...preview, message: 'Preview only: no Tempo worklogs or local entries were changed.' };
       } catch (error) {
         return { success: false, message: 'Could not preview ticket corrections: ' + error.message };
       }

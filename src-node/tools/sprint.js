@@ -188,6 +188,109 @@ export function matchMeetingTicket(subject, config = readSprintConfig()) {
   return null;
 }
 
+/**
+ * Find a PI's placeholder issues in Jira and map them to ceremony types.
+ *
+ * Every page is read: a PI has a set of issues per team, so stopping at the
+ * first page can silently drop the very tickets being looked for.
+ */
+export async function lookupPiTickets(args) {
+  let credentials;
+  try { credentials = resolveJiraCredentials(args); }
+  catch (error) { return { success: false, message: error.message }; }
+
+  const raw = String(args.piNumber || '').trim();
+  const digits = raw.replace(/^PI/i, '').trim();
+  if (!/^\d+$/.test(digits)) {
+    return { success: false, message: `Invalid PI number: "${raw}". Use a number such as 43.` };
+  }
+  const piLabel = `PI${digits}`;
+  const projectKey = String(args.projectKey || readSprintConfig().projectKey || 'TIME').trim();
+
+  const jql = `project = ${projectKey} AND summary ~ "${piLabel}*" ORDER BY key ASC`;
+  const url = `${credentials.baseUrl}/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=100&fields=summary`;
+
+  const issues = [];
+  try {
+    let pageToken = null;
+    do {
+      const pageUrl = pageToken ? `${url}&nextPageToken=${encodeURIComponent(pageToken)}` : url;
+      const response = await makeHttpRequest(pageUrl, { method: 'GET', headers: jiraHeaders(credentials) });
+      if (Array.isArray(response.data?.issues)) issues.push(...response.data.issues);
+      pageToken = response.data?.nextPageToken || null;
+    } while (pageToken);
+  } catch (error) {
+    return { success: false, message: `Jira lookup failed: ${error.message}` };
+  }
+
+  if (issues.length === 0) {
+    return {
+      success: false,
+      message: `No ${piLabel} meeting issues found in project ${projectKey}.`,
+      piLabel, projectKey, matched: [], unmatched: []
+    };
+  }
+
+  // Summaries look like "PI43-Daily Scrum Discovery"; strip the PI prefix
+  // and the trailing team name to recover the ceremony type.
+  const teamFilter = String(args.teamLabel || '').trim().toLowerCase();
+  const normalize = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  const matched = [];
+  const unmatched = [];
+  let detectedTeam = '';
+
+  for (const issue of issues) {
+    const summary = String(issue.fields?.summary || '');
+    const body = summary.replace(new RegExp(`^${piLabel}\\s*[-:]?\\s*`, 'i'), '').trim();
+    if (teamFilter && !body.toLowerCase().includes(teamFilter)) continue;
+
+    const type = DEFAULT_TYPES.find(t => {
+      const n = normalize(body);
+      return n.startsWith(normalize(t.jiraType)) || n.startsWith(normalize(t.label));
+    });
+
+    if (type) {
+      const trailing = body.slice(type.jiraType.length).trim();
+      if (trailing && !detectedTeam) detectedTeam = trailing;
+      matched.push({ id: type.id, label: type.label, jiraType: type.jiraType, ticketKey: issue.key, summary });
+    } else {
+      unmatched.push({ ticketKey: issue.key, summary });
+    }
+  }
+
+  return {
+    success: matched.length > 0,
+    piLabel,
+    piNumber: digits,
+    projectKey,
+    teamLabel: detectedTeam,
+    matched,
+    unmatched,
+    count: matched.length,
+    message: matched.length > 0
+      ? `Found ${matched.length} ${piLabel} meeting ticket(s)${detectedTeam ? ` for ${detectedTeam}` : ''}`
+      : `Found ${issues.length} ${piLabel} issue(s) but none matched a known ceremony type`
+  };
+}
+
+/**
+ * Map each old PI ticket to the target PI's ticket of the same ceremony type,
+ * using the type rather than the entry's name so "Working on work item TIME-359"
+ * is corrected too. targetTicket is empty when the target PI has no ticket for
+ * that type, and a key the target PI reuses is left out as nothing to change.
+ */
+export function buildPiTicketMigration(oldTickets, target) {
+  const targetById = new Map((target.mappings || []).map(m => [m.id, m.ticketKey]));
+  const migration = new Map();
+  for (const ticket of oldTickets) {
+    const oldKey = String(ticket.ticketKey || '').trim().toUpperCase();
+    const targetTicket = String(targetById.get(ticket.id) || '').trim().toUpperCase();
+    if (oldKey && oldKey !== targetTicket) migration.set(oldKey, { label: ticket.label, targetTicket });
+  }
+  return migration;
+}
+
 export const tools = [
   {
     name: 'sprint_get_config_history',
@@ -254,80 +357,7 @@ export const tools = [
       },
       required: ['piNumber']
     },
-    handler: async (args) => {
-      let credentials;
-      try { credentials = resolveJiraCredentials(args); }
-      catch (error) { return { success: false, message: error.message }; }
-
-      const raw = String(args.piNumber || '').trim();
-      const digits = raw.replace(/^PI/i, '').trim();
-      if (!/^\d+$/.test(digits)) {
-        return { success: false, message: `Invalid PI number: "${raw}". Use a number such as 43.` };
-      }
-      const piLabel = `PI${digits}`;
-      const projectKey = String(args.projectKey || readSprintConfig().projectKey || 'TIME').trim();
-
-      const jql = `project = ${projectKey} AND summary ~ "${piLabel}*" ORDER BY key ASC`;
-      const url = `${credentials.baseUrl}/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=100&fields=summary`;
-
-      let response;
-      try {
-        response = await makeHttpRequest(url, { method: 'GET', headers: jiraHeaders(credentials) });
-      } catch (error) {
-        return { success: false, message: `Jira lookup failed: ${error.message}` };
-      }
-
-      const issues = Array.isArray(response.data?.issues) ? response.data.issues : [];
-      if (issues.length === 0) {
-        return {
-          success: false,
-          message: `No ${piLabel} meeting issues found in project ${projectKey}.`,
-          piLabel, projectKey, matched: [], unmatched: []
-        };
-      }
-
-      // Summaries look like "PI43-Daily Scrum Discovery"; strip the PI prefix
-      // and the trailing team name to recover the ceremony type.
-      const teamFilter = String(args.teamLabel || '').trim().toLowerCase();
-      const normalize = (value) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
-
-      const matched = [];
-      const unmatched = [];
-      let detectedTeam = '';
-
-      for (const issue of issues) {
-        const summary = String(issue.fields?.summary || '');
-        const body = summary.replace(new RegExp(`^${piLabel}\\s*[-:]?\\s*`, 'i'), '').trim();
-        if (teamFilter && !body.toLowerCase().includes(teamFilter)) continue;
-
-        const type = DEFAULT_TYPES.find(t => {
-          const n = normalize(body);
-          return n.startsWith(normalize(t.jiraType)) || n.startsWith(normalize(t.label));
-        });
-
-        if (type) {
-          const trailing = body.slice(type.jiraType.length).trim();
-          if (trailing && !detectedTeam) detectedTeam = trailing;
-          matched.push({ id: type.id, label: type.label, jiraType: type.jiraType, ticketKey: issue.key, summary });
-        } else {
-          unmatched.push({ ticketKey: issue.key, summary });
-        }
-      }
-
-      return {
-        success: matched.length > 0,
-        piLabel,
-        piNumber: digits,
-        projectKey,
-        teamLabel: detectedTeam,
-        matched,
-        unmatched,
-        count: matched.length,
-        message: matched.length > 0
-          ? `Found ${matched.length} ${piLabel} meeting ticket(s)${detectedTeam ? ` for ${detectedTeam}` : ''}`
-          : `Found ${issues.length} ${piLabel} issue(s) but none matched a known ceremony type`
-      };
-    }
+    handler: lookupPiTickets
   },
   {
     name: 'sprint_get_unticketed_meetings',

@@ -178,8 +178,16 @@
       <div class="submit-reconciliation">
         <section class="ticket-preview-section">
           <h2>PI Ticket Correction Review</h2>
-          <p class="section-note">Preview uses each entry's exact stored Tempo worklog ID. Nothing changes until you explicitly confirm an individual correction.</p>
+          <p class="section-note">Finds entries in the date range that are on the old PI's tickets and proposes the same type of ticket from the PI to update to. It also lists entries whose ticket differs from their Tempo worklog. Nothing changes until you confirm a correction, or confirm them all.</p>
           <div class="custom-range ticket-review-range">
+            <label class="range-field">
+              <span>Old PI</span>
+              <input v-model.trim="ticketReviewPi" type="text" inputmode="numeric" class="date-input ticket-review-pi" placeholder="e.g. 43" />
+            </label>
+            <label class="range-field">
+              <span>PI to update to</span>
+              <input v-model.trim="ticketReviewTargetPi" type="text" inputmode="numeric" class="date-input ticket-review-pi" placeholder="e.g. 44" />
+            </label>
             <label class="range-field">
               <span>From</span>
               <input v-model="ticketReviewStart" type="date" :max="todayDate" class="date-input" />
@@ -188,31 +196,47 @@
               <span>To</span>
               <input v-model="ticketReviewEnd" type="date" :min="ticketReviewStart || undefined" :max="todayDate" class="date-input" />
             </label>
-            <button class="btn-range" :disabled="ticketPreviewLoading || !ticketReviewRange" @click="previewTicketCorrections">{{ ticketPreviewLoading ? "Reviewing…" : "Preview PI ticket mismatches" }}</button>
+            <button class="btn-range" :disabled="ticketPreviewLoading || ticketCorrectionLoading || !ticketReviewRange || !ticketReviewPiValid" @click="previewTicketCorrections">{{ ticketPreviewLoading ? "Reviewing…" : "Preview PI ticket mismatches" }}</button>
           </div>
+          <p v-if="ticketReviewPiNote" class="section-note">{{ ticketReviewPiNote }}</p>
           <p v-if="ticketReviewRangeNote" class="section-note">{{ ticketReviewRangeNote }}</p>
           <p v-if="ticketPreviewError" class="range-error">{{ ticketPreviewError }}</p>
           <template v-else-if="ticketPreviewLoaded && !ticketPreviewLoading">
-            <p>{{ ticketPreviewRows.length }} possible ticket mismatch(es) across {{ ticketPreviewReviewed }} submitted entries, {{ ticketPreviewRangeLabel }}.</p>
+            <p>{{ ticketPreviewRows.length }} possible correction(s) across {{ ticketPreviewReviewed }} entries with a ticket, {{ ticketPreviewRangeLabel }}.{{ ticketPreviewComparedLabel }}</p>
+            <button v-if="ticketPreviewRows.length > 1" class="btn-range" :disabled="ticketCorrectionLoading" @click="openApproveAll">Approve all ({{ ticketPreviewRows.length }})</button>
+            <div v-if="approveAllPending" class="ticket-correction-confirm">
+              <strong>Confirm all {{ ticketPreviewRows.length }} ticket changes</strong>
+              <p>{{ approveAllSummary }}</p>
+              <p class="section-note">Check the list below first. Corrections run one at a time. If one fails, the rest still run, and it stays in the list so you can try it again. Tempo worklogs keep their author, date, time, duration, description and available work attributes.</p>
+              <div class="reconciliation-heading">
+                <button class="btn-range" :disabled="ticketCorrectionLoading" @click="approveAllPending = false">Cancel</button>
+                <button class="btn-range" :disabled="ticketCorrectionLoading" @click="applyAllTicketCorrections">Confirm all {{ ticketPreviewRows.length }}</button>
+              </div>
+            </div>
+            <p v-if="approveAllProgress" class="section-note" role="status">{{ approveAllProgress }}</p>
             <div v-for="row in ticketPreviewRows" :key="row.entryId" class="ticket-preview-row">
               <strong>{{ row.date }} · {{ row.startTime || 'Time unknown' }} · {{ row.task }}</strong>
-              <span>Local: <b>{{ row.localTicket }}</b> → Tempo: <b>{{ row.tempoTicket }}</b></span>
-              <small>Worklog #{{ row.worklogId }} · {{ row.tempoDurationMins }}m</small>
-              <button class="btn-range" :disabled="ticketCorrectionLoading" @click="pendingTicketCorrection = row">Review correction</button>
+              <span>Local: <b>{{ row.localTicket }}</b> · Tempo: <b>{{ row.worklogId ? row.tempoTicket : 'not submitted' }}</b> → Change to: <b>{{ row.targetTicket }}</b></span>
+              <small v-if="row.worklogId">Worklog #{{ row.worklogId }} · {{ row.tempoDurationMins }}m</small>
+              <button class="btn-range" :disabled="ticketCorrectionLoading" @click="approveAllPending = false; pendingTicketCorrection = row">Review correction</button>
             </div>
             <div v-if="pendingTicketCorrection" class="ticket-correction-confirm">
-              <strong>Confirm Tempo ticket change</strong>
-              <p>Move worklog #{{ pendingTicketCorrection.worklogId }} from {{ pendingTicketCorrection.tempoTicket }} to {{ pendingTicketCorrection.localTicket }}?</p>
-              <p class="section-note">This updates the existing Tempo worklog in place. Its author, date, time, duration, description and available work attributes will be preserved. The local entry will not be resubmitted.</p>
+              <strong>Confirm ticket change</strong>
+              <p>{{ pendingCorrectionSummary }}</p>
+              <p v-if="pendingCorrectionMovesTempo" class="section-note">This updates the existing Tempo worklog in place. Its author, date, time, duration, description and available work attributes will be preserved. The local entry will not be resubmitted.</p>
               <div class="reconciliation-heading">
                 <button class="btn-range" :disabled="ticketCorrectionLoading" @click="pendingTicketCorrection = null">Cancel</button>
-                <button class="btn-range" :disabled="ticketCorrectionLoading" @click="applyTicketCorrection">{{ ticketCorrectionLoading ? 'Updating Tempo…' : 'Confirm and update Tempo' }}</button>
+                <button class="btn-range" :disabled="ticketCorrectionLoading" @click="applyTicketCorrection">{{ ticketCorrectionLoading ? 'Updating…' : pendingCorrectionMovesTempo ? 'Confirm and update Tempo' : 'Confirm and update entry' }}</button>
               </div>
             </div>
             <p v-if="ticketCorrectionMessage" class="section-note">{{ ticketCorrectionMessage }}</p>
-            <p v-if="ticketPreviewRows.length === 0">No exact-ID ticket mismatches found.</p>
+            <details v-if="ticketCorrectionFailures.length" open>
+              <summary>{{ ticketCorrectionFailures.length === 1 ? '1 correction' : `${ticketCorrectionFailures.length} corrections` }} failed</summary>
+              <p v-for="failure in ticketCorrectionFailures" :key="failure">{{ failure }}</p>
+            </details>
+            <p v-if="ticketPreviewRows.length === 0">No ticket corrections found.</p>
             <details v-if="ticketPreviewUnmatched.length">
-              <summary>{{ ticketPreviewUnmatched.length }} stored worklog ID(s) need manual review</summary>
+              <summary>{{ ticketPreviewUnmatched.length === 1 ? '1 entry needs' : `${ticketPreviewUnmatched.length} entries need` }} manual review</summary>
               <p v-for="item in ticketPreviewUnmatched" :key="item.entryId">{{ item.date }} · {{ item.task }} · {{ item.reason }}</p>
             </details>
           </template>
@@ -770,15 +794,78 @@ const ticketPreviewLoading = ref(false)
 const ticketPreviewLoaded = ref(false)
 const ticketPreviewError = ref('')
 const ticketPreviewReviewed = ref(0)
-const ticketPreviewRows = ref<Array<{ entryId: number; date: string; task: string; startTime: string; worklogId: string; localTicket: string; tempoTicket: string; tempoDurationMins: number }>>([])
+interface TicketPreviewRow {
+  entryId: number
+  date: string
+  task: string
+  startTime: string
+  worklogId: string
+  localTicket: string
+  tempoTicket: string
+  targetTicket: string
+  tempoDurationMins: number
+}
+const ticketPreviewRows = ref<TicketPreviewRow[]>([])
 const ticketPreviewUnmatched = ref<Array<{ entryId: number; date: string; task: string; reason: string }>>([])
-const pendingTicketCorrection = ref<{ entryId: number; date: string; task: string; startTime: string; worklogId: string; localTicket: string; tempoTicket: string; tempoDurationMins: number } | null>(null)
+const pendingTicketCorrection = ref<TicketPreviewRow | null>(null)
 const ticketCorrectionLoading = ref(false)
 const ticketCorrectionMessage = ref('')
+const ticketReviewPi = ref('')
+const ticketReviewTargetPi = ref('')
+const ticketReviewCurrentPi = ref('')
 const ticketReviewStart = ref('')
 const ticketReviewEnd = ref('')
 const ticketReviewSuggestion = ref('')
 const ticketPreviewRangeLabel = ref('')
+const ticketPreviewComparedLabel = ref('')
+
+const approveAllPending = ref(false)
+const approveAllProgress = ref('')
+const ticketCorrectionFailures = ref<string[]>([])
+
+const piDigits = (value: string) => value.replace(/^PI\s*/i, '')
+const isPiNumber = (value: string) => /^(PI)?\s*\d+$/i.test(value)
+const ticketReviewPiSame = computed(() => Boolean(ticketReviewPi.value) && piDigits(ticketReviewPi.value) === piDigits(ticketReviewTargetPi.value || ticketReviewCurrentPi.value))
+const ticketReviewPiValid = computed(() =>
+  (!ticketReviewPi.value || isPiNumber(ticketReviewPi.value)) &&
+  (!ticketReviewTargetPi.value || isPiNumber(ticketReviewTargetPi.value)) &&
+  !ticketReviewPiSame.value)
+
+const ticketReviewPiNote = computed(() => {
+  if (ticketReviewPiSame.value) return 'Old PI and PI to update to must be different.'
+  if (!ticketReviewPiValid.value) return 'PI numbers must be a number such as 43.'
+  if (!ticketReviewPi.value) return 'No old PI chosen, so this only compares entries with their Tempo worklogs and will not find entries still on old PI tickets.'
+  const targetDigits = piDigits(ticketReviewTargetPi.value || ticketReviewCurrentPi.value)
+  const target = targetDigits ? `PI ${targetDigits}` : 'the current PI'
+  const source = !targetDigits || targetDigits === piDigits(ticketReviewCurrentPi.value) ? 'from Settings' : 'looked up in Jira'
+  return `Entries in the date range on PI ${piDigits(ticketReviewPi.value)} tickets will be moved to the ${target} ticket of the same type, ${source}. Set the dates to when ${target} was running, because entries from when PI ${piDigits(ticketReviewPi.value)} was running are correct.`
+})
+
+const approveAllSummary = computed(() => {
+  const rows = ticketPreviewRows.value
+  const tempoMoves = rows.filter(row => row.worklogId && row.tempoTicket.toUpperCase() !== row.targetTicket.toUpperCase()).length
+  const localOnly = rows.length - tempoMoves
+  return `This moves ${tempoMoves} Tempo worklog(s) and their entries, and updates ${localOnly} more local entr${localOnly === 1 ? 'y' : 'ies'} without changing Tempo.`
+})
+
+const openApproveAll = () => {
+  pendingTicketCorrection.value = null
+  approveAllPending.value = true
+}
+
+const pendingCorrectionMovesTempo = computed(() => {
+  const row = pendingTicketCorrection.value
+  return Boolean(row?.worklogId) && row?.tempoTicket.toUpperCase() !== row?.targetTicket.toUpperCase()
+})
+
+const pendingCorrectionSummary = computed(() => {
+  const row = pendingTicketCorrection.value
+  if (!row) return ''
+  if (!row.worklogId) return `Change this entry from ${row.localTicket} to ${row.targetTicket}? It has not been submitted, so Tempo is not affected.`
+  if (!pendingCorrectionMovesTempo.value) return `Worklog #${row.worklogId} is already on ${row.targetTicket} in Tempo. Change the local entry from ${row.localTicket} to match?`
+  const localChange = row.localTicket.toUpperCase() === row.targetTicket.toUpperCase() ? '' : `, and change the local entry from ${row.localTicket}`
+  return `Move worklog #${row.worklogId} from ${row.tempoTicket} to ${row.targetTicket}${localChange}?`
+})
 
 const ticketReviewRange = computed(() => {
   const start = ticketReviewStart.value
@@ -819,6 +906,24 @@ const loadTicketReviewRange = async () => {
 }
 
 onMounted(loadTicketReviewRange)
+
+// Defaults to moving the previous PI's tickets to the current PI's. Both stay
+// editable so a historic PI can be corrected, and typed values are kept.
+const loadTicketReviewPi = async () => {
+  try {
+    const record = asRecord(await executeApi('sprint_get_config', {}))
+    const current = piDigits(asString(asRecord(record.config).piNumber).trim())
+    ticketReviewCurrentPi.value = current
+    if (!ticketReviewTargetPi.value) ticketReviewTargetPi.value = current
+    if (!ticketReviewPi.value && /^\d+$/.test(current) && Number(current) > 1) {
+      ticketReviewPi.value = String(Number(current) - 1)
+    }
+  } catch {
+    // The field is left empty and its note explains what that means.
+  }
+}
+
+onMounted(loadTicketReviewPi)
 
 const reconciliationLoading = ref(false)
 const reconciliationError = ref('')
@@ -875,26 +980,32 @@ const formatReconciliationDuration = (mins: number | null) => {
 
 const previewTicketCorrections = async () => {
   const resolved = ticketReviewRange.value
-  if (!resolved) return
+  if (!resolved || !ticketReviewPiValid.value) return
   ticketPreviewLoading.value = true
   ticketPreviewLoaded.value = true
   ticketPreviewError.value = ''
   ticketPreviewRows.value = []
   ticketPreviewUnmatched.value = []
   pendingTicketCorrection.value = null
+  approveAllPending.value = false
   ticketPreviewRangeLabel.value = `${formatDate(resolved.start)} – ${formatDate(resolved.end)}`
+  ticketPreviewComparedLabel.value = ''
   try {
-    const record = asRecord(await executeApi('tempo_preview_ticket_corrections', { from: resolved.start, to: resolved.end }))
+    const record = asRecord(await executeApi('tempo_preview_ticket_corrections', { from: resolved.start, to: resolved.end, comparePi: ticketReviewPi.value, targetPi: ticketReviewTargetPi.value }))
     if (!asBoolean(record.success, false)) {
       ticketPreviewError.value = asString(record.message, 'Failed to preview PI ticket mismatches')
       return
     }
     ticketPreviewReviewed.value = asNumber(record.reviewed)
+    if (asString(record.comparePi)) {
+      const target = asString(record.targetPi)
+      ticketPreviewComparedLabel.value = ` Checked against ${asNumber(record.oldTicketCount)} PI ${asString(record.comparePi)} ticket(s)${target ? `, updating to PI ${target}` : ''}.`
+    }
     ticketPreviewRows.value = readList(record.reviewRows, undefined, item => ({
       entryId: asNumber(item.entryId), date: asString(item.date), task: asString(item.task),
       startTime: asString(item.startTime), worklogId: asString(item.worklogId),
       localTicket: asString(item.localTicket), tempoTicket: asString(item.tempoTicket),
-      tempoDurationMins: asNumber(item.tempoDurationMins)
+      targetTicket: asString(item.targetTicket), tempoDurationMins: asNumber(item.tempoDurationMins)
     }))
     ticketPreviewUnmatched.value = readList(record.unmatchedStoredIds, undefined, item => ({
       entryId: asNumber(item.entryId), date: asString(item.date), task: asString(item.task),
@@ -907,29 +1018,80 @@ const previewTicketCorrections = async () => {
   }
 }
 
+// Throws when the correction did not complete, including when Tempo accepted a
+// change that could not then be verified (see isUncertainCorrection).
+const runTicketCorrection = async (row: TicketPreviewRow): Promise<string> => {
+  if (row.worklogId) {
+    const result = asRecord(await executeApi('tempo_correct_worklog_ticket', {
+      entryId: row.entryId,
+      worklogId: row.worklogId,
+      expectedCurrentTicket: row.tempoTicket,
+      expectedLocalTicket: row.localTicket,
+      targetTicket: row.targetTicket
+    }))
+    return asString(result.message, 'Ticket correction completed.')
+  }
+  // Not in Tempo yet, so only the local entry changes.
+  const result = asRecord(await executeApi('sprint_assign_meeting_ticket', { ticketKey: row.targetTicket, entryIds: [row.entryId] }))
+  if (asNumber(result.updated) === 0) throw new ApiError('The entry was submitted or removed since the preview. Refresh before correcting.')
+  return asString(result.message, 'Ticket correction completed.')
+}
+
+const isUncertainCorrection = (err: unknown) =>
+  err instanceof ApiError && asBoolean(asRecord(err.response).verificationFailed, false)
+
 const applyTicketCorrection = async () => {
   const row = pendingTicketCorrection.value
   if (!row || ticketCorrectionLoading.value) return
   ticketCorrectionLoading.value = true
   ticketCorrectionMessage.value = ''
+  ticketCorrectionFailures.value = []
   try {
-    const result = asRecord(await executeApi('tempo_correct_worklog_ticket', {
-      entryId: row.entryId,
-      worklogId: row.worklogId,
-      expectedCurrentTicket: row.tempoTicket,
-      targetTicket: row.localTicket
-    }))
-    if (!asBoolean(result.success, false)) {
-      ticketCorrectionMessage.value = asString(result.message, 'Tempo ticket correction failed.')
-      return
-    }
-    ticketCorrectionMessage.value = asString(result.message, 'Tempo ticket correction completed.')
+    ticketCorrectionMessage.value = await runTicketCorrection(row)
     pendingTicketCorrection.value = null
     await previewTicketCorrections()
     await loadReconciliation()
   } catch (err) {
-    ticketCorrectionMessage.value = err instanceof ApiError ? err.message : 'Tempo ticket correction failed.'
+    ticketCorrectionMessage.value = err instanceof ApiError ? err.message : 'Ticket correction failed.'
   } finally {
+    ticketCorrectionLoading.value = false
+  }
+}
+
+const applyAllTicketCorrections = async () => {
+  if (ticketCorrectionLoading.value) return
+  const rows = [...ticketPreviewRows.value]
+  ticketCorrectionLoading.value = true
+  approveAllPending.value = false
+  ticketCorrectionMessage.value = ''
+  ticketCorrectionFailures.value = []
+  const failures: string[] = []
+  let corrected = 0
+  let stopped = false
+  try {
+    for (const [index, row] of rows.entries()) {
+      approveAllProgress.value = `Updating ${index + 1} of ${rows.length}…`
+      try {
+        await runTicketCorrection(row)
+        corrected += 1
+      } catch (err) {
+        const reason = err instanceof ApiError ? err.message : 'Ticket correction failed.'
+        failures.push(`${row.date} · ${row.task}: ${reason}`)
+        // Tempo's state is unknown, so don't change anything else until it's checked.
+        if (isUncertainCorrection(err)) {
+          stopped = true
+          break
+        }
+      }
+    }
+    approveAllProgress.value = ''
+    ticketCorrectionFailures.value = failures
+    const remaining = rows.length - corrected - failures.length
+    ticketCorrectionMessage.value = `Corrected ${corrected} of ${rows.length}.${stopped ? ` Stopped with ${remaining} not attempted, because Tempo could not confirm a change. Check that worklog in Tempo before continuing.` : ''}`
+    await previewTicketCorrections()
+    await loadReconciliation()
+  } finally {
+    approveAllProgress.value = ''
     ticketCorrectionLoading.value = false
   }
 }
@@ -1083,6 +1245,11 @@ const reconcileDuration = async (row: ReconciledRow) => {
 
 .range-field .date-input {
   min-width: 10.5rem;
+}
+
+.range-field .ticket-review-pi {
+  min-width: 0;
+  width: 6rem;
 }
 
 .range-field {

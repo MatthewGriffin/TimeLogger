@@ -24,6 +24,7 @@ import { GraphClient, hasStoredGraphToken } from '../api/graph-client.js';
 import { fetchAllTempoPages } from '../tools/jira-tempo-worklogs.js';
 import { localDateKey, parseDateKey } from '../utils/dates.js';
 import { makeHttpRequest, httpClient } from '../api/http-client.js';
+import { buildPiTicketMigration } from '../tools/sprint.js';
 
 // Color codes for output
 const colors = {
@@ -654,8 +655,8 @@ async function runTests() {
 
     test('PI correction preview correlates by Tempo tempoWorklogId and reports ticket mismatch only', () => {
       const local = [
-        { id: 301, date: '2026-11-02', name: 'Feature work', ticket_id: 'PI43-100', start_time: '09:00', duration_mins: 60, tempo_worklog_id: '9001' },
-        { id: 302, date: '2026-11-02', name: 'Review', ticket_id: 'PI43-101', start_time: '10:00', duration_mins: 30, tempo_worklog_id: '9002' },
+        { id: 301, date: '2026-11-02', name: 'Feature work', ticket_id: 'PI43-100', start_time: '09:00', duration_mins: 60, submitted: 1, tempo_worklog_id: '9001' },
+        { id: 302, date: '2026-11-02', name: 'Review', ticket_id: 'PI43-101', start_time: '10:00', duration_mins: 30, submitted: 1, tempo_worklog_id: '9002' },
       ];
       const remote = [
         { tempoWorklogId: 9001, ticketId: 'PI44-100', description: 'Feature work', startTime: '09:00', durationMins: 60 },
@@ -672,7 +673,7 @@ async function runTests() {
 
     test('PI correction preview does not guess when a stored Tempo worklog ID is missing', () => {
       const local = [
-        { id: 303, date: '2026-11-02', name: 'Uncertain', ticket_id: 'PI43-102', start_time: '11:00', duration_mins: 30, tempo_worklog_id: 'missing-id' },
+        { id: 303, date: '2026-11-02', name: 'Uncertain', ticket_id: 'PI43-102', start_time: '11:00', duration_mins: 30, submitted: 1, tempo_worklog_id: 'missing-id' },
       ];
       const remote = [
         { tempoWorklogId: 9003, ticketId: 'PI44-102', description: 'Uncertain', startTime: '11:00', durationMins: 30 },
@@ -682,6 +683,64 @@ async function runTests() {
       assert.strictEqual(preview.reviewRows.length, 0);
       assert.strictEqual(preview.unmatchedStoredIds.length, 1);
       assert.strictEqual(preview.unmatchedStoredIds[0].entryId, 303);
+    });
+
+    test('PI correction preview flags an old PI ticket even when local and Tempo agree', () => {
+      const migration = buildPiTicketMigration(
+        [{ id: 'dailyScrum', label: 'Daily Scrum', ticketKey: 'TIME-359' }],
+        { mappings: [{ id: 'dailyScrum', ticketKey: 'TIME-634' }] }
+      );
+      const entry = { date: '2026-11-02', start_time: '09:00', duration_mins: 15 };
+      const local = [
+        { ...entry, id: 311, name: 'Working on work item TIME-359', ticket_id: 'time-359', submitted: 1, tempo_worklog_id: '9011' },
+        { ...entry, id: 312, name: 'Not sent yet', ticket_id: 'TIME-359', submitted: 0, tempo_worklog_id: null },
+        { ...entry, id: 313, name: 'Tempo already moved', ticket_id: 'TIME-359', submitted: 1, tempo_worklog_id: '9013' },
+        // A keyword in the name must not pull real work onto a placeholder.
+        { ...entry, id: 314, name: 'Daily scrum tooling', ticket_id: 'DIS-1', submitted: 1, tempo_worklog_id: '9014' },
+        { ...entry, id: 315, name: 'Already correct', ticket_id: 'TIME-634', submitted: 1, tempo_worklog_id: '9015' },
+        { ...entry, id: 316, name: 'Other unsent work', ticket_id: 'DIS-2', submitted: 0, tempo_worklog_id: null },
+      ];
+      const remote = [
+        { tempoWorklogId: 9011, ticketId: 'TIME-359' },
+        { tempoWorklogId: 9013, ticketId: 'TIME-634' },
+        { tempoWorklogId: 9014, ticketId: 'DIS-1' },
+        { tempoWorklogId: 9015, ticketId: 'TIME-634' },
+      ];
+      const preview = buildTempoTicketCorrectionPreview(local, remote, migration);
+      assert.deepStrictEqual(preview.reviewRows.map(row => [row.entryId, row.tempoTicket, row.targetTicket]), [
+        [311, 'TIME-359', 'TIME-634'],
+        [312, null, 'TIME-634'],
+        [313, 'TIME-634', 'TIME-634'],
+      ]);
+      assert.strictEqual(preview.unmatchedStoredIds.length, 0);
+    });
+
+    test('PI correction preview sends old PI entries it cannot safely correct to manual review', () => {
+      const migration = buildPiTicketMigration(
+        [
+          { id: 'dailyScrum', label: 'Daily Scrum', ticketKey: 'TIME-359' },
+          { id: 'retro', label: 'Retro', ticketKey: 'TIME-360' },
+        ],
+        { mappings: [{ id: 'dailyScrum', ticketKey: 'TIME-634' }, { id: 'retro', ticketKey: '' }] }
+      );
+      const entry = { date: '2026-11-02', start_time: '09:00', duration_mins: 15 };
+      const local = [
+        { ...entry, id: 321, name: 'No current ticket', ticket_id: 'TIME-360', submitted: 0, tempo_worklog_id: null },
+        { ...entry, id: 322, name: 'Sent with no ID', ticket_id: 'TIME-359', submitted: 1, tempo_worklog_id: null },
+        { ...entry, id: 323, name: 'Linked but unsent', ticket_id: 'TIME-359', submitted: 0, tempo_worklog_id: '9023' },
+        { ...entry, id: 324, name: 'Other sent with no ID', ticket_id: 'DIS-3', submitted: 1, tempo_worklog_id: '' },
+      ];
+      const preview = buildTempoTicketCorrectionPreview(local, [{ tempoWorklogId: 9023, ticketId: 'TIME-359' }], migration);
+      assert.strictEqual(preview.reviewRows.length, 0);
+      assert.deepStrictEqual(preview.unmatchedStoredIds.map(item => item.entryId), [321, 322, 323]);
+    });
+
+    test('PI ticket migration leaves out a key the current PI still uses', () => {
+      const migration = buildPiTicketMigration(
+        [{ id: 'training', label: 'Training', ticketKey: 'TIME-529' }],
+        { mappings: [{ id: 'training', ticketKey: 'TIME-529' }] }
+      );
+      assert.strictEqual(migration.size, 0);
     });
 
     test('matches the exact local time slot and duration even when ticket casing and seconds differ', () => {
@@ -1364,6 +1423,159 @@ async function runTests() {
     const row = db.prepare('SELECT submitted FROM daily_summary WHERE id = ?').get(inserted.lastInsertRowid);
     assert.strictEqual(row.submitted, 0, 'The entry should be unmarked so it is offered for submission again');
     cleanTestFixtures();
+  });
+
+  // Answers requests with `route` instead of the network.
+  const withStubbedHttp = async (route, run) => {
+    const previous = httpClient.defaults.adapter;
+    httpClient.defaults.adapter = async config => ({
+      data: JSON.stringify(route(config)), status: 200, statusText: 'OK', headers: {}, config
+    });
+    try { return await run(); } finally { httpClient.defaults.adapter = previous; }
+  };
+  const jqlOf = config => new URL(config.url).searchParams.get('jql') || '';
+  const fakeJira = { baseUrl: 'https://jira.test', email: 'test@example.com', apiToken: 'jira-token', tempoToken: 'tempo-token' };
+
+  await testAsync('PI ticket lookup reads every page of Jira results', async () => {
+    const tokens = [];
+    const result = await withStubbedHttp(config => {
+      const token = new URL(config.url).searchParams.get('nextPageToken');
+      tokens.push(token);
+      return token
+        ? { issues: [{ key: 'TIME-359', fields: { summary: 'PI43-Daily Scrum Discovery' } }] }
+        : { issues: [{ key: 'TIME-1', fields: { summary: 'PI43-Daily Scrum Other' } }], nextPageToken: 'page 2' };
+    }, () => executeTool('sprint_lookup_pi_tickets', { ...fakeJira, piNumber: '43', teamLabel: 'Discovery' }));
+    assert.deepStrictEqual(tokens, [null, 'page 2']);
+    assert.deepStrictEqual(result.matched.map(item => item.ticketKey), ['TIME-359']);
+  });
+
+  await testAsync('the PI preview finds entries on old tickets and fails if they cannot be looked up', async () => {
+    cleanTestFixtures();
+    const savedConfig = db.prepare("SELECT value FROM settings WHERE key = 'sprint_config'").get();
+    const setConfig = db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('sprint_config', ?, CURRENT_TIMESTAMP)");
+    try {
+      setConfig.run(JSON.stringify({
+        piNumber: '44', projectKey: 'TIME', teamLabel: 'Discovery',
+        mappings: [{ id: 'dailyScrum', ticketKey: 'TIME-634' }]
+      }));
+      const inserted = db.prepare(`
+        INSERT INTO daily_summary (date, name, ticket_id, start_time, end_time, duration_mins, submitted, tempo_worklog_id, from_calendar)
+        VALUES (?, 'Discovery Daily Scrum', 'TIME-359', '09:00', '09:15', 15, 1, '9101', 0)
+      `).run(TEST_DATE);
+      const dates = { from: TEST_DATE, to: TEST_DATE };
+
+      const preview = await withStubbedHttp(config => {
+        if (config.url.includes('/myself')) return { accountId: 'me' };
+        if (config.url.includes('api.tempo.io/4/worklogs/user/')) {
+          return { results: [{ tempoWorklogId: 9101, issue: { id: 1 }, startDate: TEST_DATE, timeSpentSeconds: 900 }], metadata: {} };
+        }
+        if (config.url.includes('api.tempo.io')) return { results: [], values: [] };
+        return jqlOf(config).includes('PI43')
+          ? { issues: [{ key: 'TIME-359', fields: { summary: 'PI43-Daily Scrum Discovery' } }] }
+          : { issues: [{ id: '1', key: 'TIME-359', fields: { summary: 'PI43-Daily Scrum Discovery' } }] };
+      }, () => executeTool('tempo_preview_ticket_corrections', { ...fakeJira, ...dates, comparePi: '43' }));
+      assert.strictEqual(preview.success, true, preview.message);
+      assert.strictEqual(preview.oldTicketCount, 1);
+      assert.strictEqual(preview.reviewRows.length, 1);
+      assert.strictEqual(preview.reviewRows[0].entryId, Number(inserted.lastInsertRowid));
+      assert.strictEqual(preview.reviewRows[0].targetTicket, 'TIME-634');
+
+      const notFound = await withStubbedHttp(() => ({ issues: [] }),
+        () => executeTool('tempo_preview_ticket_corrections', { ...fakeJira, ...dates, comparePi: '43' }));
+      assert.strictEqual(notFound.success, false, 'A failed lookup must not read as nothing to correct');
+
+      const samePi = await executeTool('tempo_preview_ticket_corrections', { ...fakeJira, ...dates, comparePi: 'PI44' });
+      assert.strictEqual(samePi.success, false);
+
+      // A historic correction: PI 43 tickets move to PI 42's, not to the current PI's.
+      const issuesFor = (pi, extra = []) => [{ key: pi === 'PI42' ? 'TIME-111' : 'TIME-359', fields: { summary: `${pi}-Daily Scrum Discovery` } }, ...extra];
+      const tempoRoute = (config, piIssues) => {
+        if (config.url.includes('/myself')) return { accountId: 'me' };
+        if (config.url.includes('api.tempo.io/4/worklogs/user/')) {
+          return { results: [{ tempoWorklogId: 9101, issue: { id: 1 }, startDate: TEST_DATE, timeSpentSeconds: 900 }], metadata: {} };
+        }
+        if (config.url.includes('api.tempo.io')) return { results: [], values: [] };
+        const pi = /PI\d+/.exec(jqlOf(config))?.[0];
+        return pi ? { issues: piIssues(pi) } : { issues: [{ id: '1', key: 'TIME-359', fields: { summary: 'x' } }] };
+      };
+      const historic = await withStubbedHttp(config => tempoRoute(config, pi => issuesFor(pi)),
+        () => executeTool('tempo_preview_ticket_corrections', { ...fakeJira, ...dates, comparePi: '43', targetPi: 'PI42' }));
+      assert.strictEqual(historic.success, true, historic.message);
+      assert.strictEqual(historic.targetPi, '42');
+      assert.strictEqual(historic.reviewRows[0].targetTicket, 'TIME-111');
+
+      const sameAsTarget = await executeTool('tempo_preview_ticket_corrections', { ...fakeJira, ...dates, comparePi: '42', targetPi: '42' });
+      assert.strictEqual(sameAsTarget.success, false);
+
+      // Two tickets for one type must fail rather than pick one.
+      setConfig.run(JSON.stringify({ piNumber: '44', projectKey: 'TIME', teamLabel: '', mappings: [{ id: 'dailyScrum', ticketKey: 'TIME-634' }] }));
+      const ambiguous = await withStubbedHttp(
+        config => tempoRoute(config, pi => issuesFor(pi, pi === 'PI42' ? [{ key: 'TIME-112', fields: { summary: 'PI42-Daily Scrum Other' } }] : [])),
+        () => executeTool('tempo_preview_ticket_corrections', { ...fakeJira, ...dates, comparePi: '43', targetPi: '42' }));
+      assert.strictEqual(ambiguous.success, false);
+      assert.match(ambiguous.message, /more than one Daily Scrum/);
+    } finally {
+      if (savedConfig) setConfig.run(savedConfig.value);
+      else db.prepare("DELETE FROM settings WHERE key = 'sprint_config'").run();
+      cleanTestFixtures();
+    }
+  });
+
+  await testAsync('correcting an old PI ticket moves the Tempo worklog and then the local entry', async () => {
+    cleanTestFixtures();
+    const inserted = db.prepare(`
+      INSERT INTO daily_summary (date, name, ticket_id, start_time, end_time, duration_mins, submitted, tempo_worklog_id, from_calendar)
+      VALUES (?, 'Discovery Daily Scrum', 'TIME-359', '09:00', '09:15', 15, 1, '9102', 0)
+    `).run(TEST_DATE);
+    const id = Number(inserted.lastInsertRowid);
+    const ticketOf = () => db.prepare('SELECT ticket_id FROM daily_summary WHERE id = ?').get(id).ticket_id;
+    const request = { ...fakeJira, entryId: id, worklogId: '9102', expectedCurrentTicket: 'TIME-359', targetTicket: 'TIME-634' };
+
+    let issueId = 1;
+    let puts = 0;
+    let acceptMove = true;
+    const route = config => {
+      if (config.url.includes('api.tempo.io')) {
+        if (config.method.toLowerCase() === 'put') {
+          puts += 1;
+          if (acceptMove) issueId = JSON.parse(config.data).issueId;
+        }
+        return { tempoWorklogId: 9102, issue: { id: issueId }, author: { accountId: 'me' }, startDate: TEST_DATE, startTime: '09:00:00', timeSpentSeconds: 900 };
+      }
+      return { issues: jqlOf(config).startsWith('id =') ? [{ id: '1', key: 'TIME-359' }] : [{ id: '2', key: 'TIME-634' }] };
+    };
+
+    try {
+      const stale = await withStubbedHttp(route, () => executeTool('tempo_correct_worklog_ticket', { ...request, expectedLocalTicket: 'TIME-111' }));
+      assert.strictEqual(stale.success, false);
+      assert.strictEqual(puts, 0, 'A stale preview must not touch Tempo');
+
+      acceptMove = false;
+      const unverified = await withStubbedHttp(route, () => executeTool('tempo_correct_worklog_ticket', { ...request, expectedLocalTicket: 'TIME-359' }));
+      assert.strictEqual(unverified.verificationFailed, true);
+      assert.strictEqual(ticketOf(), 'TIME-359', 'The local entry must not change until the move is verified');
+
+      acceptMove = true;
+      puts = 0;
+      const moved = await withStubbedHttp(route, () => executeTool('tempo_correct_worklog_ticket', { ...request, expectedLocalTicket: 'TIME-359' }));
+      assert.strictEqual(moved.success, true, moved.message);
+      assert.strictEqual(puts, 1);
+      assert.strictEqual(issueId, 2);
+      assert.strictEqual(ticketOf(), 'TIME-634');
+
+      // Tempo already on the target: only the stale local ticket needs to change.
+      db.prepare("UPDATE daily_summary SET ticket_id = 'TIME-359' WHERE id = ?").run(id);
+      issueId = 2;
+      puts = 0;
+      const localOnly = await withStubbedHttp(config => (
+        config.url.includes('api.tempo.io') ? route(config) : { issues: [{ id: '2', key: 'TIME-634' }] }
+      ), () => executeTool('tempo_correct_worklog_ticket', { ...request, expectedCurrentTicket: 'TIME-634', expectedLocalTicket: 'TIME-359' }));
+      assert.strictEqual(localOnly.unchanged, true, localOnly.message);
+      assert.strictEqual(puts, 0);
+      assert.strictEqual(ticketOf(), 'TIME-634');
+    } finally {
+      cleanTestFixtures();
+    }
   });
 
   // ============================================================
