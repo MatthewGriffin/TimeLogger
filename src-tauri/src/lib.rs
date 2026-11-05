@@ -49,6 +49,7 @@ pub fn run() {
     }))
     .setup(|app| {
       notifications::set_app_handle(app.handle().clone());
+      notifications::register_click_handler(app.handle());
       tray::setup_tray(app)?;
       backend::start_backend_watchdog();
 
