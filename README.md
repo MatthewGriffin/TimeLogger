@@ -47,7 +47,8 @@ npm run tauri dev
 
 ## Releasing
 
-Releases are automated. Every pull request into `main` is a new app version.
+Releases are automated. Every pull request into `main` or `beta` is a new app
+version.
 
 1. **Bump the version in your pull request.** It must be increased, and all
    three declarations must agree:
@@ -58,19 +59,56 @@ Releases are automated. Every pull request into `main` is a new app version.
    The **Version** workflow blocks the pull request until this is done. Run
    `npm run check:version` locally to verify.
 
-2. **Merge.** Once the **Quality** workflow passes on `main`, the **Release**
+2. **Merge.** Once the **Quality** workflow passes on the branch, the **Release**
    workflow builds the installer and publishes a GitHub release tagged
    `v{version}` with generated release notes.
 
 If a version has already been released the release workflow skips rather than
 failing, so re-runs are safe.
 
+### Version numbers
+
+- **Major change:** bump the middle number, such as `0.7.102` to `0.8.0`.
+- **Minor change:** bump the last number, such as `0.8.0` to `0.8.1`.
+- **`1.0.0`:** reserved for a release that's actually ready to use. The channel
+  switch below must have shipped on `main` first, so that nobody moving from beta
+  to main at 1.0 lands on a version without it.
+
+### Release channels
+
+| Branch | Version | Release | Who gets it |
+|---|---|---|---|
+| `main` | `0.8.0` | Normal | Everyone |
+| `beta` | `0.9.0-beta.1` | Pre-release | Anyone on the Beta channel |
+
+The **Version** workflow requires a version that suits the target branch.
+
+To promote a tested beta:
+
+1. Create a branch from `beta` and change the version there to the full release,
+   such as `0.9.0-beta.3` to `0.9.0`. Don't push that version to `beta` itself,
+   because the **Release** workflow rejects it there.
+2. Open a pull request from that branch into `main` and squash merge it.
+3. Create another branch from `beta`, merge `main` into it, and set the next beta
+   version, such as `0.9.1-beta.1`. Open a pull request into `beta` and merge it
+   with a merge commit, so that the next promotion only contains new work.
+
+Each beta also overwrites `latest.json` on the `beta-channel` release, because
+GitHub has no URL for the latest pre-release.
+
+Keep database changes additive: add tables and columns, but don't rename, remove
+or rewrite them. A beta and an older main build can both open the same database.
+
 ## Updates
 
 Installed copies update themselves. On launch the app quietly asks GitHub for
-the `latest.json` published with each release; if a newer version exists it
-offers to download and install it, then restarts. Users can also trigger the
-check from **Settings → About → Check for Updates**.
+the `latest.json` of its channel; if a newer version exists it offers to download
+and install it, then restarts. Users can also trigger the check from
+**Settings → About → Check for Updates**, and choose Main or Beta there.
+
+Beta users are offered whichever of the two channels is newer. Moving from Beta to
+Main never installs an older version: the app keeps its build until Main has a
+newer one.
 
 Each installer is signed with a minisign key at release time and the app
 verifies that signature before installing, so a build that was not produced by

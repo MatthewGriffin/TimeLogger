@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.7.102"
+version = "0.8.0"
 description = "Tempo time logging helper app"
 authors = ["Matthew Griffin"]
 license = "MIT"
@@ -23,6 +23,7 @@ tauri = { version = "2.11.3", features = ["protocol-asset", "tray-icon", "webvie
 tauri-plugin-log = "2"
 tauri-plugin-single-instance = "2"
 reqwest = { version = "0.13", features = ["blocking", "json"] }
+semver = "1"
 url = "2"
 urlencoding = "2"
 tauri-plugin-updater = { version = "2.11.0", default-features = false, features = ["rustls-tls"] }

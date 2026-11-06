@@ -12,6 +12,7 @@
 //! - [`files`]      narrow filesystem and shell commands
 //! - [`tray`]       system tray icon and menu
 //! - [`notifications`] Windows toasts
+//! - [`updates`]    update checks for the main and beta channels
 
 use tauri::Manager;
 
@@ -24,6 +25,7 @@ mod oauth;
 mod platform;
 mod setup;
 mod tray;
+mod updates;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -33,6 +35,7 @@ pub fn run() {
     // over port 3001, each killing the other's backend and leaving nothing
     // listening ("failed to reach backend"). Reuse the running instance.
     .plugin(tauri_plugin_updater::Builder::new().build())
+    .manage(updates::PendingUpdate::default())
     .plugin(tauri_plugin_notification::init())
     // Backup and restore need a native file picker. The file itself is read
     // and written by dedicated commands rather than the fs plugin, so no
@@ -97,7 +100,9 @@ pub fn run() {
       notifications::show_submission_success_notification,
       notifications::show_submission_error_notification,
       notifications::show_daily_reminder_notification,
-      notifications::show_tempo_reminder_notification
+      notifications::show_tempo_reminder_notification,
+      updates::check_for_update,
+      updates::install_update
     ])
     .build(tauri::generate_context!())
     .expect("error while building tauri application")

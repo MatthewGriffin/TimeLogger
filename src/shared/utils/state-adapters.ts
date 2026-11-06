@@ -2,7 +2,7 @@ export type { AppConfig, CalendarConfig, JiraConfig, LunchConfig, MicrosoftConfi
 export type { Note, NoteTopic } from '@/shared/models/note'
 export type { TimeEntry } from '@/shared/models/time-entry'
 
-import type { AppConfig, LunchConfig, NotificationsConfig, WorkdayConfig } from '@/shared/models/config'
+import type { AppConfig, LunchConfig, NotificationsConfig, UpdateChannel, WorkdayConfig } from '@/shared/models/config'
 import type { Note } from '@/shared/models/note'
 import type { TimeEntry } from '@/shared/models/time-entry'
 
@@ -121,6 +121,9 @@ export function normalizeNotifications(value: unknown): NotificationsConfig {
   }
 }
 
+const normalizeUpdateChannel = (value: unknown): UpdateChannel | undefined =>
+  value === 'main' || value === 'beta' ? value : undefined
+
 export function normalizeConfig(value: unknown): AppConfig {
   const response = asRecord(value)
   const source = (response.config && typeof response.config === 'object')
@@ -178,6 +181,7 @@ export function normalizeConfig(value: unknown): AppConfig {
     workday: normalizeWorkday(source.workday ?? a?.workday),
     autoStart: Boolean(source.autoStart ?? a?.autoStart),
     startMinimized: Boolean(source.startMinimized ?? a?.startMinimized),
+    updateChannel: normalizeUpdateChannel(source.updateChannel ?? a?.updateChannel),
     notifications: normalizeNotifications(source.notifications),
     lastUpdated: String(source.lastUpdated ?? a?.lastUpdated ?? new Date().toISOString())
   }

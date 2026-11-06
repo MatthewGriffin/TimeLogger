@@ -2,7 +2,7 @@ name: Version
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, beta]
 
 permissions:
   contents: read
@@ -22,16 +22,21 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - name: Read version on main
+      - name: Read version on the target branch
         id: baseline
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          git fetch --no-tags --depth=1 origin main
-          version=$(git show origin/main:src-tauri/tauri.conf.json | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).version))")
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          version=$(git show "origin/$BASE_REF:src-tauri/tauri.conf.json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).version))")
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Check versions are consistent and increased
         if: github.actor != 'dependabot[bot]'
-        run: node scripts/check-version.mjs "${{ steps.baseline.outputs.version }}"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          BASELINE: ${{ steps.baseline.outputs.version }}
+        run: node scripts/check-version.mjs "$BASELINE" "$BASE_REF"
 
       - name: Check versions are consistent
         if: github.actor == 'dependabot[bot]'

@@ -17,6 +17,8 @@ const SECTION_KEYS = {
   app: ['app_config', 'appConfig']
 };
 
+const UPDATE_CHANNELS = ['main', 'beta'];
+
 function readSettings() {
   const rows = db.prepare('SELECT key, value FROM settings').all();
   const values = {};
@@ -49,6 +51,8 @@ function readSettings() {
     },
     autoStart: Boolean(app.autoStart),
     startMinimized: Boolean(app.startMinimized),
+    // Left unset until chosen, because the default depends on the installed build.
+    updateChannel: UPDATE_CHANNELS.includes(app.updateChannel) ? app.updateChannel : null,
     // Notification settings were previously rendered in the UI but never
     // persisted, so every toggle silently reset on reload.
     notifications: readNotificationsConfig(),
@@ -111,6 +115,9 @@ export const tools = [
     handler: async (args) => {
       try {
         if (!args.config || typeof args.config !== 'object' || Array.isArray(args.config)) throw new Error('config must be an object');
+        if (args.config.updateChannel != null && !UPDATE_CHANNELS.includes(args.config.updateChannel)) {
+          throw new Error('updateChannel must be main or beta');
+        }
         const current = readSettings();
         const config = { ...current, ...args.config, lastUpdated: new Date().toISOString() };
         if (Object.prototype.hasOwnProperty.call(args.config, 'jira')) write('jira_config', config.jira);
@@ -164,11 +171,13 @@ export const tools = [
         if (Object.prototype.hasOwnProperty.call(args.config, 'calendar')) write('calendar_config', config.calendar);
         if (Object.prototype.hasOwnProperty.call(args.config, 'autoStart') ||
             Object.prototype.hasOwnProperty.call(args.config, 'startMinimized') ||
+            Object.prototype.hasOwnProperty.call(args.config, 'updateChannel') ||
             Object.prototype.hasOwnProperty.call(args.config, 'lunch') ||
             Object.prototype.hasOwnProperty.call(args.config, 'workday')) {
           write('app_config', {
             autoStart: config.autoStart,
             startMinimized: config.startMinimized,
+            updateChannel: config.updateChannel,
             lunch: config.lunch,
             workday: config.workday,
             lastUpdated: config.lastUpdated
