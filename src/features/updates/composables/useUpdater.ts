@@ -94,9 +94,11 @@ const resolveChannel = async (): Promise<UpdateChannel> => {
   const configStore = useConfigStore()
   const saved = configStore.config.updateChannel
   const channel = effectiveUpdateChannel(saved, await getVersion())
-  if (!saved && channel === 'beta') {
+  // Until settings have loaded, "no choice saved" can't be told apart from a
+  // choice that couldn't be read, and that choice mustn't be replaced.
+  if (!saved && channel === 'beta' && configStore.hasLoaded) {
     // Checking still works without this, and a later check tries the save again.
-    await configStore.saveConfig({ updateChannel: channel }).catch(() => undefined)
+    await configStore.saveUpdateChannel(channel).catch(() => undefined)
   }
   return channel
 }

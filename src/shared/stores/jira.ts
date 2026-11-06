@@ -48,6 +48,28 @@ export const useJiraStore = defineStore('jira', () => {
     }
   }
 
+  /** The user's tickets in any in-progress status, offered when there's nothing to search for. */
+  const findInProgress = async (limit = 20) => {
+    isSearching.value = true
+    error.value = ''
+    lastQuery.value = ''
+    try {
+      const response = await executeApi<{ issues?: Array<{ key: string; summary?: string; status?: string }> }>('tempo_get_issues', {
+        query: 'assignee = currentUser() AND statusCategory = "In Progress" ORDER BY updated DESC',
+        limit
+      })
+      matches.value = asList<{ key: string; summary?: string; status?: string }>(response, 'issues')
+        .map(issue => ({ key: issue.key, summary: issue.summary || '', status: issue.status || '', confidence: 1 }))
+      return matches.value
+    } catch (err) {
+      matches.value = []
+      error.value = err instanceof ApiError ? err.message : 'Jira ticket lookup failed'
+      throw err
+    } finally {
+      isSearching.value = false
+    }
+  }
+
   const clear = () => {
     matches.value = []
     error.value = ''
@@ -56,5 +78,5 @@ export const useJiraStore = defineStore('jira', () => {
 
   const clearError = () => { error.value = '' }
 
-  return { isSearching, error, matches, lastQuery, findTicket, clear, clearError }
+  return { isSearching, error, matches, lastQuery, findTicket, findInProgress, clear, clearError }
 })

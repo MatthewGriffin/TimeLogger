@@ -94,7 +94,7 @@
                 class="btn-ai btn-ai-inline"
                 @click="findJiraTicket('add')"
                 :disabled="jiraStore.isSearching"
-                title="Look up the Jira ticket for this task name"
+                title="Look up the Jira ticket for this task name, or leave it empty to pick from your in-progress tickets"
               >
                 {{ jiraStore.isSearching ? '⏳' : '🔍' }}
               </button>
@@ -176,7 +176,7 @@
                 class="btn-ai btn-ai-inline"
                 @click="findJiraTicket('edit')"
                 :disabled="jiraStore.isSearching"
-                title="Look up the Jira ticket for this task name"
+                title="Look up the Jira ticket for this task name, or leave it empty to pick from your in-progress tickets"
               >
                 {{ jiraStore.isSearching ? '⏳' : '🔍' }}
               </button>
@@ -233,13 +233,13 @@
           <button class="modal-close" @click="closeTicketLookup">✕</button>
         </div>
         <div class="modal-content">
-          <div class="suggestion-item">
+          <div v-if="jiraStore.lastQuery" class="suggestion-item">
             <label class="suggestion-label">Searched For:</label>
             <div class="suggestion-preview">{{ jiraStore.lastQuery }}</div>
           </div>
 
           <div class="suggestion-item">
-            <label class="suggestion-label">Your Matching Tickets:</label>
+            <label class="suggestion-label">{{ jiraStore.lastQuery ? 'Your Matching Tickets:' : 'Your In-Progress Tickets:' }}</label>
             <button
               v-for="match in jiraStore.matches"
               :key="match.key"
@@ -255,7 +255,8 @@
 
           <div class="lookup-note">
             <span>ℹ️</span>
-            <p>Only tickets assigned to you, reported by you, or recently updated by you are searched.</p>
+            <p v-if="jiraStore.lastQuery">Only tickets assigned to you, reported by you, or recently updated by you are searched.</p>
+            <p v-else>These are the tickets assigned to you that are in progress. To find another, type a task name and search again.</p>
           </div>
         </div>
         <div class="modal-footer">
@@ -582,14 +583,20 @@ const findJiraTicket = async (target: 'add' | 'edit' = 'add') => {
 
   const query = form.taskName.trim() || (form.ticketId ?? '').trim()
 
-  if (!query) {
-    uiStore.showError('Enter a task name or ticket ID to search for')
-    return
-  }
-
   ticketLookupTarget.value = target
 
   try {
+    // With nothing to search for, offer what's being worked on instead.
+    if (!query) {
+      const inProgress = await jiraStore.findInProgress()
+      if (inProgress.length === 0) {
+        uiStore.showInfo('You have no Jira tickets in progress. Type a task name to search instead.')
+        return
+      }
+      showTicketLookup.value = true
+      return
+    }
+
     const matches = await jiraStore.findTicket(query)
     if (matches.length === 0) {
       uiStore.showInfo(jiraStore.error || `No Jira tickets found for "${query}"`)

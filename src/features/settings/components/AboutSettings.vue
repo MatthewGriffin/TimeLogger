@@ -130,7 +130,7 @@ const changeChannel = async (event: Event) => {
   const select = event.target as HTMLSelectElement
   isSavingChannel.value = true
   try {
-    await configStore.saveConfig({ updateChannel: select.value as UpdateChannel })
+    await configStore.saveUpdateChannel(select.value as UpdateChannel)
     rollbackVersions.value = null
     void checkForUpdate(true)
   } catch (error) {
