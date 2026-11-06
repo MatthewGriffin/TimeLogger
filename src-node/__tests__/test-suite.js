@@ -1,6 +1,5 @@
 import './test-env.js';
 import assert from 'assert';
-import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { tools, db, executeTool, healthCheck } from '../index.js';
@@ -20,11 +19,12 @@ import {
 import { ukBankHolidays, isUkBankHoliday } from '../utils/uk-holidays.js';
 import { previousWorkingDay, isWorkingDay } from '../utils/working-days.js';
 import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, microsoftAuthorityUrl, escapeHtml } from '../utils/safe-url.js';
-import { backendPort } from '../utils/backend-port.js';
+import { singleLine } from '../utils/log-text.js';
+import { redactSecrets } from '../api/setup-routes.js';
 import { extractTicketKeys, classifyPullRequest, isOpenUnmergedPullRequest, buildPullRequestSearches } from '../tools/github-prs.js';
 import { GraphClient, hasStoredGraphToken } from '../api/graph-client.js';
 import { fetchAllTempoPages } from '../tools/jira-tempo-worklogs.js';
-import { localDateKey, parseDateKey } from '../utils/dates.js';
+import { localDateKey } from '../utils/dates.js';
 import { makeHttpRequest, httpClient } from '../api/http-client.js';
 import { buildPiTicketMigration } from '../tools/sprint.js';
 import { branchVersionProblem, compareVersions, isBetaVersion, isValidVersion } from '../../scripts/version-rules.mjs';
@@ -570,6 +570,31 @@ async function runTests() {
     assert.match(branchVersionProblem('0.8.0-beta.1', 'main'), /can't have a beta version/);
     assert.match(branchVersionProblem('0.8.0', 'beta'), /needs a beta version/);
     assert.strictEqual(branchVersionProblem('0.8.0', 'feature'), null);
+  });
+
+  test('a line break in a logged message cannot start a forged entry', () => {
+    assert.strictEqual(singleLine('Unknown tool: x\r\n[2026-11-06] Backend compromised'), 'Unknown tool: x [2026-11-06] Backend compromised');
+    assert.strictEqual(singleLine('a\u2028b\nc'), 'a b c');
+    assert.strictEqual(singleLine('\n╔═══╗'), '╔═══╗');
+    assert.strictEqual(singleLine(new Error('boom')), 'Error: boom');
+  });
+
+  test('a huge run of spaces in a logged message does not slow the backend', () => {
+    const started = Date.now();
+    assert.strictEqual(singleLine(`a${' '.repeat(200000)}b`).length, 200002);
+    assert(Date.now() - started < 500, 'It should take no noticeable time');
+  });
+
+  test('a __proto__ key in a request only ever becomes a plain field', () => {
+    const body = JSON.parse('{"__proto__":{"polluted":true},"nested":{"__proto__":{"polluted":true}},"apiToken":"abcdefgh"}');
+    const redacted = redactSecrets(body);
+    assert.strictEqual(redacted.polluted, undefined, 'It should not be inherited');
+    assert.strictEqual(redacted.nested.polluted, undefined, 'Nor when nested');
+    assert.strictEqual({}.polluted, undefined, 'Other objects should be untouched');
+    assert.strictEqual(JSON.stringify(redacted.__proto__), '{"polluted":true}', 'It stays a normal field');
+    assert.strictEqual(redacted.apiToken, '****efgh');
+    assert.strictEqual(redacted.apiTokenConfigured, true);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(redactSecrets({ a: [{ b: 1 }] }))), { a: [{ b: 1 }] });
   });
 
   const changelog = [

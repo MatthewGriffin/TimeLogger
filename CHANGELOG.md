@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.0-beta.2
+
+- No visible changes.
+
 ## 0.9.0-beta.1
 
 - You can now roll back to an earlier version in Settings > About, if a new one breaks something.
