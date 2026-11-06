@@ -133,7 +133,7 @@
                 :disabled="entriesStore.isLoading"
               />
               <datalist id="recent-tickets">
-                <option v-for="ticket in recentTickets" :key="ticket" :value="ticket" />
+                <option v-for="ticket in ticketOptions" :key="ticket.key" :value="ticket.key" :label="ticket.description" />
               </datalist>
             </div>
             <div class="form-group">
@@ -284,6 +284,7 @@ import MeetingTicketPrompt from '@/shared/components/MeetingTicketPrompt.vue'
 import MeetingConflictPrompt from '@/features/entries/components/MeetingConflictPrompt.vue'
 import MeetingConflictReview from '@/features/entries/components/MeetingConflictReview.vue'
 import LunchConflictPrompt from '@/features/entries/components/LunchConflictPrompt.vue'
+import { useTicketOptions } from '@/shared/composables/useTicketOptions'
 import { localDate } from '@/shared/utils/dates'
 
 const unmappedMeetings = ref<UnmappedMeeting[]>([])
@@ -312,19 +313,7 @@ const newEntry = ref({
   endTime: ''
 })
 
-const recentTickets = computed(() => {
-  const tickets = new Set<string>()
-  const entries = Array.isArray(entriesStore.entries) ? entriesStore.entries : []
-  entries.forEach(entry => {
-    if (entry.ticketId) tickets.add(entry.ticketId)
-  })
-  // Also include from loaded issues
-  const issues = Array.isArray(entriesStore.recentIssues) ? entriesStore.recentIssues : []
-  issues.forEach(issue => {
-    tickets.add(issue.key)
-  })
-  return Array.from(tickets).slice(0, 10)
-})
+const { ticketOptions, loadPiTickets } = useTicketOptions()
 
 const entriesByDate = computed(() => {
   return entriesStore.getEntriesByDate(selectedDate.value)
@@ -646,8 +635,8 @@ onMounted(async () => {
     // Load entries for selected date
     await entriesStore.loadEntries(selectedDate.value)
     syncLunchInputs()
-    // Load recent issues for ticket dropdown
-    await entriesStore.loadRecentIssues()
+    // Load the tickets for the ticket dropdown
+    await Promise.all([entriesStore.loadRecentIssues(), loadPiTickets()])
     // A day with nothing from the calendar is pulled in on first view.
     await runAutoSync(selectedDate.value)
   } catch (error) {

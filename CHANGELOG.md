@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.0-beta.4
+
+- The ticket list on Add Entry and notes now says what each ticket is, and always includes your current PI tickets.
+
 ## 0.9.0-beta.3
 
 - The notes list now shows whether each blocker is open or resolved.
