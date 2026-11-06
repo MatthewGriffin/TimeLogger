@@ -102,7 +102,9 @@ pub fn run() {
       notifications::show_daily_reminder_notification,
       notifications::show_tempo_reminder_notification,
       updates::check_for_update,
-      updates::install_update
+      updates::install_update,
+      updates::list_rollback_versions,
+      updates::prepare_rollback
     ])
     .build(tauri::generate_context!())
     .expect("error while building tauri application")

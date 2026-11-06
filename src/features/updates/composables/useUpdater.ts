@@ -4,7 +4,7 @@ import { relaunch } from '@tauri-apps/plugin-process'
 import { getVersion } from '@tauri-apps/api/app'
 import { useConfigStore } from '@/shared/stores/config'
 import type { UpdateChannel } from '@/shared/models/config'
-import type { UpdateStage, UpdateInfo } from '@/features/updates/models/updater'
+import type { RollbackVersion, UpdateStage, UpdateInfo } from '@/features/updates/models/updater'
 
 type DownloadEvent =
   | { event: 'started'; data: { contentLength: number | null } }
@@ -39,6 +39,12 @@ const downloadedBytes = ref(0)
 const totalBytes = ref(0)
 // An available update waits behind the sidebar button until someone asks to see it.
 const dialogOpen = ref(false)
+// A rollback replaces whatever update was on offer, so closing it has to find that again.
+let recheckOnClose = false
+let recheckTimer: ReturnType<typeof setInterval> | undefined
+
+// Often enough for a hotfix to reach an app left open in the tray for days.
+const RECHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
 
 const progressPercent = computed(() => {
   if (!totalBytes.value) return 0
@@ -65,7 +71,11 @@ const openDialog = () => {
  * so that the sidebar button still offers it.
  */
 const closeDialog = () => {
-  if (info.value && (stage.value === 'available' || stage.value === 'error')) {
+  if (recheckOnClose) {
+    recheckOnClose = false
+    reset()
+    void checkForUpdate(true)
+  } else if (info.value && (stage.value === 'available' || stage.value === 'error')) {
     stage.value = 'available'
     errorMessage.value = ''
     dialogOpen.value = false
@@ -77,6 +87,21 @@ const closeDialog = () => {
 const describe = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
 /**
+ * The channel to check. A beta build with no saved choice counts as Beta, so it's
+ * saved here: otherwise moving to a stable version would silently change channel.
+ */
+const resolveChannel = async (): Promise<UpdateChannel> => {
+  const configStore = useConfigStore()
+  const saved = configStore.config.updateChannel
+  const channel = effectiveUpdateChannel(saved, await getVersion())
+  if (!saved && channel === 'beta') {
+    // Checking still works without this, and a later check tries the save again.
+    await configStore.saveConfig({ updateChannel: channel }).catch(() => undefined)
+  }
+  return channel
+}
+
+/**
  * Returns true when an update was found. `silent` is used by the startup
  * check, where nothing should interrupt the user: being up to date or unable to
  * reach GitHub are both completely normal, and a new version only shows the
@@ -84,12 +109,14 @@ const describe = (error: unknown) => (error instanceof Error ? error.message : S
  */
 const checkForUpdate = async (silent = false): Promise<boolean> => {
   if (isBusy.value) return stage.value === 'available'
+  // A background check leaves an open dialog, or a finished install, alone.
+  if (silent && (dialogOpen.value || (stage.value !== 'idle' && stage.value !== 'available'))) return false
 
   stage.value = 'checking'
   errorMessage.value = ''
 
   try {
-    const channel = effectiveUpdateChannel(useConfigStore().config.updateChannel, await getVersion())
+    const channel = await resolveChannel()
     const update = await invoke<UpdateInfo | null>('check_for_update', { channel })
 
     if (!update) {
@@ -100,19 +127,43 @@ const checkForUpdate = async (silent = false): Promise<boolean> => {
 
     info.value = { ...update, notes: update.notes.trim() }
     stage.value = 'available'
-    dialogOpen.value = !silent
+    // The sidebar button can be clicked while a background check is running.
+    if (!silent) dialogOpen.value = true
     return true
   } catch (error) {
-    info.value = null
     if (silent) {
       // No network, no release published yet, or running outside Tauri. None
-      // of these are worth a dialog on launch.
-      stage.value = 'idle'
+      // of these are worth a dialog, and an update already found still stands.
+      stage.value = info.value ? 'available' : 'idle'
       return false
     }
+    info.value = null
     errorMessage.value = describe(error)
     stage.value = 'error'
     return false
+  }
+}
+
+const listRollbackVersions = async (): Promise<RollbackVersion[]> => {
+  const channel = await resolveChannel()
+  return invoke<RollbackVersion[]>('list_rollback_versions', { channel })
+}
+
+const prepareRollback = async (version: string) => {
+  if (isBusy.value) return
+
+  recheckOnClose = true
+  info.value = null
+  stage.value = 'checking'
+  errorMessage.value = ''
+
+  try {
+    info.value = await invoke<UpdateInfo>('prepare_rollback', { version })
+    stage.value = 'available'
+    dialogOpen.value = true
+  } catch (error) {
+    errorMessage.value = describe(error)
+    stage.value = 'error'
   }
 }
 
@@ -172,14 +223,22 @@ export const useUpdater = () => ({
   openDialog,
   closeDialog,
   checkForUpdate,
+  listRollbackVersions,
+  prepareRollback,
   downloadAndInstall,
   restartNow
 })
 
 /**
- * Fired once on launch. Deliberately silent: it never opens the dialog, and
- * only shows the sidebar button when there is something to install.
+ * Checks on launch and then every few hours. Deliberately silent: it never opens
+ * the dialog, and only shows the sidebar button when there is something to install.
  */
-export const checkForUpdateOnStartup = () => {
+export const startUpdateChecks = () => {
   void checkForUpdate(true)
+  recheckTimer = setInterval(() => void checkForUpdate(true), RECHECK_INTERVAL_MS)
+}
+
+export const stopUpdateChecks = () => {
+  if (recheckTimer) clearInterval(recheckTimer)
+  recheckTimer = undefined
 }

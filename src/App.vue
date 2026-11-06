@@ -8,7 +8,7 @@ import NotificationCenter from '@/shared/components/NotificationCenter.vue'
 import AiModelPrompt from '@/shared/components/AiModelPrompt.vue'
 import UpdateDialog from '@/features/updates/UpdateDialog.vue'
 import { startTempoReminderScheduler, stopTempoReminderScheduler } from '@/features/tempo/services/tempo-reminder'
-import { checkForUpdateOnStartup } from '@/features/updates/composables/useUpdater'
+import { startUpdateChecks, stopUpdateChecks } from '@/features/updates/composables/useUpdater'
 import { updateScrumReportAfterPoll } from '@/features/scrum/composables/useScrum'
 import { useAppStore } from '@/shared/stores/app'
 import { useUiStore } from '@/shared/stores/ui'
@@ -123,7 +123,7 @@ onMounted(async () => {
 
   // Same reasoning as the model prompt: never awaited, and silent unless
   // there is actually a new version to offer.
-  checkForUpdateOnStartup()
+  startUpdateChecks()
 
   // Tray menu "Add Task" / "Add Note" / "Submit Time" navigate here. For the
   // first two, a same-named DOM event then tells the destination page to
@@ -149,6 +149,7 @@ onMounted(async () => {
 onUnmounted(() => {
   if (githubPollingTimer) clearInterval(githubPollingTimer)
   stopTempoReminderScheduler()
+  stopUpdateChecks()
   unlistenTrayNavigate?.()
 })
 

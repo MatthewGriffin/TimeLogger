@@ -37,15 +37,15 @@
 
     <div class="nav-footer">
       <button
-        v-if="updateVersion"
+        v-if="offer"
         type="button"
         class="nav-link nav-update"
-        :title="`TimeLogger ${updateVersion} is available`"
-        :aria-label="`Update available: TimeLogger ${updateVersion}`"
+        :title="`TimeLogger ${offer.version} is available`"
+        :aria-label="`${offerLabel}: TimeLogger ${offer.version}`"
         @click="openDialog"
       >
         <CircleArrowUp class="nav-icon-svg" aria-hidden="true" />
-        <span v-if="sidebarOpen" class="nav-label">Update available</span>
+        <span v-if="sidebarOpen" class="nav-label">{{ offerLabel }}</span>
       </button>
       <router-link
         to="/settings"
@@ -72,7 +72,11 @@ const uiStore = useUiStore()
 const { stage, info, openDialog } = useUpdater()
 const sidebarOpen = computed(() => uiStore.sidebarOpen)
 const unreadCount = computed(() => uiStore.unreadNotifications.length)
-const updateVersion = computed(() => (stage.value === 'available' ? info.value?.version : undefined))
+// Stays up during a background recheck. A rollback is only ever offered in its dialog.
+const offer = computed(() =>
+  (stage.value === 'available' || stage.value === 'checking') && info.value?.kind !== 'rollback' ? info.value : null
+)
+const offerLabel = computed(() => (offer.value?.kind === 'switch' ? 'Switch to stable' : 'Update available'))
 
 const navigationTitle = (label: string) => {
   if (label !== 'Notifications' || unreadCount.value === 0) return label

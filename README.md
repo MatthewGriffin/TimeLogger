@@ -114,11 +114,18 @@ Installed copies can update themselves. On launch the app quietly asks GitHub fo
 the `latest.json` of its channel. If a newer version exists, an **Update available**
 button appears in the sidebar, which shows what's new and offers to install it.
 Nothing installs without the user choosing to. Users can also trigger the check from
-**Settings → About → Check for Updates**, and choose Main or Beta there.
+**Settings → About → Check for Updates**, and choose Stable or Beta there. The app
+checks again every few hours while it's open. The Stable channel is the `main` branch,
+and it's still saved as `main` in the settings.
 
-Beta users are offered whichever of the two channels is newer. Moving from Beta to
-Main never installs an older version: the app keeps its build until Main has a
-newer one.
+Beta users are offered whichever of the two channels is newer. Choosing Stable on a
+beta build offers the latest stable release even though it's older, with a prompt
+explaining that newer features go away.
+
+**Settings → About → Roll Back** installs an earlier version, back to 0.8.0, which
+is the first with the channel switch. Stable users see stable releases, and Beta
+users see betas as well. After a rollback, the sidebar button offers the newer version
+again, so a hotfix arrives as a normal update.
 
 Each installer is signed with a minisign key at release time and the app
 verifies that signature before installing, so a build that was not produced by

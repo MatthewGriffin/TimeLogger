@@ -16,7 +16,9 @@
         aria-labelledby="update-dialog-title"
       >
         <h2 id="update-dialog-title" class="update-title">
-          <template v-if="stage === 'available'">Update available</template>
+          <template v-if="stage === 'available' && info?.kind === 'switch'">Switch to stable</template>
+          <template v-else-if="stage === 'available' && info?.kind === 'rollback'">Roll back</template>
+          <template v-else-if="stage === 'available'">Update available</template>
           <template v-else-if="stage === 'downloading'">Downloading update…</template>
           <template v-else-if="stage === 'installing'">Installing…</template>
           <template v-else-if="stage === 'ready'">Update installed</template>
@@ -24,7 +26,16 @@
         </h2>
 
         <template v-if="stage === 'available' && info">
-          <p class="update-text">
+          <p v-if="info.kind === 'switch'" class="update-text">
+            You're on beta {{ info.currentVersion }}. The latest stable release is
+            <strong>{{ info.version }}</strong>, which is older, so features added since then
+            go away until stable catches up.
+          </p>
+          <p v-else-if="info.kind === 'rollback'" class="update-text">
+            TimeLogger <strong>{{ info.version }}</strong> will replace {{ info.currentVersion }}.
+            Features added since then go away until you update again.
+          </p>
+          <p v-else class="update-text">
             TimeLogger <strong>{{ info.version }}</strong> is ready to install.
             You are currently on {{ info.currentVersion }}.
           </p>
@@ -76,7 +87,7 @@
         <div class="update-actions">
           <template v-if="stage === 'available'">
             <button type="button" class="update-secondary" @click="closeDialog">Later</button>
-            <button type="button" class="update-primary" @click="downloadAndInstall">Install now</button>
+            <button type="button" class="update-primary" @click="downloadAndInstall">{{ installLabel }}</button>
           </template>
           <template v-else-if="stage === 'ready'">
             <button type="button" class="update-secondary" @click="closeDialog">Restart later</button>
@@ -129,11 +140,22 @@ const downloadedLabel = computed(() =>
     : formatMb(downloadedBytes.value)
 )
 
+const installLabel = computed(() => {
+  if (info.value?.kind === 'switch') return 'Switch to stable'
+  if (info.value?.kind === 'rollback') return 'Roll back'
+  return 'Install now'
+})
+
 const closeIfIdle = () => {
   if (dismissable.value) closeDialog()
 }
 
 const retry = () => {
+  // A rollback's download fails like any other, but checking again wouldn't find it.
+  if (info.value?.kind === 'rollback') {
+    void downloadAndInstall()
+    return
+  }
   closeDialog()
   void checkForUpdate()
 }
