@@ -242,7 +242,7 @@
               list="note-recent-tickets"
             />
             <datalist id="note-recent-tickets">
-              <option v-for="ticket in recentTickets" :key="ticket" :value="ticket" />
+              <option v-for="ticket in ticketOptions" :key="ticket.key" :value="ticket.key" :label="ticket.description" />
             </datalist>
             <div v-if="jiraStore.matches.length > 0" class="ticket-suggestions">
               <button
@@ -296,6 +296,7 @@ import { useConfigStore } from '@/shared/stores/config'
 import { useJiraStore } from '@/shared/stores/jira'
 import type { JiraMatch } from '@/shared/stores/jira'
 import { useEntriesStore } from '@/shared/stores/entries'
+import { useTicketOptions } from '@/shared/composables/useTicketOptions'
 
 const notesStore = useNotesStore()
 const uiStore = useUiStore()
@@ -324,15 +325,11 @@ window.addEventListener('keydown', onEscapeKeydown)
 const originalEditingNote = ref<{ id: string; title: string; content: string; topic: string } | null>(null)
 const editorTicketId = computed(() => (notesStore.editingNote?.ticketId || '').trim())
 
-const recentTickets = computed(() => {
-  const tickets = new Set<string>()
-  notesStore.notes.forEach(note => { if (note.ticketId) tickets.add(note.ticketId) })
-  const entries = Array.isArray(entriesStore.entries) ? entriesStore.entries : []
-  entries.forEach(entry => { if (entry.ticketId) tickets.add(entry.ticketId) })
-  const issues = Array.isArray(entriesStore.recentIssues) ? entriesStore.recentIssues : []
-  issues.forEach(issue => tickets.add(issue.key))
-  return Array.from(tickets).slice(0, 10)
-})
+const { ticketOptions, loadPiTickets } = useTicketOptions(() =>
+  notesStore.notes
+    .filter(note => note.ticketId)
+    .map(note => ({ key: note.ticketId as string, description: note.title }))
+)
 
 const findJiraTicketForNote = async () => {
   const note = notesStore.editingNote
@@ -650,9 +647,9 @@ onMounted(async () => {
   } catch (error) {
     console.error('Failed to load config:', error)
   }
-  // Powers the recent-ticket suggestions in the note editor.
+  // Powers the ticket suggestions in the note editor.
   try {
-    await entriesStore.loadRecentIssues()
+    await Promise.all([entriesStore.loadRecentIssues(), loadPiTickets()])
   } catch (error) {
     console.error('Failed to load recent issues:', error)
   }
