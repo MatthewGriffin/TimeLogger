@@ -85,10 +85,10 @@
             <div class="note-header">
               <h3><button type="button" class="note-open" @click.stop="viewNote(note)">{{ noteHeading(note) }}</button></h3>
               <span
-                v-if="note.isBlocker && !note.blockerResolvedAt"
-                class="blocker-badge"
-                title="Open blocker, shown on the Daily Scrum page"
-              >🚧</span>
+                v-if="note.isBlocker"
+                :class="['blocker-status', note.blockerResolvedAt ? 'resolved' : 'open']"
+                :title="blockerHint(note)"
+              >{{ blockerLabel(note) }}</span>
               <span v-if="note.oneNoteSynced" class="sync-badge">📤</span>
             </div>
             <span v-if="note.ticketId" class="note-ticket">{{ note.ticketId }}</span>
@@ -156,18 +156,26 @@
           <h2 id="note-viewer-title">{{ viewingNote.title || 'Note' }}</h2>
           <button ref="viewerCloseButton" type="button" class="modal-close" aria-label="Close note" @click="closeViewer">✕</button>
         </div>
+        <p
+          v-if="viewingNote.isBlocker"
+          :class="['blocker-status', 'blocker-status-detail', viewingNote.blockerResolvedAt ? 'resolved' : 'open']"
+        >
+          {{ blockerLabel(viewingNote) }}<span class="blocker-status-hint">{{ blockerHint(viewingNote) }}</span>
+        </p>
         <dl class="note-details">
           <div><dt>Category</dt><dd>{{ viewingNote.topic }}</dd></div>
           <div v-if="viewingNote.ticketId"><dt>Ticket</dt><dd>{{ viewingNote.ticketId }}</dd></div>
-          <div v-if="viewingNote.isBlocker">
-            <dt>Blocker</dt>
-            <dd>{{ viewingNote.blockerResolvedAt ? 'Resolved' : '🚧 Open' }}</dd>
-          </div>
           <div><dt>Updated</dt><dd>{{ new Date(viewingNote.updatedAt).toLocaleString() }}</dd></div>
         </dl>
         <p class="note-full-text">{{ viewingNote.content }}</p>
         <div class="modal-footer">
           <button type="button" class="btn-secondary" @click="closeViewer">Close</button>
+          <button
+            v-if="viewingNote.isBlocker"
+            type="button"
+            class="btn-secondary"
+            @click="toggleBlockerResolved(viewingNote)"
+          >{{ viewingNote.blockerResolvedAt ? 'Reopen blocker' : 'Mark resolved' }}</button>
           <button type="button" class="btn-primary" @click="editViewedNote">Edit</button>
         </div>
       </div>
@@ -452,6 +460,19 @@ const onNoteRowClick = (note: Note) => {
 }
 
 const closeViewer = () => { viewingNoteId.value = null }
+
+const blockerLabel = (note: Note) => note.blockerResolvedAt ? '✓ Resolved blocker' : '🚧 Open blocker'
+const blockerHint = (note: Note) => note.blockerResolvedAt ? 'No longer shown on the Daily Scrum page' : 'Shown on the Daily Scrum page until resolved'
+
+const toggleBlockerResolved = async (note: Note) => {
+  const resolved = !note.blockerResolvedAt
+  try {
+    await notesStore.setBlockerResolved(note.id, resolved)
+    uiStore.showSuccess(resolved ? 'Blocker resolved' : 'Blocker reopened')
+  } catch {
+    uiStore.showError(notesStore.error || 'Failed to update blocker')
+  }
+}
 
 const editViewedNote = () => {
   const note = viewingNote.value
@@ -989,8 +1010,44 @@ onUnmounted(() => {
   font-size: 1rem;
 }
 
-.blocker-badge {
-  font-size: 1rem;
+.blocker-status {
+  flex-shrink: 0;
+  padding: 0.15rem 0.6rem;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.blocker-status.open {
+  color: var(--color-warning);
+  border-color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 15%, transparent);
+}
+
+.blocker-status.resolved {
+  color: var(--color-success);
+  border-color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+}
+
+.blocker-status-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  white-space: normal;
+}
+
+.blocker-status-hint {
+  font-weight: 400;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
 }
 
 .blocker-toggle {

@@ -2579,19 +2579,42 @@ async function runTests() {
         'A resolved blocker should drop out of the open list'
       );
 
-      // Re-raising has to reopen it. A recurring problem that stayed hidden
-      // behind a stale resolution stamp is exactly the one worth reporting.
-      const reraised = await executeTool('update_note', {
+      // The Notes page sends the flag on every save, so saving a resolved
+      // blocker, or filing it under a category, must leave it resolved.
+      const edited = await executeTool('update_note', {
         id: noteId,
-        note: 'Still waiting on credentials',
+        note: 'Credentials arrived',
+        topic: 'General',
         is_blocker: true
       });
-      assert.strictEqual(reraised.success, true);
+      assert.strictEqual(edited.success, true);
+      const afterEdit = await executeTool('get_notes', { open_blockers_only: true });
+      assert(
+        !afterEdit.notes.some(n => n.id === noteId),
+        'Saving a resolved blocker should not reopen it'
+      );
+      const stored = db.prepare('SELECT is_blocker, blocker_resolved_at FROM notes WHERE id = ?').get(noteId);
+      assert.strictEqual(stored.is_blocker, 1, 'It should still be a blocker');
+      assert(stored.blocker_resolved_at, 'It should keep its resolved date');
 
+      // Reopening it directly has to bring it back.
+      const reopened = await executeTool('resolve_blocker', { id: noteId, resolved: false });
+      assert.strictEqual(reopened.success, true);
+      const afterReopen = await executeTool('get_notes', { open_blockers_only: true });
+      assert(afterReopen.notes.some(n => n.id === noteId), 'Reopening a blocker should list it again');
+
+      await executeTool('resolve_blocker', { id: noteId });
+
+      // So does raising it again. A recurring problem that stayed hidden behind
+      // a stale resolution stamp is exactly the one worth reporting.
+      await executeTool('update_note', { id: noteId, note: 'Waiting again', is_blocker: false });
+      const unflagged = await executeTool('get_notes', { open_blockers_only: true });
+      assert(!unflagged.notes.some(n => n.id === noteId), 'An unflagged note is not a blocker');
+      await executeTool('update_note', { id: noteId, note: 'Waiting again', is_blocker: true });
       const afterReraise = await executeTool('get_notes', { open_blockers_only: true });
       assert(
         afterReraise.notes.some(n => n.id === noteId),
-        'Re-raising a blocker should reopen it'
+        'Flagging a note as a blocker again should reopen it'
       );
     } finally {
       await executeTool('delete_note', { id: noteId });

@@ -4,6 +4,12 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.0-beta.3
+
+- The notes list now shows whether each blocker is open or resolved.
+- You can mark a blocker resolved, or reopen it, from the note itself.
+- Fixed a resolved blocker reopening and returning to the Daily Scrum when the note was edited or filed under a category.
+
 ## 0.9.0-beta.2
 
 - No visible changes.
