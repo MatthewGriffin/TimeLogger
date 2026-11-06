@@ -16,7 +16,19 @@ export interface ReleaseNote {
   changes: string[]
 }
 
+/**
+ * What installing this release means. `switch` is the latest stable release when
+ * Stable is chosen on a newer beta build, and `rollback` is a chosen older version.
+ */
+export type UpdateKind = 'update' | 'switch' | 'rollback'
+
+export interface RollbackVersion {
+  version: string
+  releaseDate: string
+}
+
 export interface UpdateInfo {
+  kind: UpdateKind
   version: string
   currentVersion: string
   /** The manifest's notes as written, shown when `changes` is empty. */
