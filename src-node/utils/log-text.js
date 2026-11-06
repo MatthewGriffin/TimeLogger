@@ -5,5 +5,5 @@
  * kind of line break, including Unicode's.
  */
 export function singleLine(text) {
-  return String(text).replace(/\s*[^\S \t]\s*/g, ' ').trim();
+  return String(text).replace(/[^\S \t]+/g, ' ').trim();
 }

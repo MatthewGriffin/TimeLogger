@@ -579,6 +579,12 @@ async function runTests() {
     assert.strictEqual(singleLine(new Error('boom')), 'Error: boom');
   });
 
+  test('a huge run of spaces in a logged message does not slow the backend', () => {
+    const started = Date.now();
+    assert.strictEqual(singleLine(`a${' '.repeat(200000)}b`).length, 200002);
+    assert(Date.now() - started < 500, 'It should take no noticeable time');
+  });
+
   test('a __proto__ key in a request only ever becomes a plain field', () => {
     const body = JSON.parse('{"__proto__":{"polluted":true},"nested":{"__proto__":{"polluted":true}},"apiToken":"abcdefgh"}');
     const redacted = redactSecrets(body);
