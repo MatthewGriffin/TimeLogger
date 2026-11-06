@@ -1,11 +1,11 @@
 {
-  "version": "0.9.0-beta.4",
-  "notes": "See https://github.com/MatthewGriffin/TimeLogger/releases/tag/v0.9.0-beta.4",
-  "pub_date": "2026-11-06T17:48:00Z",
+  "version": "0.9.0-beta.5",
+  "notes": "See https://github.com/MatthewGriffin/TimeLogger/releases/tag/v0.9.0-beta.5",
+  "pub_date": "2026-11-06T18:00:48Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUE1zTWticmEzM0xUVTJsLythcUFmUkFzQjU3TVBaZlBKNjJMbEFaVlNsUXdnV0pkU0pmSnJFTmNmWkRSVmUzSkRjVUM0aTBOcGw2QTMyeUYya2hZaXJvS09pNjhhREFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzOTg3MjgwCWZpbGU6VGltZUxvZ2dlcl8wLjkuMC1iZXRhLjRfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuOS4wLWJldGEuNApRWEdZM2JWWmFjbEFabXRFTGJpRHFtbzRiQ2xtTEFwRGVGeW1uTmQvYW45b2V6cVdLRUNGTGJzWE5ISEVqNGIrOE5vMElzMGtqS0hCL0ExUFVHUWRCZz09Cg==",
-      "url": "https://github.com/MatthewGriffin/TimeLogger/releases/download/v0.9.0-beta.4/TimeLogger_0.9.0-beta.4_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUE1zTWticmEzM01JdjJBekQ1cVhBNFZ3WmJHRW1xNCtXeVNkNmRKWlB3THRBNUlHdXJhVExTNGtHWDBRSm1Tb1U4SHRqNzdnNmM3N05iZ1VuV0JVd09KM0ZzRFlsZEFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzOTg4MDQ4CWZpbGU6VGltZUxvZ2dlcl8wLjkuMC1iZXRhLjVfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuOS4wLWJldGEuNQpoS1ExUUt6QTNaaDk1WUFxUCtDeVZVVjhqR3UvUWJJeEpuOG9ZYksyRnQ5RjBPQVg0cEs3OXBGUmdFbzlOd3lxdjZENVBJMWJOS1Y5cXQ2d0dmY1JEQT09Cg==",
+      "url": "https://github.com/MatthewGriffin/TimeLogger/releases/download/v0.9.0-beta.5/TimeLogger_0.9.0-beta.5_x64-setup.exe"
     }
   }
 }
