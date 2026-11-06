@@ -270,7 +270,7 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS,
         reviewedByAccount,
         mentionsAccount: item.mentionsAccount,
         pendingReview: requested
-      }
+      };
     } catch (error) {
       if (diagnostics) diagnostics.detailFailures.push({
         repository: item.repository, number: item.number, endpoint: 'pull-request',
