@@ -81,9 +81,17 @@ failing, so re-runs are safe.
 | `main` | `0.8.0` | Normal | Everyone |
 | `beta` | `0.9.0-beta.1` | Pre-release | Anyone on the Beta channel |
 
-The **Version** workflow requires a version that suits the target branch. To
-promote a beta, open a pull request from `beta` to `main` that changes the version
-to the full release, such as `0.9.0-beta.3` to `0.9.0`.
+The **Version** workflow requires a version that suits the target branch.
+
+To promote a tested beta:
+
+1. Create a branch from `beta` and change the version there to the full release,
+   such as `0.9.0-beta.3` to `0.9.0`. Don't push that version to `beta` itself,
+   because the **Release** workflow rejects it there.
+2. Open a pull request from that branch into `main` and squash merge it.
+3. Create another branch from `beta`, merge `main` into it, and set the next beta
+   version, such as `0.9.1-beta.1`. Open a pull request into `beta` and merge it
+   with a merge commit, so that the next promotion only contains new work.
 
 Each beta also overwrites `latest.json` on the `beta-channel` release, because
 GitHub has no URL for the latest pre-release.
