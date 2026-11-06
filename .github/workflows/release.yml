@@ -144,8 +144,8 @@ jobs:
             Write-Error "Signature file is empty: $signature"
             exit 1
           }
-          # Installed apps read this from the 'latest' release, or 'beta-channel'
-          # for betas, so the download URL must point at the tag rather than at
+          # Installed apps read this from the 'latest' release, or the beta-manifest
+          # branch for betas, so the download URL must point at the tag rather than at
           # 'latest' - otherwise an older client would follow it to a newer build
           # than it was told about.
           $manifest = [ordered]@{
@@ -193,23 +193,22 @@ jobs:
             exit 1
           }
 
-      # GitHub has no URL for the latest pre-release, so beta users read the
-      # manifest from this one release, which each beta overwrites.
+      # GitHub has no URL for the latest pre-release and this repository's
+      # releases are immutable, so beta users read the manifest from the
+      # beta-manifest branch, which each beta updates.
       - name: Publish beta manifest
         if: steps.existing.outputs.exists == 'false' && env.RELEASE_BRANCH == 'beta'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view beta-channel *> $null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create beta-channel `
-              --title "Beta channel" `
-              --notes "Holds the update manifest for the beta channel. See the versioned releases for installers." `
-              --target "${{ github.event.workflow_run.head_sha }}" `
-              --prerelease `
-              --latest=false
-            if ($LASTEXITCODE -ne 0) { exit 1 }
-          }
-          gh release upload beta-channel latest.json --clobber
+          $path = "repos/${{ github.repository }}/contents/latest.json"
+          $sha = gh api "${path}?ref=beta-manifest" --jq .sha
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $content = [Convert]::ToBase64String([IO.File]::ReadAllBytes("$PWD/latest.json"))
+          gh api -X PUT $path --silent `
+            -f branch=beta-manifest `
+            -f "message=Update the beta manifest to ${{ steps.version.outputs.tag }}" `
+            -f "content=$content" `
+            -f "sha=$sha"
           exit $LASTEXITCODE
