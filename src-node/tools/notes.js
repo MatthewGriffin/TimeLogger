@@ -545,7 +545,7 @@ export const tools = [
     },
     handler: async (args) => {
       try {
-        const previous = db.prepare('SELECT topic FROM notes WHERE id = ?').get(args.id);
+        const previous = db.prepare('SELECT topic, is_blocker FROM notes WHERE id = ?').get(args.id);
         if (!previous) return { success: false, message: 'No note found with ID ' + args.id };
         const previousTopic = previous.topic;
         const ticketId = (args.ticket_id || '').trim();
@@ -561,9 +561,11 @@ export const tools = [
         `).run(args.note, topic, args.title || null, ticketId || null, args.id);
         if (String(previousTopic || '').toLowerCase() !== String(topic || '').toLowerCase()) removeEmptyTopic(previousTopic);
 
-        // Re-raising a blocker reopens it, so a recurring problem is not
-        // hidden by the resolution stamp left from the last time it happened.
-        if (args.is_blocker !== undefined) {
+        // Flagging a note again reopens it, so a recurring problem is not hidden
+        // by the resolution stamp left from the last time it happened. Only a
+        // change counts: the Notes page sends this on every save, and editing
+        // or filing a resolved blocker must not reopen it.
+        if (args.is_blocker !== undefined && Boolean(args.is_blocker) !== Boolean(previous.is_blocker)) {
           db.prepare(
             'UPDATE notes SET is_blocker = ?, blocker_resolved_at = NULL WHERE id = ?'
           ).run(args.is_blocker ? 1 : 0, args.id);

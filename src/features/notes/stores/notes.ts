@@ -181,13 +181,30 @@ export const useNotesStore = defineStore('notes', () => {
       const resolvedTopic = resolvedTicketId.trim() || topic || existing.topic
       const resolvedBlocker = isBlocker !== undefined ? isBlocker : existing.isBlocker
       await executeApi('update_note', { id: Number(id), note: content, topic: resolvedTopic, title: title || undefined, ticket_id: resolvedTicketId || undefined, ...(isBlocker !== undefined ? { is_blocker: isBlocker } : {}) })
-      const updated = { ...existing, title, content, topic: resolvedTopic, ticketId: resolvedTicketId || undefined, isBlocker: resolvedBlocker, updatedAt: new Date().toISOString() }
+      // Unflagging clears the resolved date on the backend, and it stays clear if flagged again.
+      const blockerResolvedAt = resolvedBlocker && existing.isBlocker ? existing.blockerResolvedAt : undefined
+      const updated = { ...existing, title, content, topic: resolvedTopic, ticketId: resolvedTicketId || undefined, isBlocker: resolvedBlocker, blockerResolvedAt, updatedAt: new Date().toISOString() }
       const index = notes.value.findIndex(note => note.id === id)
       notes.value[index] = updated; clearPendingTopicSuggestion(id); syncNotesPersist()
       return updated
     } catch (err) {
       error.value = err instanceof ApiError ? err.message : String(err); throw err
     } finally { isLoading.value = false }
+  }
+
+  const setBlockerResolved = async (id: string, resolved: boolean) => {
+    error.value = ''
+    try {
+      const result = await executeApi<{ success?: boolean; message?: string }>('resolve_blocker', { id: Number(id), resolved })
+      if (result?.success === false) throw new Error(result.message || 'Failed to update blocker')
+      const index = notes.value.findIndex(note => note.id === id)
+      if (index !== -1) {
+        notes.value[index] = { ...notes.value[index], blockerResolvedAt: resolved ? new Date().toISOString() : undefined }
+        syncNotesPersist()
+      }
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : String(err); throw err
+    }
   }
 
   const deleteNote = async (id: string) => {
@@ -267,7 +284,7 @@ export const useNotesStore = defineStore('notes', () => {
 
   return {
     notes, savedTopics, selectedTopic, editingNote, showNoteEditor, isSyncing, isLoading, isSuggestingTopic, categorizingNoteIds, pendingTopicSuggestions, error, topics, notesByTopic, notesCount,
-    loadNotes, loadNoteTopics, createNoteTopic, deleteNoteTopic, createNote, updateNote, deleteNote, setEditingNote, setSelectedTopic, searchNotes, syncToOneNote,
+    loadNotes, loadNoteTopics, createNoteTopic, deleteNoteTopic, createNote, updateNote, setBlockerResolved, deleteNote, setEditingNote, setSelectedTopic, searchNotes, syncToOneNote,
     syncAllToOneNote, suggestTopic, isCategorizing, setCategorizing, setPendingTopicSuggestion, clearPendingTopicSuggestion,
     loadNotesFromBackend, syncNotesPersist
   }
