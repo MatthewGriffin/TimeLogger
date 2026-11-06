@@ -12,6 +12,9 @@ export type { TopicSuggestion } from '@/features/notes/models/notes'
 // because a note uses it, so a category disappears once its last note does.
 export const DEFAULT_TOPIC: NoteTopic = 'General'
 
+// A ticket number is typed by hand, so "dis-1" belongs on the "DIS-1" tab.
+export const isSameTopic = (a: NoteTopic, b: NoteTopic) => a.toLowerCase() === b.toLowerCase()
+
 export const useNotesStore = defineStore('notes', () => {
   const notes = ref<Note[]>([])
   const savedTopics = ref<NoteTopic[]>([DEFAULT_TOPIC])
@@ -48,12 +51,13 @@ export const useNotesStore = defineStore('notes', () => {
     })
     return seen
   })
-  const notesByTopic = computed(() => notes.value.filter(note => note.topic === selectedTopic.value))
+  const notesByTopic = computed(() => notes.value.filter(note => isSameTopic(note.topic, selectedTopic.value)))
   const notesCount = computed(() => {
     const counts: Record<NoteTopic, number> = {}
     topics.value.forEach(topic => { counts[topic] = 0 })
     notes.value.forEach(note => {
-      counts[note.topic] = (counts[note.topic] || 0) + 1
+      const tab = topics.value.find(topic => isSameTopic(topic, note.topic)) ?? note.topic
+      counts[tab] = (counts[tab] || 0) + 1
     })
     return counts
   })
@@ -149,7 +153,9 @@ export const useNotesStore = defineStore('notes', () => {
   const createNote = async (title: string, content: string, topic: NoteTopic | undefined, ticketId?: string, date = localDate(), isBlocker = false) => {
     isLoading.value = true; error.value = ''
     try {
-      const ticket = (ticketId || '').trim()
+      const typedTicket = (ticketId || '').trim()
+      // Tabs are named after their newest note, so keep to the existing spelling.
+      const ticket = topics.value.find(existing => isSameTopic(existing, typedTicket)) ?? typedTicket
       const requestedTopic = ticket || topic
       const result = await executeApi('create_note', { date, note: content, title: title || undefined, ...(requestedTopic ? { topic: requestedTopic } : {}), ticket_id: ticket || undefined, is_blocker: isBlocker })
       const raw = result as Record<string, unknown>
@@ -215,7 +221,9 @@ export const useNotesStore = defineStore('notes', () => {
   }
 
   const setEditingNote = (note: Note | null) => { editingNote.value = note }
-  const setSelectedTopic = (topic: NoteTopic) => { selectedTopic.value = topic }
+  const setSelectedTopic = (topic: NoteTopic) => {
+    selectedTopic.value = topics.value.find(existing => isSameTopic(existing, topic)) ?? topic
+  }
   const searchNotes = (query: string) => notes.value.filter(note => `${note.title}\n${note.content}`.toLowerCase().includes(query.toLowerCase()))
   const syncToOneNote = async (noteId: string) => {
     isSyncing.value = true
