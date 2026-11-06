@@ -1,10 +1,10 @@
 <!--
   Shows a pending application update and installs it on request.
 
-  A modal, unlike the optional AI model banner: an update is a deliberate
-  action the user has either asked for or should consciously accept or defer,
-  and once the download starts it must not be possible to lose the dialog
-  behind the app and start a second one.
+  Opens only when asked for, from the sidebar button or Settings, so a new
+  version never interrupts someone's work. It's still a modal because once the
+  download starts it must not be possible to lose the dialog behind the app and
+  start a second one.
 -->
 <template>
   <transition name="update-dialog">
@@ -28,7 +28,15 @@
             TimeLogger <strong>{{ info.version }}</strong> is ready to install.
             You are currently on {{ info.currentVersion }}.
           </p>
-          <div v-if="info.notes" class="update-notes">{{ info.notes }}</div>
+          <div v-if="info.changes.length" class="update-changes">
+            <section v-for="note in info.changes" :key="note.version">
+              <h3 class="update-version">What's new in {{ note.version }}</h3>
+              <ul class="update-list">
+                <li v-for="change in note.changes" :key="change">{{ change }}</li>
+              </ul>
+            </section>
+          </div>
+          <div v-else-if="info.notes" class="update-notes">{{ info.notes }}</div>
           <p class="update-hint">The app will close briefly while it updates.</p>
         </template>
 
@@ -67,15 +75,15 @@
 
         <div class="update-actions">
           <template v-if="stage === 'available'">
-            <button type="button" class="update-secondary" @click="declineUpdate">Later</button>
+            <button type="button" class="update-secondary" @click="closeDialog">Later</button>
             <button type="button" class="update-primary" @click="downloadAndInstall">Install now</button>
           </template>
           <template v-else-if="stage === 'ready'">
-            <button type="button" class="update-secondary" @click="dismiss">Restart later</button>
+            <button type="button" class="update-secondary" @click="closeDialog">Restart later</button>
             <button type="button" class="update-primary" @click="restartNow">Restart now</button>
           </template>
           <template v-else-if="stage === 'error'">
-            <button type="button" class="update-secondary" @click="dismiss">Close</button>
+            <button type="button" class="update-secondary" @click="closeDialog">Close</button>
             <button type="button" class="update-primary" @click="retry">Try again</button>
           </template>
         </div>
@@ -87,9 +95,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue'
 import { useUpdater } from '@/features/updates/composables/useUpdater'
-import { useUiStore } from '@/shared/stores/ui'
-
-const uiStore = useUiStore()
 
 const {
   stage,
@@ -98,14 +103,19 @@ const {
   downloadedBytes,
   totalBytes,
   progressPercent,
+  dialogOpen,
+  closeDialog,
   checkForUpdate,
   downloadAndInstall,
-  restartNow,
-  dismiss
+  restartNow
 } = useUpdater()
 
 // 'checking' stays hidden so the silent startup check never flashes a dialog.
-const visible = computed(() => ['available', 'downloading', 'installing', 'ready', 'error'].includes(stage.value))
+const visible = computed(() =>
+  stage.value === 'available'
+    ? dialogOpen.value
+    : ['downloading', 'installing', 'ready', 'error'].includes(stage.value)
+)
 
 // Once the download starts there is nothing sensible to cancel to, so the
 // dialog only closes from its own buttons.
@@ -119,28 +129,17 @@ const downloadedLabel = computed(() =>
     : formatMb(downloadedBytes.value)
 )
 
-const declineUpdate = () => {
-  if (stage.value === 'available' && info.value) {
-    uiStore.showInfo(`TimeLogger update ${info.value.version} was deferred.`, 5000)
-  }
-  dismiss()
-}
-
 const closeIfIdle = () => {
-  if (stage.value === 'available') declineUpdate()
-  else if (dismissable.value) dismiss()
+  if (dismissable.value) closeDialog()
 }
 
 const retry = () => {
-  dismiss()
+  closeDialog()
   void checkForUpdate()
 }
 
 const onKeydown = (event: KeyboardEvent) => {
-  if (event.key === 'Escape' && visible.value && dismissable.value) {
-    if (stage.value === 'available') declineUpdate()
-    else dismiss()
-  }
+  if (event.key === 'Escape' && visible.value) closeIfIdle()
 }
 
 onMounted(() => window.addEventListener('keydown', onKeydown))
@@ -202,6 +201,35 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   line-height: 1.5;
   color: var(--color-text-subtle);
   white-space: pre-wrap;
+}
+
+.update-changes {
+  max-height: 16rem;
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  overflow-y: auto;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 0.5rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.update-changes section + section {
+  margin-top: 0.75rem;
+}
+
+.update-version {
+  margin: 0 0 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.update-list {
+  margin: 0;
+  padding-left: 1.1rem;
 }
 
 .update-bar {

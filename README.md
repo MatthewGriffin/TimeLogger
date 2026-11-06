@@ -59,7 +59,11 @@ version.
    The **Version** workflow blocks the pull request until this is done. Run
    `npm run check:version` locally to verify.
 
-2. **Merge.** Once the **Quality** workflow passes on the branch, the **Release**
+2. **Add the version to `CHANGELOG.md`.** Say what changed for the people using
+   the app, in plain language. They see this in the update popup and on the
+   release. The **Version** workflow also blocks the pull request without it.
+
+3. **Merge.** Once the **Quality** workflow passes on the branch, the **Release**
    workflow builds the installer and publishes a GitHub release tagged
    `v{version}` with generated release notes.
 
@@ -86,8 +90,9 @@ The **Version** workflow requires a version that suits the target branch.
 To promote a tested beta:
 
 1. Create a branch from `beta` and change the version there to the full release,
-   such as `0.9.0-beta.3` to `0.9.0`. Don't push that version to `beta` itself,
-   because the **Release** workflow rejects it there.
+   such as `0.9.0-beta.3` to `0.9.0`. Add a changelog entry that sums up its betas,
+   because main users don't see their entries. Don't push that version to `beta`
+   itself, because the **Release** workflow rejects it there.
 2. Open a pull request from that branch into `main` and squash merge it.
 3. Create another branch from `beta`, merge `main` into it, and set the next beta
    version, such as `0.9.1-beta.1`. Open a pull request into `beta` and merge it
@@ -97,14 +102,18 @@ Each beta also updates `latest.json` on the `beta-manifest` branch, because GitH
 has no URL for the latest pre-release and this repository's releases are immutable.
 The Release workflow needs that branch to exist, so don't delete it.
 
+GitHub runs the **Release** workflow from `main`, even for a beta. A change to
+`release.yml` on `beta` therefore has no effect until it's promoted.
+
 Keep database changes additive: add tables and columns, but don't rename, remove
 or rewrite them. A beta and an older main build can both open the same database.
 
 ## Updates
 
-Installed copies update themselves. On launch the app quietly asks GitHub for
-the `latest.json` of its channel; if a newer version exists it offers to download
-and install it, then restarts. Users can also trigger the check from
+Installed copies can update themselves. On launch the app quietly asks GitHub for
+the `latest.json` of its channel. If a newer version exists, an **Update available**
+button appears in the sidebar, which shows what's new and offers to install it.
+Nothing installs without the user choosing to. Users can also trigger the check from
 **Settings → About → Check for Updates**, and choose Main or Beta there.
 
 Beta users are offered whichever of the two channels is newer. Moving from Beta to

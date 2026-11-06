@@ -40,7 +40,40 @@ pub struct UpdateMetadata {
   version: String,
   current_version: String,
   notes: String,
+  changes: Vec<ReleaseNote>,
   release_date: String,
+}
+
+#[derive(Debug, PartialEq, Serialize)]
+pub struct ReleaseNote {
+  version: String,
+  changes: Vec<String>,
+}
+
+/// Picks the sections of a manifest's notes that are newer than the installed
+/// version. Notes without version headings, as in releases before the changelog,
+/// give nothing here, and the app shows them as plain text instead.
+fn notes_newer_than(notes: &str, current: &str) -> Vec<ReleaseNote> {
+  let current = Version::parse(current).ok();
+  let mut sections: Vec<ReleaseNote> = Vec::new();
+  let mut keep = false;
+
+  for line in notes.lines() {
+    if let Some(heading) = line.strip_prefix("## ") {
+      let heading = heading.trim();
+      keep = match (Version::parse(heading), &current) {
+        (Ok(version), Some(current)) => version > *current,
+        (Ok(_), None) => true,
+        (Err(_), _) => false,
+      };
+      if keep {
+        sections.push(ReleaseNote { version: heading.to_string(), changes: Vec::new() });
+      }
+    } else if let (true, Some(change), Some(section)) = (keep, line.strip_prefix("- "), sections.last_mut()) {
+      section.changes.push(change.trim().to_string());
+    }
+  }
+  sections
 }
 
 #[derive(Clone, Serialize)]
@@ -109,6 +142,7 @@ pub async fn check_for_update(
     version: update.version.clone(),
     current_version: update.current_version.clone(),
     notes: update.body.clone().unwrap_or_default(),
+    changes: notes_newer_than(update.body.as_deref().unwrap_or_default(), &update.current_version),
     release_date: update
       .raw_json
       .get("pub_date")
@@ -183,6 +217,33 @@ mod tests {
   #[test]
   fn two_failed_checks_are_an_error() {
     assert_eq!(choose(Err("beta".into()), Err("main".into())), Err("beta".to_string()));
+  }
+
+  const NOTES: &str = "## 0.9.0\n- Stable summary\n\n## 0.9.0-beta.2\n- Second beta\n- Another change\r\n\r\n## 0.8.1\n- Older";
+
+  fn versions(notes: &[ReleaseNote]) -> Vec<&str> {
+    notes.iter().map(|note| note.version.as_str()).collect()
+  }
+
+  #[test]
+  fn only_sections_newer_than_the_installed_version_are_shown() {
+    assert_eq!(versions(&notes_newer_than(NOTES, "0.8.1")), ["0.9.0", "0.9.0-beta.2"]);
+    assert_eq!(versions(&notes_newer_than(NOTES, "0.9.0-beta.2")), ["0.9.0"]);
+    assert!(notes_newer_than(NOTES, "0.9.0").is_empty());
+  }
+
+  #[test]
+  fn each_section_keeps_its_own_changes() {
+    let notes = notes_newer_than(NOTES, "0.9.0-beta.1");
+    assert_eq!(notes[0], ReleaseNote { version: "0.9.0".into(), changes: vec!["Stable summary".into()] });
+    assert_eq!(notes[1].changes, ["Second beta", "Another change"]);
+  }
+
+  #[test]
+  fn notes_without_version_headings_give_no_sections() {
+    assert!(notes_newer_than("See https://github.com/example/releases/tag/v0.8.2", "0.8.1").is_empty());
+    assert!(notes_newer_than("## Not a version\n- Change", "0.8.1").is_empty());
+    assert!(notes_newer_than("", "0.8.1").is_empty());
   }
 
   #[test]

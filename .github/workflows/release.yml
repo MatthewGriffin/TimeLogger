@@ -144,13 +144,15 @@ jobs:
             Write-Error "Signature file is empty: $signature"
             exit 1
           }
+          node scripts/changelog.mjs manifest "${{ steps.version.outputs.version }}" manifest-notes.txt
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           # Installed apps read this from the 'latest' release, or the beta-manifest
           # branch for betas, so the download URL must point at the tag rather than at
           # 'latest' - otherwise an older client would follow it to a newer build
           # than it was told about.
           $manifest = [ordered]@{
             version   = "${{ steps.version.outputs.version }}"
-            notes     = "See https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}"
+            notes     = (Get-Content manifest-notes.txt -Raw)
             pub_date  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
             platforms = [ordered]@{
               'windows-x86_64' = [ordered]@{
@@ -177,8 +179,12 @@ jobs:
           # GitHub's 'latest' release skips pre-releases, which keeps betas away
           # from the main channel.
           $channelArgs = if ($env:RELEASE_BRANCH -eq 'beta') { @('--prerelease', '--latest=false') } else { @() }
+          node scripts/changelog.mjs release "${{ steps.version.outputs.version }}" release-notes.md
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          # The changelog goes first, above GitHub's generated list of pull requests.
           gh release create "${{ steps.version.outputs.tag }}" $installer "$installer.sig" latest.json `
             --title "TimeLogger ${{ steps.version.outputs.tag }}" `
+            --notes-file release-notes.md `
             --generate-notes `
             --target "${{ github.event.workflow_run.head_sha }}" `
             @channelArgs

@@ -556,8 +556,8 @@ const confirmClearAllData = async () => {
 const checkForUpdates = async () => {
   uiStore.showInfo('Checking for updates…')
   const found = await updater.checkForUpdate()
-  // Only the "nothing to do" case needs a toast; anything else is the
-  // update dialog's job to show.
+  // Only the "nothing to do" case needs a toast. Asking here opens the update
+  // dialog for anything else.
   if (!found && updater.stage.value === 'idle') uiStore.showSuccess('TimeLogger is up to date.')
 }
 
