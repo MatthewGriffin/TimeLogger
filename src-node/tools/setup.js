@@ -6,7 +6,6 @@
  */
 
 import { makeHttpRequest } from '../api/http-client.js';
-import { ollamaClient } from '../api/ollama-client.js';
 
 /**
  * Build Basic auth header from email and API token

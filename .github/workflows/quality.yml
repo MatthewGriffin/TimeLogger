@@ -51,7 +51,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - name: Resolve and compile Rust dependencies
         run: cargo check --manifest-path src-tauri/Cargo.toml
       - name: Commit regenerated Cargo.lock to the PR branch
@@ -70,7 +70,7 @@ jobs:
             git push origin "HEAD:$PR_HEAD_REF"
           fi
       - name: Install cargo-audit
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2
         with:
           tool: cargo-audit
       - name: Audit Rust dependencies

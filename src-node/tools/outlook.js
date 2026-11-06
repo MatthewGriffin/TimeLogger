@@ -743,12 +743,11 @@ export const tools = [
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) {
           throw new Error('date is required in YYYY-MM-DD format');
         }
-        const calendarConfig = readCalendarConfig();
         const { events } = await fetchEvents({ startDate: date, endDate: date, skipCache: Boolean(args.skipCache) });
         // Clustered on each event's original time, not any stored override,
         // so a resolved conflict is still shown as the same group if the
         // user wants to revisit the choice.
-        const candidates = buildCandidates(events, calendarConfig).filter(event => !event.isAllDay);
+        const candidates = buildCandidates(events).filter(event => !event.isAllDay);
         const clusters = computeOverlapClusters(candidates);
         const choices = readConflictChoices(date);
 

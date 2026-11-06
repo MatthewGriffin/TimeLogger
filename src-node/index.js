@@ -110,7 +110,7 @@ export function getToolsMetadata() {
 export function healthCheck() {
   try {
     // Test database
-    const result = db.prepare('SELECT 1').get();
+    db.prepare('SELECT 1').get();
     return {
       status: 'ok',
       database: 'connected',
