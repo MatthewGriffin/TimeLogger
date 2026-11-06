@@ -61,6 +61,8 @@ export interface NotificationsConfig {
   tempoReminder: TempoReminderConfig
 }
 
+export type UpdateChannel = 'main' | 'beta'
+
 export interface AppConfig {
   jira?: JiraConfig
   microsoft?: MicrosoftConfig
@@ -71,6 +73,7 @@ export interface AppConfig {
   workday: WorkdayConfig
   autoStart: boolean
   startMinimized: boolean
+  updateChannel?: UpdateChannel
   notifications?: NotificationsConfig
   lastUpdated: string
 }

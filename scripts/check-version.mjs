@@ -6,14 +6,14 @@
  * Usage:
  *   node scripts/check-version.mjs            # consistency only
  *   node scripts/check-version.mjs <baseline> # also require an increase
+ *   node scripts/check-version.mjs <baseline> <branch> # and suit the target branch
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { branchVersionProblem, compareVersions, isValidVersion } from './version-rules.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-
-const SEMVER = /^\d+\.\d+\.\d+$/;
 
 function readTauriVersion() {
   const conf = JSON.parse(readFileSync(join(root, 'src-tauri/tauri.conf.json'), 'utf8'));
@@ -33,15 +33,6 @@ function readCargoVersion() {
   return match?.[1];
 }
 
-function compareSemver(a, b) {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    if (pa[i] !== pb[i]) return pa[i] - pb[i];
-  }
-  return 0;
-}
-
 const versions = {
   'src-tauri/tauri.conf.json': readTauriVersion(),
   'package.json': readPackageVersion(),
@@ -53,8 +44,8 @@ const errors = [];
 for (const [file, version] of Object.entries(versions)) {
   if (!version) {
     errors.push(`Could not read a version from ${file}`);
-  } else if (!SEMVER.test(version)) {
-    errors.push(`${file} version "${version}" is not MAJOR.MINOR.PATCH`);
+  } else if (!isValidVersion(version)) {
+    errors.push(`${file} version "${version}" is not MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-beta.N`);
   }
 }
 
@@ -73,14 +64,21 @@ if (!errors.length) {
 const baseline = process.argv[2];
 
 if (!errors.length && baseline) {
-  if (!SEMVER.test(baseline)) {
-    errors.push(`Baseline version "${baseline}" is not MAJOR.MINOR.PATCH`);
-  } else if (compareSemver(canonical, baseline) <= 0) {
+  if (!isValidVersion(baseline)) {
+    errors.push(`Baseline version "${baseline}" is not MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-beta.N`);
+  } else if (compareVersions(canonical, baseline) <= 0) {
     errors.push(
-      `Version must be increased before merging: this branch is ${canonical}, main is ${baseline}. ` +
+      `Version must be increased before merging: this branch is ${canonical}, the target is ${baseline}. ` +
         'Bump the version in src-tauri/tauri.conf.json, package.json and src-tauri/Cargo.toml.'
     );
   }
+}
+
+const branch = process.argv[3];
+
+if (!errors.length && branch) {
+  const problem = branchVersionProblem(canonical, branch);
+  if (problem) errors.push(problem);
 }
 
 if (errors.length) {
@@ -89,4 +87,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log(`Version check passed: ${canonical}${baseline ? ` (main is ${baseline})` : ''}`);
+console.log(`Version check passed: ${canonical}${baseline ? ` (target is ${baseline})` : ''}`);

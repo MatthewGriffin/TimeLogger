@@ -1,27 +1,34 @@
 name: Release
 
-# Runs only after Quality succeeds on main, so a release is never published
-# from a commit that failed its checks.
+# Runs only after Quality succeeds on main or beta, so a release is never
+# published from a commit that failed its checks.
 on:
   workflow_run:
     workflows: [Quality]
     types: [completed]
-    branches: [main]
+    branches: [main, beta]
 
 permissions:
   contents: write
+
+# Runs on one branch finish in order, so an older beta can't overwrite the
+# manifest of a newer one. If several are waiting, only the newest runs.
+concurrency:
+  group: release-${{ github.event.workflow_run.head_branch }}
 
 jobs:
   release:
     name: Build and publish
     # workflow_run executes with write permissions and secrets. Only release a successful
-    # push to this repository's main branch; never check out code from a PR run.
+    # push to this repository's main or beta branch; never check out code from a PR run.
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main' &&
+      (github.event.workflow_run.head_branch == 'main' || github.event.workflow_run.head_branch == 'beta') &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: windows-latest
+    env:
+      RELEASE_BRANCH: ${{ github.event.workflow_run.head_branch }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,6 +47,11 @@ jobs:
         shell: pwsh
         run: |
           $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          # A mismatch would send a beta to main users, or a full release to beta only.
+          if (($version -match '-beta\.\d+$') -ne ($env:RELEASE_BRANCH -eq 'beta')) {
+            Write-Error "Version $version can't be released from the $env:RELEASE_BRANCH branch."
+            exit 1
+          }
           "version=$version" >> $env:GITHUB_OUTPUT
           "tag=v$version" >> $env:GITHUB_OUTPUT
 
@@ -132,9 +144,10 @@ jobs:
             Write-Error "Signature file is empty: $signature"
             exit 1
           }
-          # Installed apps read this from the 'latest' release, so the download
-          # URL must point at the tag rather than at 'latest' - otherwise an
-          # older client would follow it to a newer build than it was told about.
+          # Installed apps read this from the 'latest' release, or 'beta-channel'
+          # for betas, so the download URL must point at the tag rather than at
+          # 'latest' - otherwise an older client would follow it to a newer build
+          # than it was told about.
           $manifest = [ordered]@{
             version   = "${{ steps.version.outputs.version }}"
             notes     = "See https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}"
@@ -161,10 +174,14 @@ jobs:
             Get-ChildItem -Recurse src-tauri/target/release/bundle | Select-Object FullName
             exit 1
           }
+          # GitHub's 'latest' release skips pre-releases, which keeps betas away
+          # from the main channel.
+          $channelArgs = if ($env:RELEASE_BRANCH -eq 'beta') { @('--prerelease', '--latest=false') } else { @() }
           gh release create "${{ steps.version.outputs.tag }}" $installer "$installer.sig" latest.json `
             --title "TimeLogger ${{ steps.version.outputs.tag }}" `
             --generate-notes `
-            --target "${{ github.event.workflow_run.head_sha }}"
+            --target "${{ github.event.workflow_run.head_sha }}" `
+            @channelArgs
           if ($LASTEXITCODE -ne 0) {
             # Another release run may have published this tag after our earlier
             # existence check. Treat that race as success, but preserve real errors.
@@ -175,3 +192,24 @@ jobs:
             }
             exit 1
           }
+
+      # GitHub has no URL for the latest pre-release, so beta users read the
+      # manifest from this one release, which each beta overwrites.
+      - name: Publish beta manifest
+        if: steps.existing.outputs.exists == 'false' && env.RELEASE_BRANCH == 'beta'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view beta-channel *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create beta-channel `
+              --title "Beta channel" `
+              --notes "Holds the update manifest for the beta channel. See the versioned releases for installers." `
+              --target "${{ github.event.workflow_run.head_sha }}" `
+              --prerelease `
+              --latest=false
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+          gh release upload beta-channel latest.json --clobber
+          exit $LASTEXITCODE

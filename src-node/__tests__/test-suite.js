@@ -27,6 +27,7 @@ import { fetchAllTempoPages } from '../tools/jira-tempo-worklogs.js';
 import { localDateKey, parseDateKey } from '../utils/dates.js';
 import { makeHttpRequest, httpClient } from '../api/http-client.js';
 import { buildPiTicketMigration } from '../tools/sprint.js';
+import { branchVersionProblem, compareVersions, isBetaVersion, isValidVersion } from '../../scripts/version-rules.mjs';
 
 // Color codes for output
 const colors = {
@@ -543,6 +544,51 @@ async function runTests() {
       db.prepare('DELETE FROM daily_summary WHERE date = ? AND ticket_id = ?').run(reportedDay, 'TEST-300');
       if (saved) setConfig.run(saved.value);
       else db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
+    }
+  });
+
+  test('beta versions sort below their full release and above older releases', () => {
+    const inOrder = ['0.7.102', '0.8.0-beta.1', '0.8.0-beta.2', '0.8.0-beta.10', '0.8.0', '0.8.1', '0.10.0', '1.0.0-beta.1', '1.0.0'];
+    for (let i = 1; i < inOrder.length; i++) {
+      assert.strictEqual(compareVersions(inOrder[i - 1], inOrder[i]), -1, `${inOrder[i - 1]} should be below ${inOrder[i]}`);
+      assert.strictEqual(compareVersions(inOrder[i], inOrder[i - 1]), 1);
+    }
+    assert.strictEqual(compareVersions('0.8.0-beta.1', '0.8.0-beta.1'), 0);
+  });
+
+  test('only full and beta version formats are valid', () => {
+    for (const version of ['0.8.0', '1.2.3', '0.8.0-beta.1']) assert(isValidVersion(version), version);
+    for (const version of ['0.8', '0.8.0-beta', '0.8.0-rc.1', '0.8.0-beta.1.2', 'v0.8.0']) assert(!isValidVersion(version), version);
+    assert.strictEqual(isBetaVersion('0.8.0-beta.1'), true);
+    assert.strictEqual(isBetaVersion('0.8.0'), false);
+  });
+
+  test('a version must suit the branch it is going to', () => {
+    assert.strictEqual(branchVersionProblem('0.8.0', 'main'), null);
+    assert.strictEqual(branchVersionProblem('0.8.0-beta.1', 'beta'), null);
+    assert.match(branchVersionProblem('0.8.0-beta.1', 'main'), /can't have a beta version/);
+    assert.match(branchVersionProblem('0.8.0', 'beta'), /needs a beta version/);
+    assert.strictEqual(branchVersionProblem('0.8.0', 'feature'), null);
+  });
+
+  await testAsync('the update channel is saved, survives other settings, and rejects anything else', async () => {
+    const saved = db.prepare("SELECT value FROM settings WHERE key = 'app_config'").get();
+    try {
+      db.prepare("DELETE FROM settings WHERE key = 'app_config'").run();
+      assert.strictEqual((await executeTool('get_config', {})).updateChannel, null, 'It should stay unset until chosen');
+
+      assert.strictEqual((await executeTool('update_config', { config: { updateChannel: 'beta' } })).success, true);
+      assert.strictEqual((await executeTool('get_config', {})).updateChannel, 'beta');
+
+      await executeTool('update_config', { config: { autoStart: true } });
+      assert.strictEqual((await executeTool('get_config', {})).updateChannel, 'beta', 'Saving another setting should keep it');
+
+      const rejected = await executeTool('update_config', { config: { updateChannel: 'https://example.com' } });
+      assert.strictEqual(rejected.success, false);
+      assert.strictEqual((await executeTool('get_config', {})).updateChannel, 'beta');
+    } finally {
+      if (saved) db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('app_config', ?)").run(saved.value);
+      else db.prepare("DELETE FROM settings WHERE key = 'app_config'").run();
     }
   });
 

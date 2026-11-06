@@ -17,6 +17,18 @@
         </div>
       </div>
 
+      <div class="form-group">
+        <label for="update-channel">Update Channel</label>
+        <select id="update-channel" :value="channel" :disabled="isSavingChannel" @change="changeChannel">
+          <option value="main">Main</option>
+          <option value="beta">Beta</option>
+        </select>
+        <p class="form-hint">
+          Beta gets new features first, but may have more bugs. Moving from Beta to Main never
+          installs an older version: you keep this build until Main has a newer one.
+        </p>
+      </div>
+
       <div class="button-group" style="flex-direction: column; gap: 0.75rem;">
         <button type="button" class="btn-secondary" @click="$emit('check-updates')">🔄 Check for Updates</button>
         <button type="button" class="btn-secondary" @click="$emit('open-documentation')">📖 View Documentation</button>
@@ -44,8 +56,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { getVersion, getTauriVersion } from '@tauri-apps/api/app'
+import { effectiveUpdateChannel } from '@/features/updates/composables/useUpdater'
+import { useConfigStore } from '@/shared/stores/config'
+import { useUiStore } from '@/shared/stores/ui'
+import type { UpdateChannel } from '@/shared/models/config'
 
 defineProps<{ buildDate: string }>()
 defineEmits<{
@@ -56,6 +72,25 @@ defineEmits<{
 
 const appVersion = ref('…')
 const tauriVersion = ref('…')
+
+const configStore = useConfigStore()
+const uiStore = useUiStore()
+const isSavingChannel = ref(false)
+const channel = computed(() => effectiveUpdateChannel(configStore.config.updateChannel, appVersion.value))
+
+// Saved straight away, so it applies to the next check without the Settings save button.
+const changeChannel = async (event: Event) => {
+  const select = event.target as HTMLSelectElement
+  isSavingChannel.value = true
+  try {
+    await configStore.saveConfig({ updateChannel: select.value as UpdateChannel })
+  } catch (error) {
+    select.value = channel.value
+    uiStore.showError(error instanceof Error ? error.message : 'Could not save the update channel')
+  } finally {
+    isSavingChannel.value = false
+  }
+}
 
 onMounted(async () => {
   try {
