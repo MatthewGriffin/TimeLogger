@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "TimeLogger",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "identifier": "com.timelogger.app",
   "build": {
     "frontendDist": "../dist",
@@ -33,6 +33,9 @@
     "active": true,
     "createUpdaterArtifacts": true,
     "targets": "nsis",
+    "copyright": "Copyright (c) 2026 Matthew Griffin",
+    "shortDescription": "Tempo time logging helper app",
+    "longDescription": "Logs working time and submits it to Tempo, with Jira, Outlook, OneNote and GitHub integrations.",
     "resources": [
       "../src-node"
     ],
