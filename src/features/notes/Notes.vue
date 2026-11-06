@@ -281,7 +281,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import { useNotesStore, DEFAULT_TOPIC } from '@/features/notes/stores/notes'
+import { useNotesStore, DEFAULT_TOPIC, isSameTopic } from '@/features/notes/stores/notes'
 import type { Note } from '@/features/notes/stores/notes'
 import { useUiStore } from '@/shared/stores/ui'
 import { useConfigStore } from '@/shared/stores/config'
@@ -376,7 +376,7 @@ const visibleNotes = computed(() => {
     return notesStore.notesByTopic
   }
   return notesStore.searchNotes(searchQuery.value)
-    .filter(n => n.topic === notesStore.selectedTopic)
+    .filter(n => isSameTopic(n.topic, notesStore.selectedTopic))
 })
 
 const truncate = (text: string, length: number) => {
@@ -554,6 +554,8 @@ const saveNote = async () => {
         undefined,
         note.isBlocker
       )
+      // Show the tab the note went to. An AI suggestion only moves it once approved.
+      notesStore.setSelectedTopic(created.topic)
       uiStore.showSuccess('Note created')
       const shouldSuggest = !note.ticketId && !note.topic
       closeEditor()
