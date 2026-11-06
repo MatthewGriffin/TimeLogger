@@ -12,16 +12,12 @@
     <ul v-else class="blockers-list">
       <li v-for="blocker in blockers" :key="blocker.id" class="blocker">
         <div class="blocker-body">
-          <a
-            v-if="blocker.ticketId && jiraBaseUrl"
-            class="blocker-ticket"
-            :href="jiraBaseUrl + '/browse/' + blocker.ticketId"
-            target="_blank"
-            rel="noopener noreferrer"
-          >{{ blocker.ticketId }}</a>
-          <span v-else-if="blocker.ticketId" class="blocker-ticket">{{ blocker.ticketId }}</span>
-          <span class="blocker-text">{{ blocker.title || blocker.note }}</span>
-          <span class="blocker-age">{{ ageLabel(blocker.date) }}</span>
+          <div class="blocker-meta">
+            <JiraTicketLink v-if="blocker.ticketId" class="blocker-ticket" :ticket-id="blocker.ticketId" />
+            <strong v-if="blocker.title" class="blocker-title">{{ blocker.title }}</strong>
+            <span class="blocker-age">{{ ageLabel(blocker.date) }}</span>
+          </div>
+          <p class="blocker-note">{{ blocker.note }}</p>
         </div>
         <button type="button" class="blocker-resolve" @click="emit('resolve', blocker.id)">
           Resolve
@@ -32,13 +28,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useConfigStore } from '@/shared/stores/config'
+import JiraTicketLink from '@/features/scrum/components/JiraTicketLink.vue'
 import type { ScrumBlocker } from '@/features/scrum/models/scrum'
 
 defineProps<{ blockers: ScrumBlocker[] }>()
-const configStore = useConfigStore()
-const jiraBaseUrl = computed(() => String(configStore.config.jira?.baseUrl || '').replace(/\/$/, ''))
 const emit = defineEmits<{ resolve: [id: number] }>()
 
 /**
@@ -112,7 +105,7 @@ const ageLabel = (date: string) => {
 
 .blocker {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
   padding: 0.5rem 0;
@@ -124,10 +117,14 @@ const ageLabel = (date: string) => {
 }
 
 .blocker-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.blocker-meta {
   display: flex;
   align-items: baseline;
   gap: 0.5rem;
-  min-width: 0;
   flex-wrap: wrap;
 }
 
@@ -137,8 +134,16 @@ const ageLabel = (date: string) => {
   color: var(--color-accent);
 }
 
-.blocker-text {
+.blocker-title {
   font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.blocker-note {
+  margin: 0.25rem 0 0;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .blocker-age {

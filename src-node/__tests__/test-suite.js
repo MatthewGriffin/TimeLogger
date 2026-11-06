@@ -2445,6 +2445,27 @@ async function runTests() {
     }
   });
 
+  await testAsync('an open blocker keeps its full note alongside its title', async () => {
+    const note = 'First line of the blocker\nSecond line with the detail';
+    const created = await executeTool('create_note', {
+      date: '2026-09-08',
+      note,
+      title: 'Short title',
+      ticket_id: 'TEST-158',
+      is_blocker: true
+    });
+    const noteId = created.noteId;
+    try {
+      const result = await executeTool('generate_scrum_summary', { date: '2026-09-08' });
+      const blocker = result.blockers.find(b => b.id === noteId);
+      assert.strictEqual(blocker.note, note);
+      assert.strictEqual(blocker.title, 'Short title');
+      assert.strictEqual(blocker.ticket_id, 'TEST-158');
+    } finally {
+      await executeTool('delete_note', { id: noteId });
+    }
+  });
+
   await testAsync('with no open blockers the summary says so', async () => {
     const before = await executeTool('get_notes', { open_blockers_only: true });
     if (before.notes.length === 0) {

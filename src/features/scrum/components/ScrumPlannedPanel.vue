@@ -17,14 +17,7 @@
     <ul v-else class="planned-list">
       <li v-for="item in planned" :key="item.id" class="planned-item">
         <div class="planned-body">
-          <a
-            v-if="jiraBaseUrl"
-            class="planned-ticket"
-            :href="jiraBaseUrl + '/browse/' + item.ticketId"
-            target="_blank"
-            rel="noopener noreferrer"
-          >{{ item.ticketId }}</a>
-          <span v-else class="planned-ticket">{{ item.ticketId }}</span>
+          <JiraTicketLink class="planned-ticket" :ticket-id="item.ticketId" />
           <span v-if="item.summary" class="planned-summary">{{ item.summary }}</span>
           <span v-if="item.status" class="planned-status">{{ item.status }}</span>
         </div>
@@ -42,13 +35,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useConfigStore } from '@/shared/stores/config'
+import JiraTicketLink from '@/features/scrum/components/JiraTicketLink.vue'
 import type { ScrumPlanItem } from '@/features/scrum/models/scrumPlanItem'
 
 defineProps<{ planned: ScrumPlanItem[] }>()
-const configStore = useConfigStore()
-const jiraBaseUrl = computed(() => String(configStore.config.jira?.baseUrl || '').replace(/\/$/, ''))
 const emit = defineEmits<{ 'open-search': []; remove: [id: number] }>()
 </script>
 
