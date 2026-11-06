@@ -1,0 +1,11 @@
+{
+  "version": "0.8.2-beta.1",
+  "notes": "See https://github.com/MatthewGriffin/TimeLogger/releases/tag/v0.8.2-beta.1",
+  "pub_date": "2026-11-06T15:22:53Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUE1zTWticmEzM0Y0L04zR1g4bmdnWENhTzdhRWtWQ0ZJSUQ3bTdaNGFxTzZURzVZYjZuQmE4VXpNMytnM3N3Ny8rTHBVWVBUYXdSK2dOdFFlTzVZMU9FWGh0MmxQYVFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzOTc4NTcyCWZpbGU6VGltZUxvZ2dlcl8wLjguMi1iZXRhLjFfeDY0LXNldHVwLmV4ZQl2ZXJzaW9uOjAuOC4yLWJldGEuMQpnRGNteVptY2FXNWVxM3JaWUhQL2JoWHFjTjE4SkVTNTFZTnlwcWloVTArWkI5c2xNaTRkbGp0YlIzajI5MjB2cGo5OUMxUHRIeG5MSTZYb1JWUVFEQT09Cg==",
+      "url": "https://github.com/MatthewGriffin/TimeLogger/releases/download/v0.8.2-beta.1/TimeLogger_0.8.2-beta.1_x64-setup.exe"
+    }
+  }
+}
