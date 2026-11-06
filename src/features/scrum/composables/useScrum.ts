@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { executeApi, ApiError } from '@/shared/utils/api'
+import { localDate } from '@/shared/utils/dates'
 import type { ScrumBlocker, ScrumDay, ScrumEntry, ScrumNote, ScrumReport, ScrumPullRequest } from '@/features/scrum/models/scrum'
 import type { ScrumPlanItem } from '@/features/scrum/models/scrumPlanItem'
 
@@ -76,52 +77,83 @@ function toDay(raw: unknown): ScrumDay {
   }
 }
 
-/**
- * Loads the stand-up report and keeps its loading/error state.
- *
- * The paragraph is always composed from the logged entries, notes and planned
- * work. There is no model in this path, so the report is instant and reads the
- * same way every time.
- */
-export function useScrum() {
-  const report = ref<ScrumReport | null>(null)
-  const isLoading = ref(false)
-  const error = ref('')
+// Kept outside useScrum because the page is unmounted when you navigate away.
+const report = ref<ScrumReport | null>(null)
+const isLoading = ref(false)
+const error = ref('')
+let latestRequest = 0
 
-  const fetchReport = async () => {
+const errorMessage = (err: unknown) => err instanceof ApiError ? err.message : String(err)
+
+function toReport(result: Record<string, unknown>): ScrumReport {
+  return {
+    yesterday: toDay(result.yesterday),
+    today: toDay(result.today),
+    blockers: (Array.isArray(result.blockers) ? result.blockers.map(toNote) : []) as ScrumBlocker[],
+    summary: String(result.summary ?? ''),
+    pullRequests: Array.isArray(result.pullRequests) ? result.pullRequests.map(toPullRequest) : []
+  }
+}
+
+/**
+ * Fetch the report and apply it if it's still the newest request and has changed.
+ *
+ * A request that has to wait on GitHub can take seconds, and its local data would
+ * overwrite anything newer, such as a blocker resolved in the meantime. Dropping
+ * its result loses nothing, because the backend has cached the pull requests.
+ */
+async function updateReport(): Promise<void> {
+  const request = ++latestRequest
+  try {
     const result = await executeApi<Record<string, unknown>>('generate_scrum_summary', {})
+    if (request !== latestRequest) return
     if (result?.success === false) {
       throw new Error(String(result.message || 'Failed to build the stand-up report'))
     }
-    return {
-      yesterday: toDay(result.yesterday),
-      today: toDay(result.today),
-      blockers: (Array.isArray(result.blockers) ? result.blockers.map(toNote) : []) as ScrumBlocker[],
-      summary: String(result.summary ?? ''),
-      pullRequests: Array.isArray(result.pullRequests) ? result.pullRequests.map(toPullRequest) : []
-    } as ScrumReport
+    const next = toReport(result)
+    if (JSON.stringify(next) !== JSON.stringify(report.value)) report.value = next
+    isLoading.value = false
+  } catch (err) {
+    if (request !== latestRequest) return
+    error.value = errorMessage(err)
+    isLoading.value = false
   }
+}
 
+/**
+ * Called when the GitHub poll has changed the report's pull requests. This keeps
+ * the kept report current while the page is closed, so a visit shows the change
+ * straight away. Nothing happens until the page has first been opened.
+ */
+export async function updateScrumReportAfterPoll(): Promise<void> {
+  if (report.value) await updateReport()
+}
+
+/**
+ * Loads the stand-up report and keeps its loading/error state.
+ *
+ * The local data is read again on every visit because that takes milliseconds,
+ * and the backend caches the slow GitHub part. A visit therefore shows the last
+ * report straight away and only changes it if something has changed.
+ */
+export function useScrum() {
   const load = async () => {
-    isLoading.value = true
+    // Yesterday's report must not be shown as today's.
+    if (report.value?.today.date !== localDate()) report.value = null
+    isLoading.value = report.value === null
     error.value = ''
-    try {
-      report.value = await fetchReport()
-    } catch (err) {
-      error.value = err instanceof ApiError ? err.message : String(err)
-    } finally {
-      isLoading.value = false
-    }
+    await updateReport()
   }
 
   const resolveBlocker = async (id: number) => {
     error.value = ''
     try {
       await executeApi('resolve_blocker', { id })
-      report.value = await fetchReport()
     } catch (err) {
-      error.value = err instanceof ApiError ? err.message : String(err)
+      error.value = errorMessage(err)
+      return
     }
+    await updateReport()
   }
 
   /**
@@ -131,11 +163,7 @@ export function useScrum() {
    */
   const refresh = async () => {
     error.value = ''
-    try {
-      report.value = await fetchReport()
-    } catch (err) {
-      error.value = err instanceof ApiError ? err.message : String(err)
-    }
+    await updateReport()
   }
 
   return { report, isLoading, error, load, resolveBlocker, refresh }

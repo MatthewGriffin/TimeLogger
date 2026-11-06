@@ -11,7 +11,19 @@ import { localDateKey } from '../utils/dates.js';
 import { previousWorkingDay } from '../utils/working-days.js';
 import { plannedWorkFor } from './scrum-plan.js';
 import { readSprintConfig, matchMeetingTicket } from './sprint.js';
-import { getPullRequestsForTickets, getPullRequestsWithMajorUpdatesOnDate } from './github-prs.js';
+import {
+  connectedGitHubAccount,
+  extractTicketKeys,
+  getPullRequestsForTickets,
+  getPullRequestsWithMajorUpdatesOnDate,
+  isOpenUnmergedPullRequest,
+  onPullRequestsPolled
+} from './github-prs.js';
+
+// Fetching these uses many requests against GitHub's rate limit, so they're kept
+// until the app's GitHub poll finds a change that affects them.
+let cachedPullRequests = null;
+let pullRequestFetch = null;
 
 /** Read the configured lunch name so it can be filtered out by whatever it is called. */
 function lunchName() {
@@ -176,6 +188,90 @@ function fallbackSummary(yesterday, today, blockers) {
     `Blockers: ${blockerText}.`
   ].join(' ');
 }
+
+/**
+ * Daily Scrum PRs are limited to tickets actually worked on yesterday, plus PRs
+ * with a major lifecycle change yesterday. Page visits can overlap, so requests
+ * for the same PRs share one fetch.
+ */
+function fetchPullRequests(scope) {
+  if (pullRequestFetch?.key === scope.key) return pullRequestFetch.promise;
+  const promise = (async () => {
+    const [ticketPullRequests, majorUpdatePullRequests] = await Promise.all([
+      getPullRequestsForTickets(scope.tickets),
+      getPullRequestsWithMajorUpdatesOnDate(scope.yesterday)
+    ]);
+    const byId = new Map();
+    for (const pr of [...ticketPullRequests, ...majorUpdatePullRequests]) byId.set(pr.id, pr);
+    const pullRequests = [...byId.values()].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+    cachedPullRequests = { ...scope, pullRequests, outdated: false };
+    return pullRequests;
+  })().finally(() => {
+    if (pullRequestFetch?.promise === promise) pullRequestFetch = null;
+  });
+  pullRequestFetch = { key: scope.key, promise };
+  return promise;
+}
+
+/** The report's pull requests, from GitHub only when the cached ones don't apply. */
+async function pullRequestsForReport(yesterday, tickets) {
+  const uniqueTickets = [...new Set(tickets)].sort();
+  const account = connectedGitHubAccount();
+  const scope = { key: JSON.stringify([yesterday, uniqueTickets, account]), yesterday, tickets: uniqueTickets, account };
+  const cached = cachedPullRequests?.key === scope.key ? cachedPullRequests : null;
+  if (cached && !cached.outdated) return cached.pullRequests;
+  try {
+    return await fetchPullRequests(scope);
+  } catch (error) {
+    // GitHub is optional; a network or authentication issue must not make the
+    // core stand-up summary unavailable. Outdated results stay marked as such,
+    // so the next poll or page visit tries again.
+    console.warn('Could not load GitHub pull requests for scrum:', error.message);
+    return cached?.pullRequests ?? [];
+  }
+}
+
+/**
+ * Whether a poll found a change to the report's pull requests.
+ *
+ * The poll's own searches don't use the report's rules, so a PR outside the
+ * report only counts if it changed since the last poll and could now qualify:
+ * it names a ticket worked yesterday, awaits this account's review, or has
+ * activity dated yesterday.
+ */
+function pollAffectsReport(cached, { prs, changed, removed }) {
+  const inReport = new Map(cached.pullRequests.map(pr => [pr.id, pr]));
+  if (prs.some(pr => inReport.has(pr.id) && inReport.get(pr.id).updatedAt !== pr.updatedAt)) return true;
+
+  const reportKeys = new Set(cached.pullRequests.map(pr => `${pr.repository}#${pr.number}`));
+  if (removed.some(key => reportKeys.has(key))) return true;
+
+  const workedTickets = new Set(extractTicketKeys(...cached.tickets));
+  const onReportDay = value => String(value || '').slice(0, 10) === cached.yesterday;
+  return changed.some(pr => !inReport.has(pr.id) && (
+    pr.ticketKeys.some(key => workedTickets.has(key)) ||
+    (pr.requestedReviewer && isOpenUnmergedPullRequest(pr)) ||
+    onReportDay(pr.createdAt) || onReportDay(pr.mergedAt) || onReportDay(pr.updatedAt)
+  ));
+}
+
+onPullRequestsPolled(async poll => {
+  const cached = cachedPullRequests;
+  // A result for another day or account is replaced on the next page visit.
+  if (!cached || cached.yesterday !== previousWorkingDay(localDateKey()) || cached.account !== connectedGitHubAccount()) {
+    return false;
+  }
+  if (!cached.outdated && !pollAffectsReport(cached, poll)) return false;
+  cached.outdated = true;
+  try {
+    await fetchPullRequests(cached);
+    return true;
+  } catch (error) {
+    console.warn('Could not refresh GitHub pull requests for scrum:', error.message);
+    return false;
+  }
+});
+
 export const tools = [
   {
     name: 'generate_scrum_summary',
@@ -218,23 +314,8 @@ export const tools = [
         const blockers = openBlockers();
 
         const summary = fallbackSummary(previous, current, blockers);
-        // Daily Scrum PRs are limited to tickets actually worked on
-        // yesterday, plus PRs with a major lifecycle change yesterday.
         const workedTicketValues = previous.entries.map(entry => entry.ticket_id).filter(Boolean);
-        let pullRequests = [];
-        try {
-          const [ticketPullRequests, majorUpdatePullRequests] = await Promise.all([
-            getPullRequestsForTickets(workedTicketValues),
-            getPullRequestsWithMajorUpdatesOnDate(yesterday)
-          ]);
-          const byId = new Map();
-          for (const pr of [...ticketPullRequests, ...majorUpdatePullRequests]) byId.set(pr.id, pr);
-          pullRequests = [...byId.values()].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
-        } catch (error) {
-          // GitHub is optional; a network or authentication issue must not
-          // make the core stand-up summary unavailable.
-          console.warn('Could not load GitHub pull requests for scrum:', error.message);
-        }
+        const pullRequests = await pullRequestsForReport(yesterday, workedTicketValues);
 
         return {
           success: true,
