@@ -49,6 +49,12 @@ function readConfig() {
   }
 }
 
+/** Identifies the connected account without exposing the token. Empty when disconnected. */
+export function connectedGitHubAccount() {
+  const config = readConfig();
+  return config.token ? String(config.login || 'connected') : '';
+}
+
 async function githubGet(path, token) {
   if (!path.startsWith('/')) throw new Error('Invalid GitHub API path');
   try {

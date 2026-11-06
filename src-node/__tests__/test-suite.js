@@ -2620,6 +2620,98 @@ async function runTests() {
     cleanTestFixtures();
   });
 
+  await testAsync('the scrum report only asks GitHub again when its pull requests may have changed', async () => {
+    cleanTestFixtures();
+    const yesterday = previousWorkingDay(TEST_DATE);
+    const saved = db.prepare("SELECT value FROM settings WHERE key = 'github_config'").get();
+    const setGitHub = db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('github_config', ?, CURRENT_TIMESTAMP)");
+    const realNow = Date.now;
+    const pr = {
+      id: 77, number: 1, title: 'Cached PR', body: '', html_url: 'https://github.com/o/r/pull/1', state: 'open', draft: false,
+      user: { login: 'someone' }, head: { ref: 'branch' }, base: { repo: { full_name: 'o/r' } },
+      created_at: `${yesterday}T10:00:00Z`, updated_at: `${yesterday}T10:00:00Z`, requested_reviewers: []
+    };
+    let requests = 0;
+    let failing = false;
+    const route = config => {
+      requests++;
+      if (failing) return { failWithStatus: 502 };
+      const { pathname } = new URL(config.url);
+      if (pathname === '/user') return { login: 'cache-user' };
+      if (pathname === '/search/issues') return { items: [{ repository_url: 'https://api.github.com/repos/o/r', number: 1, updated_at: pr.updated_at }] };
+      if (pathname === '/repos/o/r/pulls/1') return pr;
+      return [];
+    };
+    const report = (args = {}) => executeTool('generate_scrum_summary', { date: TEST_DATE, ...args });
+    const countRequests = async run => {
+      requests = 0;
+      const result = await run();
+      return { result, requests };
+    };
+
+    try {
+      setGitHub.run(JSON.stringify({ token: 'fake-token', login: 'cache-user' }));
+      await withStubbedHttp(route, async () => {
+        const first = await countRequests(report);
+        assert(first.requests > 0, 'The first report should ask GitHub');
+        assert.deepStrictEqual(first.result.pullRequests.map(p => p.id), ['77']);
+
+        const second = await countRequests(report);
+        assert.strictEqual(second.requests, 0, 'An unchanged report should not ask GitHub');
+        assert.deepStrictEqual(second.result.pullRequests.map(p => p.id), ['77']);
+        assert.strictEqual(second.result.pullRequestsStale, false);
+
+        await executeTool('add_planned_work', { date: TEST_DATE, ticket_id: 'TEST-910' });
+        const planned = await countRequests(report);
+        assert.strictEqual(planned.requests, 0, 'A local change should not wait on GitHub');
+        assert.strictEqual(planned.result.today.planned.length, 1, 'A local change should show straight away');
+
+        Date.now = () => realNow() + 6 * 60 * 1000;
+        const aged = await countRequests(report);
+        assert.strictEqual(aged.requests, 0, 'An aged result should be returned without waiting on GitHub');
+        assert.strictEqual(aged.result.pullRequestsStale, true);
+
+        failing = true;
+        const failed = await countRequests(() => report({ refresh_pull_requests: true }));
+        assert(failed.requests > 0, 'A refresh should ask GitHub');
+        assert.deepStrictEqual(failed.result.pullRequests.map(p => p.id), ['77'], 'A failed refresh should keep the last result');
+        assert.strictEqual((await report()).pullRequestsStale, true, 'A failed refresh should be tried again');
+
+        failing = false;
+        const refreshed = await countRequests(() => report({ refresh_pull_requests: true }));
+        assert(refreshed.requests > 0, 'A refresh should ask GitHub');
+        assert.strictEqual(refreshed.result.pullRequestsStale, false);
+        assert.strictEqual((await report()).pullRequestsStale, false, 'A successful refresh should reset the age');
+
+        const overlapping = await countRequests(() => Promise.all([
+          report({ refresh_pull_requests: true }),
+          report({ refresh_pull_requests: true })
+        ]));
+        assert.strictEqual(overlapping.requests, refreshed.requests, 'Overlapping refreshes should share one fetch');
+
+        db.prepare('INSERT INTO daily_summary (date, ticket_id, name, duration_mins) VALUES (?, ?, ?, ?)')
+          .run(yesterday, 'TEST-911', 'Yesterday work', 30);
+        const newTicket = await countRequests(report);
+        assert(newTicket.requests > 0, 'A newly worked ticket can match different pull requests');
+
+        setGitHub.run(JSON.stringify({ token: 'other-token', login: 'other-user' }));
+        const otherAccount = await countRequests(report);
+        assert(otherAccount.requests > 0, 'Another account has different pull requests');
+
+        db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
+        const disconnected = await countRequests(report);
+        assert.strictEqual(disconnected.requests, 0, 'A disconnected account should not ask GitHub');
+        assert.deepStrictEqual(disconnected.result.pullRequests, [], 'Disconnecting should clear the pull requests');
+      });
+    } finally {
+      Date.now = realNow;
+      if (saved) setGitHub.run(saved.value);
+      else db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
+      db.prepare('DELETE FROM daily_summary WHERE date = ? AND ticket_id = ?').run(yesterday, 'TEST-911');
+      cleanTestFixtures();
+    }
+  });
+
   // ============================================================
   // SUMMARY
   // ============================================================

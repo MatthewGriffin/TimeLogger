@@ -11,7 +11,14 @@ import { localDateKey } from '../utils/dates.js';
 import { previousWorkingDay } from '../utils/working-days.js';
 import { plannedWorkFor } from './scrum-plan.js';
 import { readSprintConfig, matchMeetingTicket } from './sprint.js';
-import { getPullRequestsForTickets, getPullRequestsWithMajorUpdatesOnDate } from './github-prs.js';
+import { connectedGitHubAccount, getPullRequestsForTickets, getPullRequestsWithMajorUpdatesOnDate } from './github-prs.js';
+
+// GitHub can't announce a change, so cached pull requests are checked again once
+// they reach this age. Each check uses many requests against GitHub's rate limit.
+const PULL_REQUEST_MAX_AGE_MS = 5 * 60 * 1000;
+
+let cachedPullRequests = null;
+let pullRequestFetch = null;
 
 /** Read the configured lunch name so it can be filtered out by whatever it is called. */
 function lunchName() {
@@ -176,6 +183,53 @@ function fallbackSummary(yesterday, today, blockers) {
     `Blockers: ${blockerText}.`
   ].join(' ');
 }
+
+/**
+ * Daily Scrum PRs are limited to tickets actually worked on yesterday, plus PRs
+ * with a major lifecycle change yesterday. Page visits can overlap, so requests
+ * for the same PRs share one fetch.
+ */
+function fetchPullRequests(key, yesterday, tickets) {
+  if (pullRequestFetch?.key === key) return pullRequestFetch.promise;
+  const promise = (async () => {
+    const [ticketPullRequests, majorUpdatePullRequests] = await Promise.all([
+      getPullRequestsForTickets(tickets),
+      getPullRequestsWithMajorUpdatesOnDate(yesterday)
+    ]);
+    const byId = new Map();
+    for (const pr of [...ticketPullRequests, ...majorUpdatePullRequests]) byId.set(pr.id, pr);
+    const pullRequests = [...byId.values()].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+    cachedPullRequests = { key, pullRequests, fetchedAt: Date.now() };
+    return pullRequests;
+  })().finally(() => {
+    if (pullRequestFetch?.promise === promise) pullRequestFetch = null;
+  });
+  pullRequestFetch = { key, promise };
+  return promise;
+}
+
+/**
+ * The report's pull requests, from GitHub only when the cached ones don't apply
+ * or a refresh is requested. `stale` asks the caller to request that refresh, so
+ * the local parts of the report never wait on GitHub for an age check.
+ */
+async function pullRequestsForReport(yesterday, tickets, refresh) {
+  const key = JSON.stringify([yesterday, [...new Set(tickets)].sort(), connectedGitHubAccount()]);
+  const cached = cachedPullRequests?.key === key ? cachedPullRequests : null;
+  if (cached && !refresh) {
+    return { pullRequests: cached.pullRequests, stale: Date.now() - cached.fetchedAt >= PULL_REQUEST_MAX_AGE_MS };
+  }
+  try {
+    return { pullRequests: await fetchPullRequests(key, yesterday, tickets), stale: false };
+  } catch (error) {
+    // GitHub is optional; a network or authentication issue must not make the
+    // core stand-up summary unavailable. A failure keeps its original age, so
+    // the next page visit tries again.
+    console.warn('Could not load GitHub pull requests for scrum:', error.message);
+    return { pullRequests: cached?.pullRequests ?? [], stale: false };
+  }
+}
+
 export const tools = [
   {
     name: 'generate_scrum_summary',
@@ -183,7 +237,8 @@ export const tools = [
     parameters: {
       type: 'object',
       properties: {
-        date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'The "today" date; defaults to the current local date' }
+        date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'The "today" date; defaults to the current local date' },
+        refresh_pull_requests: { type: 'boolean', description: 'Fetch pull requests from GitHub even if a cached result applies' }
       },
       required: []
     },
@@ -218,23 +273,8 @@ export const tools = [
         const blockers = openBlockers();
 
         const summary = fallbackSummary(previous, current, blockers);
-        // Daily Scrum PRs are limited to tickets actually worked on
-        // yesterday, plus PRs with a major lifecycle change yesterday.
         const workedTicketValues = previous.entries.map(entry => entry.ticket_id).filter(Boolean);
-        let pullRequests = [];
-        try {
-          const [ticketPullRequests, majorUpdatePullRequests] = await Promise.all([
-            getPullRequestsForTickets(workedTicketValues),
-            getPullRequestsWithMajorUpdatesOnDate(yesterday)
-          ]);
-          const byId = new Map();
-          for (const pr of [...ticketPullRequests, ...majorUpdatePullRequests]) byId.set(pr.id, pr);
-          pullRequests = [...byId.values()].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
-        } catch (error) {
-          // GitHub is optional; a network or authentication issue must not
-          // make the core stand-up summary unavailable.
-          console.warn('Could not load GitHub pull requests for scrum:', error.message);
-        }
+        const { pullRequests, stale } = await pullRequestsForReport(yesterday, workedTicketValues, args.refresh_pull_requests === true);
 
         return {
           success: true,
@@ -242,7 +282,8 @@ export const tools = [
           today: current,
           blockers,
           summary,
-          pullRequests
+          pullRequests,
+          pullRequestsStale: stale
         };
       } catch (error) {
         return { success: false, message: `Failed to build scrum summary: ${error.message}` };
