@@ -98,17 +98,14 @@ function toReport(result: Record<string, unknown>): ScrumReport {
 /**
  * Fetch the report and apply it if it's still the newest request and has changed.
  *
- * A pull request refresh can take seconds, and its local data would overwrite
- * anything newer, such as a blocker resolved in the meantime. Dropping its result
- * loses nothing, because the backend has cached the pull requests for next time.
+ * A request that has to wait on GitHub can take seconds, and its local data would
+ * overwrite anything newer, such as a blocker resolved in the meantime. Dropping
+ * its result loses nothing, because the backend has cached the pull requests.
  */
-async function updateReport(refreshPullRequests = false): Promise<void> {
+async function updateReport(): Promise<void> {
   const request = ++latestRequest
   try {
-    const result = await executeApi<Record<string, unknown>>(
-      'generate_scrum_summary',
-      refreshPullRequests ? { refresh_pull_requests: true } : {}
-    )
+    const result = await executeApi<Record<string, unknown>>('generate_scrum_summary', {})
     if (request !== latestRequest) return
     if (result?.success === false) {
       throw new Error(String(result.message || 'Failed to build the stand-up report'))
@@ -116,12 +113,20 @@ async function updateReport(refreshPullRequests = false): Promise<void> {
     const next = toReport(result)
     if (JSON.stringify(next) !== JSON.stringify(report.value)) report.value = next
     isLoading.value = false
-    if (result.pullRequestsStale === true) void updateReport(true)
   } catch (err) {
     if (request !== latestRequest) return
     error.value = errorMessage(err)
     isLoading.value = false
   }
+}
+
+/**
+ * Called when the GitHub poll has changed the report's pull requests. This keeps
+ * the kept report current while the page is closed, so a visit shows the change
+ * straight away. Nothing happens until the page has first been opened.
+ */
+export async function updateScrumReportAfterPoll(): Promise<void> {
+  if (report.value) await updateReport()
 }
 
 /**

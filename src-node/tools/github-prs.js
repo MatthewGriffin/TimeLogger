@@ -55,6 +55,36 @@ export function connectedGitHubAccount() {
   return config.token ? String(config.login || 'connected') : '';
 }
 
+// The updatedAt of each PR at the last poll. Held in memory, like the scrum
+// report's cache that it's compared with, so both start empty after a restart.
+let lastPolledPullRequests = null;
+let pullRequestPollListener = null;
+
+/** Register a function to run after each poll. It returns whether its data changed. */
+export function onPullRequestsPolled(listener) {
+  pullRequestPollListener = listener;
+}
+
+const pullRequestKey = pr => `${pr.repository}#${pr.number}`;
+
+async function reportPoll(prs, diagnostics) {
+  const previous = lastPolledPullRequests;
+  const current = new Map(prs.map(pr => [pullRequestKey(pr), pr.updatedAt]));
+  // After a failed lookup, a missing PR may still exist, so it isn't "removed".
+  const complete = diagnostics.detailFailures.length === 0 && !diagnostics.searches.some(search => search.error);
+  const changed = previous ? prs.filter(pr => previous.get(pullRequestKey(pr)) !== pr.updatedAt) : [];
+  const removed = previous && complete ? [...previous.keys()].filter(key => !current.has(key)) : [];
+  lastPolledPullRequests = complete || !previous ? current : new Map([...previous, ...current]);
+  if (!pullRequestPollListener) return false;
+  try {
+    return await pullRequestPollListener({ prs, changed, removed });
+  } catch (error) {
+    // Review alerts must still be returned if the listener fails.
+    console.warn('Could not act on the GitHub poll:', error.message);
+    return false;
+  }
+}
+
 async function githubGet(path, token) {
   if (!path.startsWith('/')) throw new Error('Invalid GitHub API path');
   try {
@@ -532,9 +562,11 @@ export const tools = [
     handler: async () => {
       try {
         const token = requireToken();
-        const prs = await listRelevantPullRequests(token);
+        const diagnostics = { searches: [], candidateCount: 0, detailFailures: [] };
+        const prs = await listRelevantPullRequests(token, [], MAX_PRS, diagnostics);
         const events = await pollReviewEvents(token, prs);
-        return { success: true, events };
+        const scrumChanged = await reportPoll(prs, diagnostics);
+        return { success: true, events, scrumChanged };
       } catch (error) {
         return { success: false, message: error.message };
       }

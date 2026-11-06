@@ -11,12 +11,17 @@ import { localDateKey } from '../utils/dates.js';
 import { previousWorkingDay } from '../utils/working-days.js';
 import { plannedWorkFor } from './scrum-plan.js';
 import { readSprintConfig, matchMeetingTicket } from './sprint.js';
-import { connectedGitHubAccount, getPullRequestsForTickets, getPullRequestsWithMajorUpdatesOnDate } from './github-prs.js';
+import {
+  connectedGitHubAccount,
+  extractTicketKeys,
+  getPullRequestsForTickets,
+  getPullRequestsWithMajorUpdatesOnDate,
+  isOpenUnmergedPullRequest,
+  onPullRequestsPolled
+} from './github-prs.js';
 
-// GitHub can't announce a change, so cached pull requests are checked again once
-// they reach this age. Each check uses many requests against GitHub's rate limit.
-const PULL_REQUEST_MAX_AGE_MS = 5 * 60 * 1000;
-
+// Fetching these uses many requests against GitHub's rate limit, so they're kept
+// until the app's GitHub poll finds a change that affects them.
 let cachedPullRequests = null;
 let pullRequestFetch = null;
 
@@ -189,46 +194,83 @@ function fallbackSummary(yesterday, today, blockers) {
  * with a major lifecycle change yesterday. Page visits can overlap, so requests
  * for the same PRs share one fetch.
  */
-function fetchPullRequests(key, yesterday, tickets) {
-  if (pullRequestFetch?.key === key) return pullRequestFetch.promise;
+function fetchPullRequests(scope) {
+  if (pullRequestFetch?.key === scope.key) return pullRequestFetch.promise;
   const promise = (async () => {
     const [ticketPullRequests, majorUpdatePullRequests] = await Promise.all([
-      getPullRequestsForTickets(tickets),
-      getPullRequestsWithMajorUpdatesOnDate(yesterday)
+      getPullRequestsForTickets(scope.tickets),
+      getPullRequestsWithMajorUpdatesOnDate(scope.yesterday)
     ]);
     const byId = new Map();
     for (const pr of [...ticketPullRequests, ...majorUpdatePullRequests]) byId.set(pr.id, pr);
     const pullRequests = [...byId.values()].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
-    cachedPullRequests = { key, pullRequests, fetchedAt: Date.now() };
+    cachedPullRequests = { ...scope, pullRequests, outdated: false };
     return pullRequests;
   })().finally(() => {
     if (pullRequestFetch?.promise === promise) pullRequestFetch = null;
   });
-  pullRequestFetch = { key, promise };
+  pullRequestFetch = { key: scope.key, promise };
   return promise;
 }
 
-/**
- * The report's pull requests, from GitHub only when the cached ones don't apply
- * or a refresh is requested. `stale` asks the caller to request that refresh, so
- * the local parts of the report never wait on GitHub for an age check.
- */
-async function pullRequestsForReport(yesterday, tickets, refresh) {
-  const key = JSON.stringify([yesterday, [...new Set(tickets)].sort(), connectedGitHubAccount()]);
-  const cached = cachedPullRequests?.key === key ? cachedPullRequests : null;
-  if (cached && !refresh) {
-    return { pullRequests: cached.pullRequests, stale: Date.now() - cached.fetchedAt >= PULL_REQUEST_MAX_AGE_MS };
-  }
+/** The report's pull requests, from GitHub only when the cached ones don't apply. */
+async function pullRequestsForReport(yesterday, tickets) {
+  const uniqueTickets = [...new Set(tickets)].sort();
+  const account = connectedGitHubAccount();
+  const scope = { key: JSON.stringify([yesterday, uniqueTickets, account]), yesterday, tickets: uniqueTickets, account };
+  const cached = cachedPullRequests?.key === scope.key ? cachedPullRequests : null;
+  if (cached && !cached.outdated) return cached.pullRequests;
   try {
-    return { pullRequests: await fetchPullRequests(key, yesterday, tickets), stale: false };
+    return await fetchPullRequests(scope);
   } catch (error) {
     // GitHub is optional; a network or authentication issue must not make the
-    // core stand-up summary unavailable. A failure keeps its original age, so
-    // the next page visit tries again.
+    // core stand-up summary unavailable. Outdated results stay marked as such,
+    // so the next poll or page visit tries again.
     console.warn('Could not load GitHub pull requests for scrum:', error.message);
-    return { pullRequests: cached?.pullRequests ?? [], stale: false };
+    return cached?.pullRequests ?? [];
   }
 }
+
+/**
+ * Whether a poll found a change to the report's pull requests.
+ *
+ * The poll's own searches don't use the report's rules, so a PR outside the
+ * report only counts if it changed since the last poll and could now qualify:
+ * it names a ticket worked yesterday, awaits this account's review, or has
+ * activity dated yesterday.
+ */
+function pollAffectsReport(cached, { prs, changed, removed }) {
+  const inReport = new Map(cached.pullRequests.map(pr => [pr.id, pr]));
+  if (prs.some(pr => inReport.has(pr.id) && inReport.get(pr.id).updatedAt !== pr.updatedAt)) return true;
+
+  const reportKeys = new Set(cached.pullRequests.map(pr => `${pr.repository}#${pr.number}`));
+  if (removed.some(key => reportKeys.has(key))) return true;
+
+  const workedTickets = new Set(extractTicketKeys(...cached.tickets));
+  const onReportDay = value => String(value || '').slice(0, 10) === cached.yesterday;
+  return changed.some(pr => !inReport.has(pr.id) && (
+    pr.ticketKeys.some(key => workedTickets.has(key)) ||
+    (pr.requestedReviewer && isOpenUnmergedPullRequest(pr)) ||
+    onReportDay(pr.createdAt) || onReportDay(pr.mergedAt) || onReportDay(pr.updatedAt)
+  ));
+}
+
+onPullRequestsPolled(async poll => {
+  const cached = cachedPullRequests;
+  // A result for another day or account is replaced on the next page visit.
+  if (!cached || cached.yesterday !== previousWorkingDay(localDateKey()) || cached.account !== connectedGitHubAccount()) {
+    return false;
+  }
+  if (!cached.outdated && !pollAffectsReport(cached, poll)) return false;
+  cached.outdated = true;
+  try {
+    await fetchPullRequests(cached);
+    return true;
+  } catch (error) {
+    console.warn('Could not refresh GitHub pull requests for scrum:', error.message);
+    return false;
+  }
+});
 
 export const tools = [
   {
@@ -237,8 +279,7 @@ export const tools = [
     parameters: {
       type: 'object',
       properties: {
-        date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'The "today" date; defaults to the current local date' },
-        refresh_pull_requests: { type: 'boolean', description: 'Fetch pull requests from GitHub even if a cached result applies' }
+        date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'The "today" date; defaults to the current local date' }
       },
       required: []
     },
@@ -274,7 +315,7 @@ export const tools = [
 
         const summary = fallbackSummary(previous, current, blockers);
         const workedTicketValues = previous.entries.map(entry => entry.ticket_id).filter(Boolean);
-        const { pullRequests, stale } = await pullRequestsForReport(yesterday, workedTicketValues, args.refresh_pull_requests === true);
+        const pullRequests = await pullRequestsForReport(yesterday, workedTicketValues);
 
         return {
           success: true,
@@ -282,8 +323,7 @@ export const tools = [
           today: current,
           blockers,
           summary,
-          pullRequests,
-          pullRequestsStale: stale
+          pullRequests
         };
       } catch (error) {
         return { success: false, message: `Failed to build scrum summary: ${error.message}` };

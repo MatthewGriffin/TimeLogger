@@ -2620,81 +2620,111 @@ async function runTests() {
     cleanTestFixtures();
   });
 
-  await testAsync('the scrum report only asks GitHub again when its pull requests may have changed', async () => {
-    cleanTestFixtures();
-    const yesterday = previousWorkingDay(TEST_DATE);
+  await testAsync('the scrum report only asks GitHub again when the poll finds a change that affects it', async () => {
+    // The poll only acts on a report for the real current day.
+    const today = localDateKey();
+    const yesterday = previousWorkingDay(today);
     const saved = db.prepare("SELECT value FROM settings WHERE key = 'github_config'").get();
     const setGitHub = db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('github_config', ?, CURRENT_TIMESTAMP)");
-    const realNow = Date.now;
-    const pr = {
-      id: 77, number: 1, title: 'Cached PR', body: '', html_url: 'https://github.com/o/r/pull/1', state: 'open', draft: false,
-      user: { login: 'someone' }, head: { ref: 'branch' }, base: { repo: { full_name: 'o/r' } },
-      created_at: `${yesterday}T10:00:00Z`, updated_at: `${yesterday}T10:00:00Z`, requested_reviewers: []
-    };
+    const makePr = (id, number, title, createdAt) => ({
+      id, number, title, body: '', html_url: `https://github.com/o/r/pull/${number}`, state: 'open', draft: false,
+      user: { login: 'cache-user' }, head: { ref: 'branch' }, base: { repo: { full_name: 'o/r' } },
+      created_at: createdAt, updated_at: '2001-01-01T00:00:00Z', requested_reviewers: []
+    });
+    const reported = makePr(77, 1, 'Cached PR', `${yesterday}T10:00:00Z`);
+    const unrelated = makePr(78, 2, 'Unrelated PR', '2001-01-01T00:00:00Z');
+    const forTicket = makePr(79, 3, 'TEST-911 fix', '2001-01-01T00:00:00Z');
+    let listed = [reported];
     let requests = 0;
-    let failing = false;
+    let scrumSearchFails = false;
     const route = config => {
       requests++;
-      if (failing) return { failWithStatus: 502 };
-      const { pathname } = new URL(config.url);
-      if (pathname === '/user') return { login: 'cache-user' };
-      if (pathname === '/search/issues') return { items: [{ repository_url: 'https://api.github.com/repos/o/r', number: 1, updated_at: pr.updated_at }] };
-      if (pathname === '/repos/o/r/pulls/1') return pr;
-      return [];
+      const url = new URL(config.url);
+      if (url.pathname === '/user') return { login: 'cache-user' };
+      if (url.pathname === '/search/issues') {
+        if (scrumSearchFails && url.searchParams.get('q').includes('involves:')) return { failWithStatus: 502 };
+        return { items: listed.map(pr => ({ repository_url: 'https://api.github.com/repos/o/r', number: pr.number, updated_at: pr.updated_at })) };
+      }
+      const pr = listed.find(item => url.pathname === `/repos/o/r/pulls/${item.number}`);
+      return pr || [];
     };
-    const report = (args = {}) => executeTool('generate_scrum_summary', { date: TEST_DATE, ...args });
+    const report = () => executeTool('generate_scrum_summary', {});
+    const poll = () => executeTool('github_pr_poll_activity', {});
     const countRequests = async run => {
       requests = 0;
       const result = await run();
       return { result, requests };
     };
+    const reportedIds = result => result.pullRequests.map(pr => pr.id).sort();
 
     try {
       setGitHub.run(JSON.stringify({ token: 'fake-token', login: 'cache-user' }));
       await withStubbedHttp(route, async () => {
         const first = await countRequests(report);
         assert(first.requests > 0, 'The first report should ask GitHub');
-        assert.deepStrictEqual(first.result.pullRequests.map(p => p.id), ['77']);
+        assert.deepStrictEqual(reportedIds(first.result), ['77']);
+        assert.strictEqual((await poll()).scrumChanged, false, 'The first poll should find no change');
 
         const second = await countRequests(report);
         assert.strictEqual(second.requests, 0, 'An unchanged report should not ask GitHub');
-        assert.deepStrictEqual(second.result.pullRequests.map(p => p.id), ['77']);
-        assert.strictEqual(second.result.pullRequestsStale, false);
+        assert.deepStrictEqual(reportedIds(second.result), ['77']);
 
-        await executeTool('add_planned_work', { date: TEST_DATE, ticket_id: 'TEST-910' });
+        await executeTool('add_planned_work', { date: today, ticket_id: 'TEST-910' });
         const planned = await countRequests(report);
         assert.strictEqual(planned.requests, 0, 'A local change should not wait on GitHub');
         assert.strictEqual(planned.result.today.planned.length, 1, 'A local change should show straight away');
 
-        Date.now = () => realNow() + 6 * 60 * 1000;
-        const aged = await countRequests(report);
-        assert.strictEqual(aged.requests, 0, 'An aged result should be returned without waiting on GitHub');
-        assert.strictEqual(aged.result.pullRequestsStale, true);
+        assert.strictEqual((await poll()).scrumChanged, false, 'An unchanged poll should not rebuild');
+        assert.strictEqual((await countRequests(report)).requests, 0, 'An unchanged poll should leave the cache alone');
 
-        failing = true;
-        const failed = await countRequests(() => report({ refresh_pull_requests: true }));
-        assert(failed.requests > 0, 'A refresh should ask GitHub');
-        assert.deepStrictEqual(failed.result.pullRequests.map(p => p.id), ['77'], 'A failed refresh should keep the last result');
-        assert.strictEqual((await report()).pullRequestsStale, true, 'A failed refresh should be tried again');
+        reported.title = 'Renamed PR';
+        reported.updated_at = '2001-01-02T00:00:00Z';
+        assert.strictEqual((await poll()).scrumChanged, true, 'A change to a reported PR should rebuild');
+        const afterChange = await countRequests(report);
+        assert.strictEqual(afterChange.requests, 0, 'The poll should already have fetched the change');
+        assert.strictEqual(afterChange.result.pullRequests[0].title, 'Renamed PR');
 
-        failing = false;
-        const refreshed = await countRequests(() => report({ refresh_pull_requests: true }));
-        assert(refreshed.requests > 0, 'A refresh should ask GitHub');
-        assert.strictEqual(refreshed.result.pullRequestsStale, false);
-        assert.strictEqual((await report()).pullRequestsStale, false, 'A successful refresh should reset the age');
-
-        const overlapping = await countRequests(() => Promise.all([
-          report({ refresh_pull_requests: true }),
-          report({ refresh_pull_requests: true })
-        ]));
-        assert.strictEqual(overlapping.requests, refreshed.requests, 'Overlapping refreshes should share one fetch');
+        listed = [reported, unrelated];
+        assert.strictEqual((await poll()).scrumChanged, false, 'A new unrelated PR should not rebuild');
+        unrelated.updated_at = '2001-01-03T00:00:00Z';
+        assert.strictEqual((await poll()).scrumChanged, false, 'A change to an unrelated PR should not rebuild');
 
         db.prepare('INSERT INTO daily_summary (date, ticket_id, name, duration_mins) VALUES (?, ?, ?, ?)')
           .run(yesterday, 'TEST-911', 'Yesterday work', 30);
         const newTicket = await countRequests(report);
         assert(newTicket.requests > 0, 'A newly worked ticket can match different pull requests');
 
+        listed = [reported, unrelated, forTicket];
+        assert.strictEqual((await poll()).scrumChanged, true, 'A new PR for a worked ticket should rebuild');
+        assert.deepStrictEqual(reportedIds(await report()), ['77', '79']);
+
+        forTicket.title = 'TEST-911 awaiting a new fetch';
+        forTicket.updated_at = '2001-01-04T00:00:00Z';
+        scrumSearchFails = true;
+        assert.strictEqual((await poll()).scrumChanged, false, 'A failed rebuild should not report a change');
+        const failed = await countRequests(report);
+        assert(failed.requests > 0, 'A page visit should retry a failed rebuild');
+        assert.strictEqual(failed.result.pullRequests.find(pr => pr.id === '79').title, 'TEST-911 fix', 'A failed rebuild should keep the last result');
+        scrumSearchFails = false;
+        assert.strictEqual((await poll()).scrumChanged, true, 'The next poll should retry a failed rebuild');
+        assert.strictEqual((await report()).pullRequests.find(pr => pr.id === '79').title, 'TEST-911 awaiting a new fetch');
+
+        listed = [reported, unrelated];
+        assert.strictEqual((await poll()).scrumChanged, true, 'A reported PR leaving the poll should rebuild');
+        assert.deepStrictEqual(reportedIds(await report()), ['77']);
+
+        const addWorkedTicket = ticket => db.prepare('INSERT INTO daily_summary (date, ticket_id, name, duration_mins) VALUES (?, ?, ?, ?)')
+          .run(yesterday, ticket, 'Yesterday work', 30);
+        addWorkedTicket('TEST-912');
+        const single = await countRequests(report);
+        addWorkedTicket('TEST-913');
+        const overlapping = await countRequests(() => Promise.all([report(), report()]));
+        assert(single.requests > 0, 'A newly worked ticket should ask GitHub');
+        assert.strictEqual(overlapping.requests, single.requests, 'Overlapping requests should share one fetch');
+
         setGitHub.run(JSON.stringify({ token: 'other-token', login: 'other-user' }));
+        reported.updated_at = '2001-01-07T00:00:00Z';
+        assert.strictEqual((await poll()).scrumChanged, false, 'A poll should not rebuild another account\'s report');
         const otherAccount = await countRequests(report);
         assert(otherAccount.requests > 0, 'Another account has different pull requests');
 
@@ -2704,11 +2734,12 @@ async function runTests() {
         assert.deepStrictEqual(disconnected.result.pullRequests, [], 'Disconnecting should clear the pull requests');
       });
     } finally {
-      Date.now = realNow;
       if (saved) setGitHub.run(saved.value);
       else db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
-      db.prepare('DELETE FROM daily_summary WHERE date = ? AND ticket_id = ?').run(yesterday, 'TEST-911');
-      cleanTestFixtures();
+      db.prepare("DELETE FROM daily_summary WHERE date = ? AND ticket_id IN ('TEST-911', 'TEST-912', 'TEST-913')").run(yesterday);
+      db.prepare('DELETE FROM scrum_plan WHERE date = ? AND ticket_id = ?').run(today, 'TEST-910');
+      db.prepare("DELETE FROM github_pr_lifecycle WHERE pr_key LIKE 'o/r#%'").run();
+      db.prepare("DELETE FROM settings WHERE key IN ('github_pr_poll_initialized', 'github_pr_lifecycle_initialized')").run();
     }
   });
 

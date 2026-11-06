@@ -9,6 +9,7 @@ import AiModelPrompt from '@/shared/components/AiModelPrompt.vue'
 import UpdateDialog from '@/features/updates/UpdateDialog.vue'
 import { startTempoReminderScheduler, stopTempoReminderScheduler } from '@/features/tempo/services/tempo-reminder'
 import { checkForUpdateOnStartup } from '@/features/updates/composables/useUpdater'
+import { updateScrumReportAfterPoll } from '@/features/scrum/composables/useScrum'
 import { useAppStore } from '@/shared/stores/app'
 import { useUiStore } from '@/shared/stores/ui'
 import { executeApi } from '@/shared/utils/api'
@@ -49,7 +50,8 @@ const pollGitHubActivity = async () => {
       repository: string
       number: number
       body?: string
-    }> }>('github_pr_poll_activity')
+    }>; scrumChanged?: boolean }>('github_pr_poll_activity')
+    if (result.scrumChanged) void updateScrumReportAfterPoll()
     for (const event of result.events || []) {
       const outcome = event.kind === 'added'
         ? 'added you to'
