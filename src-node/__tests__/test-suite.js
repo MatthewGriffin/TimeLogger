@@ -476,40 +476,71 @@ async function runTests() {
     }
   });
 
-  await testAsync('the scrum report includes PRs that mentioned the account on the reported day', async () => {
+  await testAsync('the scrum report only lists PRs linked to a ticket worked on the reported day', async () => {
     const date = '2026-09-08';
     const reportedDay = previousWorkingDay(date);
     const saved = db.prepare("SELECT value FROM settings WHERE key = 'github_config'").get();
     const setConfig = db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('github_config', ?, CURRENT_TIMESTAMP)");
-    const mention = (login, day) => ({ event: 'mentioned', actor: { login }, created_at: `${day}T12:00:00Z` });
-    const timelines = {
-      31: [mention('ME', reportedDay)],
-      32: [mention('someone-else', reportedDay)],
-      33: [mention('me', '2026-01-05')]
+    const mentionedYesterday = [{ event: 'mentioned', actor: { login: 'ME' }, created_at: `${reportedDay}T12:00:00Z` }];
+    const prs = {
+      // Linked by title, description and branch, each mentioning the account that day.
+      31: { title: 'TEST-300 fix', timeline: mentionedYesterday },
+      32: { body: 'Part of test-300', timeline: mentionedYesterday },
+      33: { head: { ref: 'feature/TEST-300-work' }, timeline: mentionedYesterday },
+      // Linked, but the mention was for someone else, or on another day.
+      34: { title: 'TEST-300 other', timeline: [{ event: 'mentioned', actor: { login: 'someone-else' }, created_at: `${reportedDay}T12:00:00Z` }] },
+      35: { title: 'TEST-300 older', timeline: [{ event: 'mentioned', actor: { login: 'me' }, created_at: '2026-01-05T12:00:00Z' }] },
+      // Linked, and authored by the account, with no activity that day.
+      36: { title: 'TEST-300 mine', user: { login: 'me' }, timeline: [] },
+      // Activity that day, but linked to nothing worked on.
+      37: { title: 'TEST-999 mentioned', timeline: mentionedYesterday },
+      38: { title: 'Awaiting review', requested_reviewers: [{ login: 'me' }], timeline: [] },
+      39: { title: 'Opened that day', user: { login: 'me' }, created_at: `${reportedDay}T09:00:00Z`, timeline: [] }
     };
+    const item = number => ({ number, repository_url: 'https://api.github.com/repos/org/app' });
     const queries = [];
+    const timelineRequests = [];
     const github = url => {
       if (url.pathname === '/user') return { login: 'me' };
       if (url.pathname === '/search/issues') {
         const query = url.searchParams.get('q');
         queries.push(query);
-        return { items: query.includes('mentions:') ? Object.keys(timelines).map(number => ({ number: Number(number), repository_url: 'https://api.github.com/repos/org/app' })) : [] };
+        if (query.includes('mentions:')) return { items: [31, 32, 33, 34, 35, 37].map(item) };
+        if (query.includes('author:me')) return { items: [36, 39].map(item) };
+        if (query.includes('review-requested:')) return { items: [item(38)] };
+        return { items: [] };
       }
       const timeline = url.pathname.match(/^\/repos\/org\/app\/issues\/(\d+)\/timeline$/);
-      if (timeline) return timelines[timeline[1]];
-      const pr = url.pathname.match(/^\/repos\/org\/app\/pulls\/(\d+)$/);
-      // Updated after the reported day, like a PR with more comments since.
-      if (pr) return { id: Number(pr[1]), number: Number(pr[1]), title: `PR ${pr[1]}`, state: 'open', user: { login: 'someone' }, base: { repo: { full_name: 'org/app' } }, created_at: '2026-01-01T00:00:00Z', updated_at: `${date}T08:00:00Z`, requested_reviewers: [] };
+      if (timeline) {
+        timelineRequests.push(Number(timeline[1]));
+        return prs[timeline[1]].timeline;
+      }
+      const match = url.pathname.match(/^\/repos\/org\/app\/pulls\/(\d+)$/);
+      if (match) {
+        const { timeline: _timeline, ...fields } = prs[match[1]];
+        // Updated after the reported day, like a PR with more comments since.
+        return { id: Number(match[1]), number: Number(match[1]), title: `PR ${match[1]}`, state: 'open', user: { login: 'someone' }, base: { repo: { full_name: 'org/app' } }, created_at: '2026-01-01T00:00:00Z', updated_at: `${date}T08:00:00Z`, requested_reviewers: [], ...fields };
+      }
       throw new Error(`Unexpected request: ${url.pathname}`);
     };
+    const addEntry = db.prepare('INSERT INTO daily_summary (date, ticket_id, name, duration_mins) VALUES (?, ?, ?, ?)');
     try {
       setConfig.run(JSON.stringify({ token: 'github-token', login: 'me' }));
+
+      const noTickets = await withGitHubStub(github, () => executeTool('generate_scrum_summary', { date }));
+      assert.deepStrictEqual(noTickets.pullRequests, []);
+      assert.deepStrictEqual(queries, [], 'With no worked tickets, GitHub should not be asked');
+
+      addEntry.run(reportedDay, 'TEST-300', 'Worked ticket', 30);
       const result = await withGitHubStub(github, () => executeTool('generate_scrum_summary', { date }));
+      const byNumber = new Map(result.pullRequests.map(pr => [pr.number, pr]));
+      assert.deepStrictEqual([...byNumber.keys()].sort(), [31, 32, 33, 36]);
       assert(queries.includes(`is:pr mentions:me updated:>=${reportedDay}`), 'A PR updated again since should still be found');
-      assert.deepStrictEqual(result.pullRequests.map(pr => pr.number), [31]);
-      assert.strictEqual(result.pullRequests[0].mentionsAccount, true);
-      assert.deepStrictEqual(result.pullRequests[0].majorUpdateTypes, ['mentioned you']);
+      assert.strictEqual(byNumber.get(31).mentionsAccount, true);
+      assert.deepStrictEqual(byNumber.get(31).majorUpdateTypes, ['mentioned you']);
+      assert(!timelineRequests.some(number => number >= 37), 'An unlinked PR needs no timeline request');
     } finally {
+      db.prepare('DELETE FROM daily_summary WHERE date = ? AND ticket_id = ?').run(reportedDay, 'TEST-300');
       if (saved) setConfig.run(saved.value);
       else db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
     }
@@ -2729,7 +2760,7 @@ async function runTests() {
       user: { login: 'cache-user' }, head: { ref: 'branch' }, base: { repo: { full_name: 'o/r' } },
       created_at: createdAt, updated_at: '2001-01-01T00:00:00Z', requested_reviewers: []
     });
-    const reported = makePr(77, 1, 'Cached PR', `${yesterday}T10:00:00Z`);
+    const reported = makePr(77, 1, 'TEST-900 Cached PR', `${yesterday}T10:00:00Z`);
     const unrelated = makePr(78, 2, 'Unrelated PR', '2001-01-01T00:00:00Z');
     const forTicket = makePr(79, 3, 'TEST-911 fix', '2001-01-01T00:00:00Z');
     let listed = [reported];
@@ -2757,6 +2788,8 @@ async function runTests() {
 
     try {
       setGitHub.run(JSON.stringify({ token: 'fake-token', login: 'cache-user' }));
+      db.prepare('INSERT INTO daily_summary (date, ticket_id, name, duration_mins) VALUES (?, ?, ?, ?)')
+        .run(yesterday, 'TEST-900', 'Yesterday work', 30);
       await withStubbedHttp(route, async () => {
         const first = await countRequests(report);
         assert(first.requests > 0, 'The first report should ask GitHub');
@@ -2775,12 +2808,12 @@ async function runTests() {
         assert.strictEqual((await poll()).scrumChanged, false, 'An unchanged poll should not rebuild');
         assert.strictEqual((await countRequests(report)).requests, 0, 'An unchanged poll should leave the cache alone');
 
-        reported.title = 'Renamed PR';
+        reported.title = 'TEST-900 Renamed PR';
         reported.updated_at = '2001-01-02T00:00:00Z';
         assert.strictEqual((await poll()).scrumChanged, true, 'A change to a reported PR should rebuild');
         const afterChange = await countRequests(report);
         assert.strictEqual(afterChange.requests, 0, 'The poll should already have fetched the change');
-        assert.strictEqual(afterChange.result.pullRequests[0].title, 'Renamed PR');
+        assert.strictEqual(afterChange.result.pullRequests[0].title, 'TEST-900 Renamed PR');
 
         listed = [reported, unrelated];
         assert.strictEqual((await poll()).scrumChanged, false, 'A new unrelated PR should not rebuild');
@@ -2834,7 +2867,7 @@ async function runTests() {
     } finally {
       if (saved) setGitHub.run(saved.value);
       else db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
-      db.prepare("DELETE FROM daily_summary WHERE date = ? AND ticket_id IN ('TEST-911', 'TEST-912', 'TEST-913')").run(yesterday);
+      db.prepare("DELETE FROM daily_summary WHERE date = ? AND ticket_id IN ('TEST-900', 'TEST-911', 'TEST-912', 'TEST-913')").run(yesterday);
       db.prepare('DELETE FROM scrum_plan WHERE date = ? AND ticket_id = ?').run(today, 'TEST-910');
       db.prepare("DELETE FROM github_pr_lifecycle WHERE pr_key LIKE 'o/r#%'").run();
       db.prepare("DELETE FROM settings WHERE key IN ('github_pr_poll_initialized', 'github_pr_lifecycle_initialized')").run();

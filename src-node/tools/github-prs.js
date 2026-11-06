@@ -66,6 +66,7 @@ export function onPullRequestsPolled(listener) {
 }
 
 const pullRequestKey = pr => `${pr.repository}#${pr.number}`;
+const hasReviewOrAuthorLink = pr => Boolean(pr.isAuthoredByAccount || pr.requestedReviewer || pr.reviewedByAccount);
 
 async function reportPoll(prs, diagnostics) {
   const previous = lastPolledPullRequests;
@@ -431,9 +432,10 @@ async function pollReviewEvents(token, prs) {
  * status update. Supported events include opening, merging/closing, and
  * adding a reviewer.
  */
-export async function getPullRequestsWithMajorUpdatesOnDate(date) {
+export async function getPullRequestsWithMajorUpdatesOnDate(date, ticketValues = []) {
   const token = String(readConfig().token || '');
-  if (!token || !/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return [];
+  const keys = extractTicketKeys(...ticketValues);
+  if (!token || !keys.length || !/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return [];
   const login = await account(token);
   // GitHub rejects OR between qualifiers (HTTP 422), so each is its own search.
   // updated: alone is not enough because it only matches a PR's latest update,
@@ -461,10 +463,11 @@ export async function getPullRequestsWithMajorUpdatesOnDate(date) {
   for (let i = 0; i < selected.length; i += 5) {
     const batch = await Promise.all(selected.slice(i, i + 5).map(async item => {
       try {
-        const [pr, timeline] = await Promise.all([
-          githubGet(`/repos/${item.repository}/pulls/${item.number}`, token),
-          githubGet(`/repos/${item.repository}/issues/${item.number}/timeline?per_page=100`, token).catch(() => [])
-        ]);
+        const pr = await githubGet(`/repos/${item.repository}/pulls/${item.number}`, token);
+        const shaped = safePr({ ...pr, __linkedLogin: login }, keys);
+        // Only a PR linked to a given ticket counts, so others need no timeline request.
+        if (!shaped.matchedTicketKeys.length) return null;
+        const timeline = await githubGet(`/repos/${item.repository}/issues/${item.number}/timeline?per_page=100`, token).catch(() => []);
         const sameDay = value => String(value || '').slice(0, 10) === date;
         const matchingEvents = (Array.isArray(timeline) ? timeline : []).filter(event =>
           majorEvents.has(String(event.event || '').toLowerCase()) && sameDay(event.created_at));
@@ -490,7 +493,7 @@ export async function getPullRequestsWithMajorUpdatesOnDate(date) {
         if (matchingEvents.some(e => e.event === 'converted_to_draft')) eventLabels.push('converted to draft');
         if (mentionedThatDay) eventLabels.push('mentioned you');
         return {
-          ...safePr({ ...pr, __linkedLogin: login }),
+          ...shaped,
           majorUpdateDate: date,
           majorUpdateTypes: [...new Set(eventLabels)],
           isAuthoredByAccount: String(pr.user?.login || '').toLowerCase() === login.toLowerCase(),
@@ -514,7 +517,8 @@ export async function getPullRequestsForTickets(ticketValues = []) {
   const keys = extractTicketKeys(...ticketValues);
   if (!keys.length) return [];
   const prs = await listRelevantPullRequests(token, keys);
-  return prs.filter(pr => pr.matchedTicketKeys.length > 0);
+  // A mention only counts on the day it happened, which the timeline check decides.
+  return prs.filter(pr => pr.matchedTicketKeys.length > 0 && hasReviewOrAuthorLink(pr));
 }
 
 export const tools = [
@@ -590,7 +594,7 @@ export const tools = [
         const diagnostics = { searches: [], candidateCount: 0, detailFailures: [] };
         const prs = await listRelevantPullRequests(token, [], MAX_PRS, diagnostics);
         // A mention lists a PR but doesn't sign the account up for alerts about it.
-        const events = await pollReviewEvents(token, prs.filter(pr => pr.isAuthoredByAccount || pr.requestedReviewer || pr.reviewedByAccount));
+        const events = await pollReviewEvents(token, prs.filter(hasReviewOrAuthorLink));
         const scrumChanged = await reportPoll(prs, diagnostics);
         return { success: true, events, scrumChanged };
       } catch (error) {
