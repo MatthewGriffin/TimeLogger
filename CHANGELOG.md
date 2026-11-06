@@ -4,6 +4,11 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.0-beta.5
+
+- The Jira search button on an entry now lists your in-progress tickets to pick from when the name and ticket are empty.
+- Made saving the update channel safer, so it can't affect your other settings.
+
 ## 0.9.0-beta.4
 
 - The ticket list on Add Entry and notes now says what each ticket is, and always includes your current PI tickets.
