@@ -180,10 +180,10 @@ export function buildPullRequestSearches(login, { relationship = 'all', state = 
   const text = quoteSearchText(search);
   const query = (...parts) => parts.filter(Boolean).join(' ');
   const searches = [];
-  if (relationship !== 'review') {
+  if (relationship === 'all' || relationship === 'authored') {
     searches.push({ name: 'authored', query: query('is:pr', `author:${login}`, stateQualifier, text) });
   }
-  if (relationship !== 'authored') {
+  if (relationship === 'all' || relationship === 'review') {
     // Own PRs are hidden from this filter, so they shouldn't use up the result limit.
     const notAuthor = relationship === 'review' ? `-author:${login}` : '';
     // A review request only exists while the PR is open.
@@ -191,6 +191,11 @@ export function buildPullRequestSearches(login, { relationship = 'all', state = 
       searches.push({ name: 'review-requested', query: query('is:pr', `review-requested:${login}`, notAuthor, stateQualifier || 'is:open', text) });
     }
     searches.push({ name: 'reviewed-by-account', query: query('is:pr', `reviewed-by:${login}`, notAuthor, stateQualifier, text) });
+  }
+  if (relationship === 'all' || relationship === 'mentioned') {
+    // Covers mentions in comments as well as in the description.
+    const notAuthor = relationship === 'mentioned' ? `-author:${login}` : '';
+    searches.push({ name: 'mentions-account', query: query('is:pr', `mentions:${login}`, notAuthor, stateQualifier, text) });
   }
   return searches;
 }
@@ -214,6 +219,7 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS,
   const searches = buildPullRequestSearches(login, filters);
   const results = await Promise.all(searches.map(({ name, query }) => searchAndRecord(name, query)));
   const reviewedByAccount = results[searches.findIndex(({ name }) => name === 'reviewed-by-account')] || [];
+  const mentionsAccount = results[searches.findIndex(({ name }) => name === 'mentions-account')] || [];
   const candidates = new Map();
   for (const item of results.flat()) {
     const repoUrl = String(item.repository_url || '');
@@ -222,8 +228,9 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS,
     if (!match || !Number.isInteger(number)) continue;
     const repository = match[1];
     const key = `${repository}#${number}`;
-    const prior = candidates.get(key) || { repository, number, fromReviewSearch: false, updatedAt: '' };
+    const prior = candidates.get(key) || { repository, number, fromReviewSearch: false, mentionsAccount: false, updatedAt: '' };
     if (reviewedByAccount.includes(item)) prior.fromReviewSearch = true;
+    if (mentionsAccount.includes(item)) prior.mentionsAccount = true;
     if (String(item.updated_at || '') > prior.updatedAt) prior.updatedAt = String(item.updated_at || '');
     candidates.set(key, prior);
   }
@@ -250,10 +257,19 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS,
         reviewedByAccount = Array.isArray(reviews) && reviews.some(review => String(review.user?.login || '').toLowerCase() === login.toLowerCase());
       }
       // Verify the account is the author, a current requested reviewer, or
-      // actually reviewed the PR; search results alone are not trusted.
-      if (!authoredByAccount && !requested && !reviewedByAccount) return null;
+      // actually reviewed the PR. Search results alone are not trusted for those.
+      // A mention is the exception: confirming one would mean reading every
+      // comment on every poll, so GitHub's mentions search is relied on.
+      if (!authoredByAccount && !requested && !reviewedByAccount && !item.mentionsAccount) return null;
       const shaped = safePr({ ...pr, __linkedLogin: login }, ticketKeys);
-      return { ...shaped, requestedReviewer: requested, isAuthoredByAccount: authoredByAccount, reviewedByAccount, pendingReview: requested }
+      return {
+        ...shaped,
+        requestedReviewer: requested,
+        isAuthoredByAccount: authoredByAccount,
+        reviewedByAccount,
+        mentionsAccount: item.mentionsAccount,
+        pendingReview: requested
+      }
     } catch (error) {
       if (diagnostics) diagnostics.detailFailures.push({
         repository: item.repository, number: item.number, endpoint: 'pull-request',
@@ -426,7 +442,9 @@ export async function getPullRequestsWithMajorUpdatesOnDate(date) {
     `is:pr involves:${login} created:${date}`,
     `is:pr involves:${login} merged:${date}`,
     `is:pr involves:${login} updated:${date}`,
-    `is:pr review-requested:${login} is:open`
+    `is:pr review-requested:${login} is:open`,
+    // Also reaches a PR mentioning the account that date and updated again since.
+    `is:pr mentions:${login} updated:>=${date}`
   ].map(query => searchPrs(token, login, query)));
   const items = searches.flat();
   const candidates = new Map();
@@ -455,9 +473,13 @@ export async function getPullRequestsWithMajorUpdatesOnDate(date) {
         const requestedReviewer = (Array.isArray(pr.requested_reviewers) ? pr.requested_reviewers : [])
           .some(reviewer => String(reviewer.login || '').toLowerCase() === login.toLowerCase());
         const isOpen = String(pr.state || '').toLowerCase() === 'open' && !pr.merged_at;
+        // GitHub's timeline names the person mentioned as the event's actor.
+        const mentionedThatDay = (Array.isArray(timeline) ? timeline : []).some(event =>
+          event.event === 'mentioned' && sameDay(event.created_at) &&
+          String(event.actor?.login || '').toLowerCase() === login.toLowerCase());
         // An open PR explicitly awaiting this account's review remains pending
         // work regardless of whether the reviewer request was added yesterday.
-        if (!openedThatDay && !mergedThatDay && matchingEvents.length === 0 &&
+        if (!openedThatDay && !mergedThatDay && matchingEvents.length === 0 && !mentionedThatDay &&
             !(isOpen && requestedReviewer)) return null;
         const eventLabels = [];
         if (openedThatDay || matchingEvents.some(e => e.event === 'opened')) eventLabels.push('opened');
@@ -466,10 +488,13 @@ export async function getPullRequestsWithMajorUpdatesOnDate(date) {
         if (matchingEvents.some(e => e.event === 'closed') && !mergedThatDay) eventLabels.push('closed');
         if (matchingEvents.some(e => e.event === 'ready_for_review')) eventLabels.push('marked ready for review');
         if (matchingEvents.some(e => e.event === 'converted_to_draft')) eventLabels.push('converted to draft');
+        if (mentionedThatDay) eventLabels.push('mentioned you');
         return {
           ...safePr({ ...pr, __linkedLogin: login }),
           majorUpdateDate: date,
           majorUpdateTypes: [...new Set(eventLabels)],
+          isAuthoredByAccount: String(pr.user?.login || '').toLowerCase() === login.toLowerCase(),
+          mentionsAccount: mentionedThatDay,
           requestedReviewer,
           pendingReview: isOpen && requestedReviewer
         };
@@ -534,12 +559,12 @@ export const tools = [
   },
   {
     name: 'github_pr_list',
-    description: 'List pull requests authored by the linked GitHub account, or where it is a requested or past reviewer, filtered on GitHub by relationship, status and search text; includes state and ticket-key matches.',
+    description: 'List pull requests authored by the linked GitHub account, where it is a requested or past reviewer, or that mention it, filtered on GitHub by relationship, status and search text; includes state and ticket-key matches.',
     parameters: {
       type: 'object',
       properties: {
         ticketKeys: { type: 'array', items: { type: 'string' } },
-        relationship: { type: 'string', enum: ['all', 'authored', 'review'] },
+        relationship: { type: 'string', enum: ['all', 'authored', 'review', 'mentioned'] },
         state: { type: 'string', enum: ['all', 'open', 'draft', 'merged', 'closed'] },
         search: { type: 'string', description: 'Words GitHub must find in the title, description or comments' }
       },
@@ -564,7 +589,8 @@ export const tools = [
         const token = requireToken();
         const diagnostics = { searches: [], candidateCount: 0, detailFailures: [] };
         const prs = await listRelevantPullRequests(token, [], MAX_PRS, diagnostics);
-        const events = await pollReviewEvents(token, prs);
+        // A mention lists a PR but doesn't sign the account up for alerts about it.
+        const events = await pollReviewEvents(token, prs.filter(pr => pr.isAuthoredByAccount || pr.requestedReviewer || pr.reviewedByAccount));
         const scrumChanged = await reportPoll(prs, diagnostics);
         return { success: true, events, scrumChanged };
       } catch (error) {

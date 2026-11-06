@@ -324,7 +324,8 @@ async function runTests() {
     assert.deepStrictEqual(prQueries(), [
       'is:pr author:me',
       'is:pr review-requested:me is:open',
-      'is:pr reviewed-by:me'
+      'is:pr reviewed-by:me',
+      'is:pr mentions:me'
     ]);
   });
 
@@ -339,8 +340,10 @@ async function runTests() {
     const names = filters => buildPullRequestSearches('me', filters).map(({ name }) => name);
     assert.deepStrictEqual(names({ relationship: 'authored' }), ['authored']);
     assert.deepStrictEqual(names({ relationship: 'review' }), ['review-requested', 'reviewed-by-account']);
-    assert.deepStrictEqual(names({ state: 'merged' }), ['authored', 'reviewed-by-account']);
+    assert.deepStrictEqual(names({ relationship: 'mentioned' }), ['mentions-account']);
+    assert.deepStrictEqual(names({ state: 'merged' }), ['authored', 'reviewed-by-account', 'mentions-account']);
     assert.deepStrictEqual(names({ state: 'closed', relationship: 'review' }), ['reviewed-by-account']);
+    assert.deepStrictEqual(prQueries({ relationship: 'mentioned', state: 'open' }), ['is:pr mentions:me -author:me is:open draft:false']);
     assert.deepStrictEqual(prQueries({ relationship: 'review', state: 'open' }), [
       'is:pr review-requested:me -author:me is:open draft:false',
       'is:pr reviewed-by:me -author:me is:open draft:false'
@@ -414,6 +417,101 @@ async function runTests() {
         if (saved) setSetting.run(name, saved.value);
         else db.prepare('DELETE FROM settings WHERE key = ?').run(name);
       }
+    }
+  });
+
+  await testAsync('a PR that mentions the account is listed, but other search results still need confirming', async () => {
+    const saved = db.prepare("SELECT value FROM settings WHERE key = 'github_config'").get();
+    const setConfig = db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('github_config', ?, CURRENT_TIMESTAMP)");
+    const github = url => {
+      if (url.pathname === '/user') return { login: 'me' };
+      if (url.pathname === '/search/issues') {
+        const query = url.searchParams.get('q');
+        const number = query.includes('mentions:me') ? 21 : query.includes('reviewed-by:me') ? 22 : null;
+        return { items: number ? [{ number, repository_url: 'https://api.github.com/repos/org/app', updated_at: '2026-11-01T00:00:00Z' }] : [] };
+      }
+      const pr = url.pathname.match(/^\/repos\/org\/app\/pulls\/(\d+)$/);
+      if (pr) return { id: Number(pr[1]), number: Number(pr[1]), title: `PR ${pr[1]}`, state: 'open', user: { login: 'someone' }, base: { repo: { full_name: 'org/app' } }, requested_reviewers: [] };
+      if (url.pathname.endsWith('/reviews')) return [];
+      throw new Error(`Unexpected request: ${url.pathname}`);
+    };
+    try {
+      setConfig.run(JSON.stringify({ token: 'github-token', login: 'me' }));
+      const result = await withGitHubStub(github, () => executeTool('github_pr_list', {}));
+      assert.deepStrictEqual(result.prs.map(pr => pr.number), [21], 'Only the mentioned PR should be listed');
+      assert.strictEqual(result.prs[0].mentionsAccount, true);
+      assert.strictEqual(result.prs[0].reviewedByAccount, false);
+    } finally {
+      if (saved) setConfig.run(saved.value);
+      else db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
+    }
+  });
+
+  await testAsync('a PR that only mentions the account causes no alerts', async () => {
+    const settingKeys = ['github_config', 'github_pr_poll_initialized', 'github_pr_lifecycle_initialized'];
+    const savedSettings = settingKeys.map(key => [key, db.prepare('SELECT value FROM settings WHERE key = ?').get(key)]);
+    const setSetting = db.prepare('INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)');
+    const github = url => {
+      if (url.pathname === '/user') return { login: 'me' };
+      if (url.pathname === '/search/issues') {
+        return { items: url.searchParams.get('q').includes('mentions:me') ? [{ number: 23, repository_url: 'https://api.github.com/repos/org/app', updated_at: '2026-11-01T00:00:00Z' }] : [] };
+      }
+      if (url.pathname === '/repos/org/app/pulls/23') return { id: 23, number: 23, title: 'Mentioned', state: 'open', user: { login: 'someone' }, base: { repo: { full_name: 'org/app' } }, requested_reviewers: [] };
+      if (url.pathname === '/repos/org/app/issues/23/comments') return [{ id: 2301, user: { login: 'another' }, body: 'A new comment' }];
+      return [];
+    };
+    try {
+      setSetting.run('github_config', JSON.stringify({ token: 'github-token', login: 'me' }));
+      setSetting.run('github_pr_poll_initialized', 'true');
+      setSetting.run('github_pr_lifecycle_initialized', 'true');
+      const result = await withGitHubStub(github, () => executeTool('github_pr_poll_activity', {}));
+      assert.deepStrictEqual(result.events, []);
+      assert.strictEqual(db.prepare('SELECT 1 FROM github_pr_lifecycle WHERE pr_key = ?').get('org/app#23'), undefined, 'A mention should not start merge tracking');
+    } finally {
+      db.prepare('DELETE FROM github_pr_seen_events WHERE event_id LIKE ?').run('%org/app:2301');
+      for (const [name, saved] of savedSettings) {
+        if (saved) setSetting.run(name, saved.value);
+        else db.prepare('DELETE FROM settings WHERE key = ?').run(name);
+      }
+    }
+  });
+
+  await testAsync('the scrum report includes PRs that mentioned the account on the reported day', async () => {
+    const date = '2026-09-08';
+    const reportedDay = previousWorkingDay(date);
+    const saved = db.prepare("SELECT value FROM settings WHERE key = 'github_config'").get();
+    const setConfig = db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('github_config', ?, CURRENT_TIMESTAMP)");
+    const mention = (login, day) => ({ event: 'mentioned', actor: { login }, created_at: `${day}T12:00:00Z` });
+    const timelines = {
+      31: [mention('ME', reportedDay)],
+      32: [mention('someone-else', reportedDay)],
+      33: [mention('me', '2026-01-05')]
+    };
+    const queries = [];
+    const github = url => {
+      if (url.pathname === '/user') return { login: 'me' };
+      if (url.pathname === '/search/issues') {
+        const query = url.searchParams.get('q');
+        queries.push(query);
+        return { items: query.includes('mentions:') ? Object.keys(timelines).map(number => ({ number: Number(number), repository_url: 'https://api.github.com/repos/org/app' })) : [] };
+      }
+      const timeline = url.pathname.match(/^\/repos\/org\/app\/issues\/(\d+)\/timeline$/);
+      if (timeline) return timelines[timeline[1]];
+      const pr = url.pathname.match(/^\/repos\/org\/app\/pulls\/(\d+)$/);
+      // Updated after the reported day, like a PR with more comments since.
+      if (pr) return { id: Number(pr[1]), number: Number(pr[1]), title: `PR ${pr[1]}`, state: 'open', user: { login: 'someone' }, base: { repo: { full_name: 'org/app' } }, created_at: '2026-01-01T00:00:00Z', updated_at: `${date}T08:00:00Z`, requested_reviewers: [] };
+      throw new Error(`Unexpected request: ${url.pathname}`);
+    };
+    try {
+      setConfig.run(JSON.stringify({ token: 'github-token', login: 'me' }));
+      const result = await withGitHubStub(github, () => executeTool('generate_scrum_summary', { date }));
+      assert(queries.includes(`is:pr mentions:me updated:>=${reportedDay}`), 'A PR updated again since should still be found');
+      assert.deepStrictEqual(result.pullRequests.map(pr => pr.number), [31]);
+      assert.strictEqual(result.pullRequests[0].mentionsAccount, true);
+      assert.deepStrictEqual(result.pullRequests[0].majorUpdateTypes, ['mentioned you']);
+    } finally {
+      if (saved) setConfig.run(saved.value);
+      else db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
     }
   });
 

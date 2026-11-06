@@ -16,7 +16,7 @@
 
     <section v-if="!connected && !checkingConnection" class="connect-card">
       <h2>Connect GitHub to view pull requests</h2>
-      <p>Connect a read-only GitHub token in Settings to see pull requests you authored or have been involved in reviewing.</p>
+      <p>Connect a read-only GitHub token in Settings to see pull requests you authored, have been involved in reviewing, or are mentioned in.</p>
       <router-link class="settings-link" to="/settings">Open Settings → GitHub</router-link>
     </section>
 
@@ -32,6 +32,7 @@
             <option value="all">All relevant PRs</option>
             <option value="authored">Authored by me</option>
             <option value="review">Reviewing / reviewed</option>
+            <option value="mentioned">Mentioning me</option>
           </select>
         </label>
         <label>
@@ -62,7 +63,7 @@
       </section>
       <div v-else-if="prsLoaded" class="empty-state">
         <h2>No pull requests match these filters</h2>
-        <p>Try changing the search or filters. Pull requests are limited to those authored by you or connected to your review activity.</p>
+        <p>Try changing the search or filters. Pull requests are limited to those authored by you, connected to your review activity, or mentioning you.</p>
       </div>
     </template>
     </div>
@@ -88,6 +89,7 @@ interface PullRequest {
   requestedReviewer: boolean
   isAuthoredByAccount: boolean
   reviewedByAccount?: boolean
+  mentionsAccount?: boolean
   matchedTicketKeys: string[]
   updatedAt: string | null
   commentCount?: number
@@ -204,6 +206,7 @@ const filteredPrs = computed(() => {
     const relationshipMatches = relationshipFilter.value === 'all'
       || (relationshipFilter.value === 'authored' && pr.isAuthoredByAccount)
       || (relationshipFilter.value === 'review' && !pr.isAuthoredByAccount && (pr.requestedReviewer || pr.reviewedByAccount))
+      || (relationshipFilter.value === 'mentioned' && !pr.isAuthoredByAccount && pr.mentionsAccount)
     const stateMatches = stateFilter.value === 'all' || pr.state === stateFilter.value
     return relationshipMatches && stateMatches
   }).sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
