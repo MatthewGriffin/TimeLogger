@@ -59,6 +59,7 @@ function toPullRequest(raw: unknown): ScrumPullRequest {
     isDraft: row.isDraft === true,
     requestedReviewer: row.requestedReviewer === true,
     reviewedByAccount: row.reviewedByAccount === true,
+    mentionsAccount: row.mentionsAccount === true,
     isAuthoredByAccount: row.isAuthoredByAccount === true,
     ticketKeys: Array.isArray(row.ticketKeys) ? row.ticketKeys.map(String) : [],
     matchedTicketKeys: Array.isArray(row.matchedTicketKeys) ? row.matchedTicketKeys.map(String) : [],

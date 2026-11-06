@@ -2,7 +2,7 @@
   <section v-if="pullRequests.length" class="pr-panel">
     <header>
       <h2>Related GitHub Pull Requests</h2>
-      <p>Pull requests matching ticket keys from logged or planned work.</p>
+      <p>Pull requests linked to the tickets you worked on yesterday.</p>
     </header>
     <div class="pr-list">
       <PullRequestCard v-for="pr in uniquePullRequests" :key="pr.id" :pr="pr" />

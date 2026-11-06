@@ -16,7 +16,6 @@ import {
   extractTicketKeys,
   getPullRequestsForTickets,
   getPullRequestsWithMajorUpdatesOnDate,
-  isOpenUnmergedPullRequest,
   onPullRequestsPolled
 } from './github-prs.js';
 
@@ -190,16 +189,17 @@ function fallbackSummary(yesterday, today, blockers) {
 }
 
 /**
- * Daily Scrum PRs are limited to tickets actually worked on yesterday, plus PRs
- * with a major lifecycle change yesterday. Page visits can overlap, so requests
- * for the same PRs share one fetch.
+ * Daily Scrum PRs must name a ticket worked on yesterday in their title,
+ * description or branch. Of those, it lists PRs the account authored or reviews,
+ * plus any with a major lifecycle change or a mention of the account yesterday.
+ * Page visits can overlap, so requests for the same PRs share one fetch.
  */
 function fetchPullRequests(scope) {
   if (pullRequestFetch?.key === scope.key) return pullRequestFetch.promise;
   const promise = (async () => {
     const [ticketPullRequests, majorUpdatePullRequests] = await Promise.all([
       getPullRequestsForTickets(scope.tickets),
-      getPullRequestsWithMajorUpdatesOnDate(scope.yesterday)
+      getPullRequestsWithMajorUpdatesOnDate(scope.yesterday, scope.tickets)
     ]);
     const byId = new Map();
     for (const pr of [...ticketPullRequests, ...majorUpdatePullRequests]) byId.set(pr.id, pr);
@@ -235,9 +235,8 @@ async function pullRequestsForReport(yesterday, tickets) {
  * Whether a poll found a change to the report's pull requests.
  *
  * The poll's own searches don't use the report's rules, so a PR outside the
- * report only counts if it changed since the last poll and could now qualify:
- * it names a ticket worked yesterday, awaits this account's review, or has
- * activity dated yesterday.
+ * report only counts if it changed since the last poll and names a ticket worked
+ * yesterday.
  */
 function pollAffectsReport(cached, { prs, changed, removed }) {
   const inReport = new Map(cached.pullRequests.map(pr => [pr.id, pr]));
@@ -247,12 +246,7 @@ function pollAffectsReport(cached, { prs, changed, removed }) {
   if (removed.some(key => reportKeys.has(key))) return true;
 
   const workedTickets = new Set(extractTicketKeys(...cached.tickets));
-  const onReportDay = value => String(value || '').slice(0, 10) === cached.yesterday;
-  return changed.some(pr => !inReport.has(pr.id) && (
-    pr.ticketKeys.some(key => workedTickets.has(key)) ||
-    (pr.requestedReviewer && isOpenUnmergedPullRequest(pr)) ||
-    onReportDay(pr.createdAt) || onReportDay(pr.mergedAt) || onReportDay(pr.updatedAt)
-  ));
+  return changed.some(pr => !inReport.has(pr.id) && pr.ticketKeys.some(key => workedTickets.has(key)));
 }
 
 onPullRequestsPolled(async poll => {

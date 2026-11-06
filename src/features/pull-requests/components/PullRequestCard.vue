@@ -40,6 +40,7 @@ interface PullRequestCardData {
   isAuthoredByAccount: boolean
   requestedReviewer: boolean
   reviewedByAccount?: boolean
+  mentionsAccount?: boolean
   matchedTicketKeys: string[]
   updatedAt: string | null
   commentCount?: number
@@ -62,7 +63,9 @@ const relationshipLabel = (pr: PullRequestCardData) => pr.isAuthoredByAccount
   ? 'Authored by you'
   : pr.requestedReviewer
     ? 'Review requested'
-    : 'Reviewed by you'
+    : pr.mentionsAccount && !pr.reviewedByAccount
+      ? 'Mentions you'
+      : 'Reviewed by you'
 
 const formatDate = (value: string) => {
   const date = new Date(value)

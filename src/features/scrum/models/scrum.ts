@@ -46,6 +46,7 @@ export interface ScrumPullRequest {
   isDraft: boolean
   requestedReviewer: boolean
   reviewedByAccount?: boolean
+  mentionsAccount?: boolean
   isAuthoredByAccount: boolean
   ticketKeys: string[]
   matchedTicketKeys: string[]
