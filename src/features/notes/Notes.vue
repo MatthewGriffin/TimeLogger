@@ -556,6 +556,8 @@ const saveNote = async () => {
       )
       // Show the tab the note went to. An AI suggestion only moves it once approved.
       notesStore.setSelectedTopic(created.topic)
+      // A search that doesn't match the note would still hide it.
+      if (!notesStore.searchNotes(searchQuery.value).some(existing => existing.id === created.id)) searchQuery.value = ''
       uiStore.showSuccess('Note created')
       const shouldSuggest = !note.ticketId && !note.topic
       closeEditor()
