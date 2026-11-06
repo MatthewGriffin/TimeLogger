@@ -36,6 +36,17 @@
     </div>
 
     <div class="nav-footer">
+      <button
+        v-if="updateVersion"
+        type="button"
+        class="nav-link nav-update"
+        :title="`TimeLogger ${updateVersion} is available`"
+        :aria-label="`Update available: TimeLogger ${updateVersion}`"
+        @click="openDialog"
+      >
+        <CircleArrowUp class="nav-icon-svg" aria-hidden="true" />
+        <span v-if="sidebarOpen" class="nav-label">Update available</span>
+      </button>
       <router-link
         to="/settings"
         :class="['nav-link', { active: isActive('/settings') }]"
@@ -52,13 +63,16 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Bell, BookOpen, CalendarDays, ClipboardList, GitPullRequest, LayoutDashboard, MessagesSquare, Send, Settings } from 'lucide-vue-next'
+import { Bell, BookOpen, CalendarDays, CircleArrowUp, ClipboardList, GitPullRequest, LayoutDashboard, MessagesSquare, Send, Settings } from 'lucide-vue-next'
+import { useUpdater } from '@/features/updates/composables/useUpdater'
 import { useUiStore } from '@/shared/stores/ui'
 
 const router = useRouter()
 const uiStore = useUiStore()
+const { stage, info, openDialog } = useUpdater()
 const sidebarOpen = computed(() => uiStore.sidebarOpen)
 const unreadCount = computed(() => uiStore.unreadNotifications.length)
+const updateVersion = computed(() => (stage.value === 'available' ? info.value?.version : undefined))
 
 const navigationTitle = (label: string) => {
   if (label !== 'Notifications' || unreadCount.value === 0) return label
@@ -235,6 +249,19 @@ const isActive = (path: string) => {
   color: var(--color-accent);
   border-bottom: 2px solid var(--color-accent);
   padding-bottom: calc(0.75rem - 2px);
+}
+
+.nav-update {
+  width: 100%;
+  background: none;
+  border: none;
+  font-family: inherit;
+  text-align: left;
+  color: var(--color-accent);
+}
+
+.nav-update:hover {
+  color: var(--color-accent);
 }
 
 .nav-icon-svg {

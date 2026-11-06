@@ -28,6 +28,7 @@ import { localDateKey, parseDateKey } from '../utils/dates.js';
 import { makeHttpRequest, httpClient } from '../api/http-client.js';
 import { buildPiTicketMigration } from '../tools/sprint.js';
 import { branchVersionProblem, compareVersions, isBetaVersion, isValidVersion } from '../../scripts/version-rules.mjs';
+import { changelogProblem, manifestNotes, releaseNotes } from '../../scripts/changelog-rules.mjs';
 
 // Color codes for output
 const colors = {
@@ -569,6 +570,43 @@ async function runTests() {
     assert.match(branchVersionProblem('0.8.0-beta.1', 'main'), /can't have a beta version/);
     assert.match(branchVersionProblem('0.8.0', 'beta'), /needs a beta version/);
     assert.strictEqual(branchVersionProblem('0.8.0', 'feature'), null);
+  });
+
+  const changelog = [
+    '# Changelog', '', 'Intro text with - a dash.', '',
+    '## 0.9.0', '- Stable summary', '',
+    '## 0.9.0-beta.2', '- Second beta', '- Another change', '',
+    '## 0.9.0-beta.1', '- First beta', '',
+    '## 0.8.1', '- Older stable', ''
+  ].join('\r\n');
+
+  test('a version needs its own changelog entry with at least one change', () => {
+    assert.strictEqual(changelogProblem(changelog, '0.9.0-beta.2'), null);
+    assert.match(changelogProblem(changelog, '0.9.1'), /no "## 0.9.1" section/);
+    assert.match(changelogProblem('## 0.9.1\n\nText but no list\n', '0.9.1'), /no "- " lines/);
+    assert.match(changelogProblem('## Next\n- Change\n\n## 0.9.1\n- Change\n', '0.9.1'), /heading that isn't a version: "## Next"/);
+  });
+
+  test('a release page shows only its own version', () => {
+    assert.strictEqual(releaseNotes(changelog, '0.9.0-beta.2'), '- Second beta\n- Another change');
+    assert.throws(() => releaseNotes(changelog, '0.9.1'), /no section for 0.9.1/);
+  });
+
+  test('a beta manifest lists up to its version, and a full release leaves betas out', () => {
+    assert.strictEqual(
+      manifestNotes(changelog, '0.9.0-beta.2'),
+      '## 0.9.0-beta.2\n- Second beta\n- Another change\n\n## 0.9.0-beta.1\n- First beta\n\n## 0.8.1\n- Older stable'
+    );
+    assert.strictEqual(manifestNotes(changelog, '0.9.0'), '## 0.9.0\n- Stable summary\n\n## 0.8.1\n- Older stable');
+  });
+
+  test('a manifest keeps only the newest entries, whatever order the file is in', () => {
+    const versions = Array.from({ length: 12 }, (_, i) => `0.8.${i}`);
+    const notes = manifestNotes(versions.map(version => `## ${version}\n- Change\n`).join('\n'), '0.8.11');
+    const headings = notes.split('\n').filter(line => line.startsWith('## '));
+    assert.strictEqual(headings.length, 10);
+    assert.strictEqual(headings[0], '## 0.8.11');
+    assert.strictEqual(headings.at(-1), '## 0.8.2');
   });
 
   await testAsync('the update channel is saved, survives other settings, and rejects anything else', async () => {

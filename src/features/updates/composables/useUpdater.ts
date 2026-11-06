@@ -37,6 +37,8 @@ const info = ref<UpdateInfo | null>(null)
 const errorMessage = ref('')
 const downloadedBytes = ref(0)
 const totalBytes = ref(0)
+// An available update waits behind the sidebar button until someone asks to see it.
+const dialogOpen = ref(false)
 
 const progressPercent = computed(() => {
   if (!totalBytes.value) return 0
@@ -51,14 +53,34 @@ const reset = () => {
   errorMessage.value = ''
   downloadedBytes.value = 0
   totalBytes.value = 0
+  dialogOpen.value = false
+}
+
+const openDialog = () => {
+  dialogOpen.value = true
+}
+
+/**
+ * Keeps an update that hasn't been installed, including after a failed download,
+ * so that the sidebar button still offers it.
+ */
+const closeDialog = () => {
+  if (info.value && (stage.value === 'available' || stage.value === 'error')) {
+    stage.value = 'available'
+    errorMessage.value = ''
+    dialogOpen.value = false
+  } else {
+    reset()
+  }
 }
 
 const describe = (error: unknown) => (error instanceof Error ? error.message : String(error))
 
 /**
  * Returns true when an update was found. `silent` is used by the startup
- * check, where being up to date or being unable to reach GitHub are both
- * completely normal and must not interrupt the user.
+ * check, where nothing should interrupt the user: being up to date or unable to
+ * reach GitHub are both completely normal, and a new version only shows the
+ * sidebar button. Asking from Settings opens the dialog straight away.
  */
 const checkForUpdate = async (silent = false): Promise<boolean> => {
   if (isBusy.value) return stage.value === 'available'
@@ -78,6 +100,7 @@ const checkForUpdate = async (silent = false): Promise<boolean> => {
 
     info.value = { ...update, notes: update.notes.trim() }
     stage.value = 'available'
+    dialogOpen.value = !silent
     return true
   } catch (error) {
     info.value = null
@@ -130,7 +153,8 @@ const restartNow = async () => {
     await relaunch()
   } catch (error) {
     // The update is already installed, so the worst case is that the user
-    // restarts by hand.
+    // restarts by hand. Clearing it stops the sidebar button offering it again.
+    info.value = null
     errorMessage.value = describe(error)
     stage.value = 'error'
   }
@@ -144,15 +168,17 @@ export const useUpdater = () => ({
   totalBytes,
   progressPercent,
   isBusy,
+  dialogOpen,
+  openDialog,
+  closeDialog,
   checkForUpdate,
   downloadAndInstall,
-  restartNow,
-  dismiss: reset
+  restartNow
 })
 
 /**
- * Fired once on launch. Deliberately silent: it only ever opens the dialog
- * when there is genuinely something to install.
+ * Fired once on launch. Deliberately silent: it never opens the dialog, and
+ * only shows the sidebar button when there is something to install.
  */
 export const checkForUpdateOnStartup = () => {
   void checkForUpdate(true)

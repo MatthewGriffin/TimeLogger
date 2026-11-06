@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 /**
  * Verifies the app version is consistent across the three files that declare
- * it, and (when a baseline is supplied) that it has been increased.
+ * it, and (when a baseline is supplied) that it has been increased and has a
+ * changelog entry.
  *
  * Usage:
  *   node scripts/check-version.mjs            # consistency only
- *   node scripts/check-version.mjs <baseline> # also require an increase
+ *   node scripts/check-version.mjs <baseline> # also require an increase and notes
  *   node scripts/check-version.mjs <baseline> <branch> # and suit the target branch
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { branchVersionProblem, compareVersions, isValidVersion } from './version-rules.mjs';
+import { changelogProblem } from './changelog-rules.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -71,6 +73,9 @@ if (!errors.length && baseline) {
       `Version must be increased before merging: this branch is ${canonical}, the target is ${baseline}. ` +
         'Bump the version in src-tauri/tauri.conf.json, package.json and src-tauri/Cargo.toml.'
     );
+  } else {
+    const problem = changelogProblem(readFileSync(join(root, 'CHANGELOG.md'), 'utf8'), canonical);
+    if (problem) errors.push(problem);
   }
 }
 
