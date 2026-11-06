@@ -18,8 +18,10 @@ use url::Url;
 
 const MAIN_MANIFEST: &str =
   "https://github.com/MatthewGriffin/TimeLogger/releases/latest/download/latest.json";
+// On its own branch because GitHub has no URL for the latest pre-release, and
+// this repository's immutable releases can't be overwritten.
 const BETA_MANIFEST: &str =
-  "https://github.com/MatthewGriffin/TimeLogger/releases/download/beta-channel/latest.json";
+  "https://raw.githubusercontent.com/MatthewGriffin/TimeLogger/beta-manifest/latest.json";
 
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]

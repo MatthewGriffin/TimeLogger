@@ -93,8 +93,9 @@ To promote a tested beta:
    version, such as `0.9.1-beta.1`. Open a pull request into `beta` and merge it
    with a merge commit, so that the next promotion only contains new work.
 
-Each beta also overwrites `latest.json` on the `beta-channel` release, because
-GitHub has no URL for the latest pre-release.
+Each beta also updates `latest.json` on the `beta-manifest` branch, because GitHub
+has no URL for the latest pre-release and this repository's releases are immutable.
+The Release workflow needs that branch to exist, so don't delete it.
 
 Keep database changes additive: add tables and columns, but don't rename, remove
 or rewrite them. A beta and an older main build can both open the same database.
