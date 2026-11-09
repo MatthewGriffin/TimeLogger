@@ -563,11 +563,11 @@ async function runTests() {
     assert.strictEqual(isBetaVersion('0.8.0'), false);
   });
 
-  test('a version must suit the branch it is going to', () => {
+  test('a release version must suit the branch it is released from', () => {
     assert.strictEqual(branchVersionProblem('0.8.0', 'main'), null);
     assert.strictEqual(branchVersionProblem('0.8.0-beta.1', 'beta'), null);
-    assert.match(branchVersionProblem('0.8.0-beta.1', 'main'), /can't have a beta version/);
-    assert.match(branchVersionProblem('0.8.0', 'beta'), /needs a beta version/);
+    assert.match(branchVersionProblem('0.8.0-beta.1', 'main'), /can't have a beta tag/);
+    assert.match(branchVersionProblem('0.8.0', 'beta'), /needs a beta tag/);
     assert.strictEqual(branchVersionProblem('0.8.0', 'feature'), null);
   });
 

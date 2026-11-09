@@ -1,38 +1,31 @@
 name: Release
 
-# Runs only after Quality succeeds on main or beta, so a release is never
-# published from a commit that failed its checks.
+# A release is made by pushing a tag: v1.2.3 from main, or v1.2.3-beta.1 from
+# beta. The version is written into the app at build time, so no file in the
+# repository changes for a release and there is nothing to conflict on.
 on:
-  workflow_run:
-    workflows: [Quality]
-    types: [completed]
-    branches: [main, beta]
+  push:
+    tags: ["v*"]
 
 permissions:
   contents: write
+  actions: read
 
-# Runs on one branch finish in order, so an older beta can't overwrite the
-# manifest of a newer one. If several are waiting, only the newest runs.
+# Releases of one channel finish in order, so an older beta can't overwrite the
+# manifest of a newer one.
 concurrency:
-  group: release-${{ github.event.workflow_run.head_branch }}
+  group: release-${{ contains(github.ref_name, '-beta.') && 'beta' || 'main' }}
 
 jobs:
   release:
     name: Build and publish
-    # workflow_run executes with write permissions and secrets. Only release a successful
-    # push to this repository's main or beta branch; never check out code from a PR run.
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      (github.event.workflow_run.head_branch == 'main' || github.event.workflow_run.head_branch == 'beta') &&
-      github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: windows-latest
     env:
-      RELEASE_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -46,14 +39,44 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $version = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
-          # A mismatch would send a beta to main users, or a full release to beta only.
-          if (($version -match '-beta\.\d+$') -ne ($env:RELEASE_BRANCH -eq 'beta')) {
-            Write-Error "Version $version can't be released from the $env:RELEASE_BRANCH branch."
+          # Rejects anything that isn't v1.2.3 or v1.2.3-beta.1, and writes the
+          # version into tauri.conf.json, package.json and Cargo.toml.
+          $version = node scripts/stamp-version.mjs $env:TAG
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $isBeta = $version -match '-beta.d+$'
+          # A beta tag must be on beta, and a full release on main, or a beta
+          # would reach main users and an untested build would be Latest.
+          $branch = if ($isBeta) { 'beta' } else { 'main' }
+          git merge-base --is-ancestor $env:GITHUB_SHA "origin/$branch"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "$env:TAG must be tagged on a commit that is on the $branch branch."
             exit 1
           }
           "version=$version" >> $env:GITHUB_OUTPUT
-          "tag=v$version" >> $env:GITHUB_OUTPUT
+          "tag=$env:TAG" >> $env:GITHUB_OUTPUT
+          "branch=$branch" >> $env:GITHUB_OUTPUT
+
+      # A release is never built from a commit that failed its checks. Quality
+      # runs on every push to main and beta, so wait for the run on this commit.
+      - name: Require Quality to have passed
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $deadline = (Get-Date).AddMinutes(45)
+          while ($true) {
+            $runs = gh run list --workflow Quality --commit $env:GITHUB_SHA --event push --json status,conclusion | ConvertFrom-Json
+            if ($runs | Where-Object { $_.conclusion -eq 'success' }) { break }
+            if ($runs -and -not ($runs | Where-Object { $_.status -ne 'completed' })) {
+              Write-Error "Quality failed on $env:GITHUB_SHA, so $env:TAG can't be released."
+              exit 1
+            }
+            if ((Get-Date) -gt $deadline) {
+              Write-Error "Quality did not finish for $env:GITHUB_SHA in time."
+              exit 1
+            }
+            Start-Sleep -Seconds 30
+          }
 
       - name: Check whether this version was already released
         id: existing
@@ -61,7 +84,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # `gh release view` exits 1 when the tag is absent, which is the
+          # `gh release view` exits 1 when the release is absent, which is the
           # normal case. Swallow it so the step itself still succeeds.
           gh release view "${{ steps.version.outputs.tag }}" 2>&1 | Out-Null
           $exists = if ($LASTEXITCODE -eq 0) { 'true' } else { 'false' }
@@ -176,11 +199,10 @@ jobs:
           }
           # GitHub's 'latest' release skips pre-releases, which keeps betas away
           # from the main channel.
-          $channelArgs = if ($env:RELEASE_BRANCH -eq 'beta') { @('--prerelease', '--latest=false') } else { @() }
+          $channelArgs = if ('${{ steps.version.outputs.branch }}' -eq 'beta') { @('--prerelease', '--latest=false') } else { @() }
           gh release create "${{ steps.version.outputs.tag }}" $installer "$installer.sig" latest.json `
             --title "TimeLogger ${{ steps.version.outputs.tag }}" `
             --generate-notes `
-            --target "${{ github.event.workflow_run.head_sha }}" `
             @channelArgs
           if ($LASTEXITCODE -ne 0) {
             # Another release run may have published this tag after our earlier
@@ -197,7 +219,7 @@ jobs:
       # releases are immutable, so beta users read the manifest from the
       # beta-manifest branch, which each beta updates.
       - name: Publish beta manifest
-        if: steps.existing.outputs.exists == 'false' && env.RELEASE_BRANCH == 'beta'
+        if: steps.existing.outputs.exists == 'false' && steps.version.outputs.branch == 'beta'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
