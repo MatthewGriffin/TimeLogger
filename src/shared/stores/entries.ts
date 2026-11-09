@@ -372,7 +372,8 @@ export const useEntriesStore = defineStore('entries', () => {
         unmappedSubjects: asList<string>(record.unmappedSubjects).map(s => asString(s)),
         unmappedMeetings: readList(record.unmappedMeetings, undefined, item => ({
           subject: asString(item.subject),
-          entryIds: asList<number>(item.entryIds).map(id => asNumber(id))
+          entryIds: asList<number>(item.entryIds).map(id => asNumber(id)),
+          reason: asString(asRecord(item.reason).message, "") || undefined
         })),
         meetingConflicts: parseMeetingConflicts(record),
         message: asString(record.message),
@@ -537,7 +538,8 @@ export const useEntriesStore = defineStore('entries', () => {
       const record = asRecord(await executeApi('sprint_get_unticketed_meetings', args))
       return readList(record.unmappedMeetings, undefined, item => ({
         subject: asString(item.subject),
-        entryIds: asList<number>(item.entryIds).map(id => asNumber(id))
+        entryIds: asList<number>(item.entryIds).map(id => asNumber(id)),
+        reason: asString(asRecord(item.reason).message, "") || undefined
       }))
     } catch {
       // Never block the page on this; the manual sync path still reports.

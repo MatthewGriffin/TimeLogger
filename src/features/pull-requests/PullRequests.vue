@@ -129,7 +129,8 @@ const describeProblems = (result: PullRequestListResult): string => {
   const failed = searches.filter(search => search.error)
   if (failed.length) {
     const counts = searches.map(search => `${search.name}: ${search.count}`).join(', ')
-    return `Some GitHub searches failed (${failed.map(search => search.name).join(', ')}). ${counts}`
+    const reason = String(failed[0].error || '').replace(/^GitHub API request faileds*/, '').slice(0, 200)
+    return `Some GitHub searches failed (${failed.map(search => search.name).join(', ')}). ${counts}${reason ? ` First error: ${reason}` : ''}`
   }
   if (!result.prs?.length && diagnostics?.candidateCount) {
     return `GitHub found ${diagnostics.candidateCount} candidate PR(s), but none could be confirmed as linked to your account.`
