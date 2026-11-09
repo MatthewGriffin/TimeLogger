@@ -86,7 +86,25 @@ async function reportPoll(prs, diagnostics) {
   }
 }
 
+// GitHub answers with a 5xx, a rate limit or a dropped connection from time to
+// time, and the four PR searches run together, so one bad moment fails them all.
+// Retrying those briefly is cheaper than showing an error the next refresh fixes.
+const TRANSIENT_GITHUB_ERROR = /HTTP (?:429|5dd)|rate limit|abuse|secondary|timed? ?out|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up/i;
+const GITHUB_RETRY_DELAYS_MS = [800, 2500];
+
 async function githubGet(path, token) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await githubGetOnce(path, token);
+    } catch (error) {
+      const delay = GITHUB_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined || !TRANSIENT_GITHUB_ERROR.test(error.message)) throw error;
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+}
+
+async function githubGetOnce(path, token) {
   if (!path.startsWith('/')) throw new Error('Invalid GitHub API path');
   try {
     const response = await makeHttpRequest(`${API}${path}`, {
@@ -218,7 +236,11 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS,
     }
   };
   const searches = buildPullRequestSearches(login, filters);
-  const results = await Promise.all(searches.map(({ name, query }) => searchAndRecord(name, query)));
+  // One at a time: GitHub rate-limits bursts of search requests, and firing all
+  // of them together failed every search at once. (GitHub rejects combining the
+  // user qualifiers with OR, so they can't be merged into a single query.)
+  const results = [];
+  for (const { name, query } of searches) results.push(await searchAndRecord(name, query));
   const reviewedByAccount = results[searches.findIndex(({ name }) => name === 'reviewed-by-account')] || [];
   const mentionsAccount = results[searches.findIndex(({ name }) => name === 'mentions-account')] || [];
   const candidates = new Map();

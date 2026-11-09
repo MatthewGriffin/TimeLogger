@@ -189,6 +189,42 @@ export function matchMeetingTicket(subject, config = readSprintConfig()) {
 }
 
 /**
+ * Explain why a subject did not resolve to a ticket, so the user can fix the
+ * cause (an empty ticket, a missing keyword) instead of guessing at it.
+ *
+ * A keyword that matches a ceremony with no ticket is the usual culprit after
+ * a new PI starts, because the placeholder keys are reissued and start blank.
+ */
+export function explainNoTicketMatch(subject, config = readSprintConfig()) {
+  const text = String(subject || '').trim();
+  const mappings = config.mappings || [];
+  const hits = [];
+  for (const mapping of mappings) {
+    for (const alias of mapping.aliases || []) {
+      const pattern = aliasPattern(alias);
+      if (pattern && pattern.test(text)) { hits.push({ mapping, alias }); break; }
+    }
+  }
+  const blank = hits.find(h => !h.mapping.ticketKey);
+  if (blank) {
+    return {
+      code: 'no-ticket',
+      ceremony: blank.mapping.label,
+      keyword: blank.alias,
+      message: `Matched the "${blank.alias}" keyword for ${blank.mapping.label}, but ${blank.mapping.label} has no ticket set${config.piNumber ? '' : ' and no PI number is configured'}. Add its ticket in Settings > Current Sprint.`
+    };
+  }
+  if (!mappings.some(m => m.ticketKey)) {
+    return { code: 'no-tickets-configured', message: 'No ceremony has a ticket yet, so nothing can match. Look up the PI tickets in Settings > Current Sprint.' };
+  }
+  const keywordCount = mappings.reduce((n, m) => n + (m.aliases || []).length, 0);
+  return {
+    code: 'no-keyword',
+    message: `None of the ${keywordCount} keywords appear in "${text}" as whole words. Pick a ticket and tick Remember to add a keyword, or edit keywords in Settings > Current Sprint.`
+  };
+}
+
+/**
  * Find a PI's placeholder issues in Jira and map them to ceremony types.
  *
  * Every page is read: a PI has a set of issues per team, so stopping at the
@@ -390,12 +426,28 @@ export const tools = [
         }
         const endDate = requestedEndDate < today ? requestedEndDate : today;
 
-        const rows = db.prepare(`
+        let rows = db.prepare(`
           SELECT id, name, date FROM daily_summary
           WHERE date BETWEEN ? AND ? AND from_calendar = 1 AND submitted = 0
             AND (ticket_id IS NULL OR TRIM(ticket_id) = '')
           ORDER BY date ASC, start_time ASC
         `).all(startDate, endDate);
+
+        // Calendar sync leaves meetings ticketless on purpose; this is the step
+        // where the current PI mapping applies. Anything a Current Sprint
+        // keyword resolves is assigned here, so only genuine misses are asked.
+        const config = readSprintConfig();
+        const assign = db.prepare('UPDATE daily_summary SET ticket_id = ? WHERE id = ? AND submitted = 0');
+        let autoAssigned = 0;
+        db.transaction(() => {
+          for (const row of rows) {
+            const match = matchMeetingTicket(row.name, config);
+            if (match) autoAssigned += assign.run(match.ticketKey, row.id).changes;
+          }
+        })();
+        if (autoAssigned > 0) {
+          rows = rows.filter(row => !matchMeetingTicket(row.name, config));
+        }
 
         // Grouped by subject so a recurring meeting is asked about once and the
         // answer applies to every occurrence in the range.
@@ -406,7 +458,7 @@ export const tools = [
           if (!bucket.dates.includes(row.date)) bucket.dates.push(row.date);
           bySubject.set(row.name, bucket);
         }
-        const meetings = [...bySubject.values()];
+        const meetings = [...bySubject.values()].map(m => ({ ...m, reason: explainNoTicketMatch(m.subject, config) }));
 
         return {
           success: true,
@@ -414,6 +466,7 @@ export const tools = [
           startDate,
           endDate,
           count: meetings.length,
+          autoAssigned,
           unmappedMeetings: meetings,
           message: meetings.length
             ? `${meetings.length} meeting(s) still need a ticket`
