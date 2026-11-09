@@ -176,11 +176,117 @@
 
       <!-- Tempo reconciliation follows the unsubmitted entries so it has the full content width. -->
       <div class="submit-reconciliation">
-        <section ref="piReviewSection" class="pi-review" aria-labelledby="pi-review-title">
-          <header class="pi-review-header">
+        <div class="reconciliation-heading">
+          <button class="btn-range" :disabled="reconciliationLoading" @click="loadReconciliation">
+            {{ reconciliationLoading ? 'Refreshing…' : 'Refresh Tempo status' }}
+          </button>
+        </div>
+        <p v-if="reconciliationLoading" class="range-summary">Checking Tempo worklogs…</p>
+        <p v-else-if="reconciliationError" class="range-error">{{ reconciliationError }}</p>
+        <template v-else>
+      <div class="section reconciliation-section">
+        <div class="section-header">
+          <h2>Local Entries vs Tempo</h2>
+          <span class="count">{{ reconciled.length }}</span>
+          <button
+            v-if="reconciliationCounts.missingFromTempo > 0"
+            class="import-all-btn"
+            :disabled="isResubmitting"
+            @click="resubmitMissing()"
+          >
+            {{ isResubmitting ? 'Marking…' : `↺ Resubmit all missing (${reconciliationCounts.missingFromTempo})` }}
+          </button>
+        </div>
+
+        <div class="filter-row">
+          <button
+            v-for="filter in statusFilters"
+            :key="filter.value"
+            :class="['btn-filter', { active: statusFilter === filter.value }]"
+            @click="statusFilter = filter.value"
+          >
+            {{ filter.label }}
+          </button>
+        </div>
+
+        <p v-if="statusFilter === 'missing_from_tempo' && filteredReconciled.length > 0" class="section-note">
+          These are marked as submitted here but no longer exist in Tempo — most likely deleted directly there.
+          Resubmit to send them again.
+        </p>
+        <p v-else-if="statusFilter === 'needs_fixing' && filteredReconciled.length > 0" class="section-note">
+          Entries here either vanished from Tempo after being marked sent, or have a duration that no longer
+          matches what's in Tempo. Use Resubmit or "Use local time" below to fix each one.
+        </p>
+
+        <div v-if="filteredReconciled.length === 0" class="empty-state">
+          Nothing matches this filter.
+        </div>
+
+        <div v-else class="table table-recon">
+          <div class="table-header">
+            <div class="col-date">Date</div>
+            <div class="col-ticket">Ticket</div>
+            <div class="col-desc">Task</div>
+            <div class="col-dur">Local</div>
+            <div class="col-dur">Tempo</div>
+            <div class="col-status">Status</div>
+            <div class="col-action"></div>
+          </div>
+          <div
+            v-for="row in filteredReconciled"
+            :key="row.entryId"
+            :class="['table-row', statusClass(row.status)]"
+          >
+            <div class="col-date">{{ row.date }}</div>
+            <div class="col-ticket">
+              <span v-if="row.ticketId" class="ticket-chip">{{ row.ticketId }}</span>
+              <span v-else class="ticket-chip missing" title="No ticket, so this can never reach Tempo">no ticket</span>
+            </div>
+            <div class="col-desc" :title="row.name">{{ row.name }}</div>
+            <div class="col-dur">{{ formatReconciliationDuration(row.durationMins) }}</div>
+            <div class="col-dur">
+              <span v-if="row.tempoDurationMins !== null" :class="{ differs: row.durationDiffers }">
+                {{ formatReconciliationDuration(row.tempoDurationMins) }}
+              </span>
+              <span v-else class="muted">—</span>
+            </div>
+            <div class="col-status">
+              <span :class="['status-chip', statusClass(row.status)]">{{ statusLabel(row.status) }}</span>
+            </div>
+            <div class="col-action">
+              <button
+                v-if="row.status === 'missing_from_tempo'"
+                class="import-btn"
+                :disabled="isResubmitting"
+                title="Mark as not submitted so it can be sent to Tempo again"
+                @click="resubmitMissing([row.entryId])"
+              >
+                Resubmit
+              </button>
+              <button
+                v-else-if="row.durationDiffers && row.worklogId !== null"
+                class="import-btn"
+                :disabled="reconcilingEntryId !== null"
+                title="Update Tempo to match the local duration"
+                @click="reconcileDuration(row)"
+              >
+                {{ reconcilingEntryId === row.entryId ? 'Updating…' : 'Use local time' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+          <p v-if="resubmitMessage" class="import-message">{{ resubmitMessage }}</p>
+          <p v-if="reconcileMessage" class="import-message">{{ reconcileMessage }}</p>
+        </template>
+
+        <section ref="piReviewSection" class="section pi-review" aria-labelledby="pi-review-title">
+          <header class="section-header pi-review-header">
             <h2 id="pi-review-title">PI Ticket Correction Review</h2>
-            <p>Find entries still on an old PI's tickets and move them to the same type of ticket in another PI. Nothing changes until you confirm.</p>
           </header>
+          <p class="section-note">Find entries still on an old PI's tickets and move them to the same type of ticket in another PI. Nothing changes until you confirm.</p>
 
           <form class="pi-review-form" @submit.prevent="previewTicketCorrections">
             <fieldset class="pi-review-group">
@@ -305,111 +411,6 @@
             </details>
           </div>
         </section>
-        <div class="reconciliation-heading">
-          <button class="btn-range" :disabled="reconciliationLoading" @click="loadReconciliation">
-            {{ reconciliationLoading ? 'Refreshing…' : 'Refresh Tempo status' }}
-          </button>
-        </div>
-        <p v-if="reconciliationLoading" class="range-summary">Checking Tempo worklogs…</p>
-        <p v-else-if="reconciliationError" class="range-error">{{ reconciliationError }}</p>
-        <template v-else>
-      <div class="section reconciliation-section">
-        <div class="section-header">
-          <h2>Local Entries vs Tempo</h2>
-          <span class="count">{{ reconciled.length }}</span>
-          <button
-            v-if="reconciliationCounts.missingFromTempo > 0"
-            class="import-all-btn"
-            :disabled="isResubmitting"
-            @click="resubmitMissing()"
-          >
-            {{ isResubmitting ? 'Marking…' : `↺ Resubmit all missing (${reconciliationCounts.missingFromTempo})` }}
-          </button>
-        </div>
-
-        <div class="filter-row">
-          <button
-            v-for="filter in statusFilters"
-            :key="filter.value"
-            :class="['btn-filter', { active: statusFilter === filter.value }]"
-            @click="statusFilter = filter.value"
-          >
-            {{ filter.label }}
-          </button>
-        </div>
-
-        <p v-if="statusFilter === 'missing_from_tempo' && filteredReconciled.length > 0" class="section-note">
-          These are marked as submitted here but no longer exist in Tempo — most likely deleted directly there.
-          Resubmit to send them again.
-        </p>
-        <p v-else-if="statusFilter === 'needs_fixing' && filteredReconciled.length > 0" class="section-note">
-          Entries here either vanished from Tempo after being marked sent, or have a duration that no longer
-          matches what's in Tempo. Use Resubmit or "Use local time" below to fix each one.
-        </p>
-
-        <div v-if="filteredReconciled.length === 0" class="empty-state">
-          Nothing matches this filter.
-        </div>
-
-        <div v-else class="table table-recon">
-          <div class="table-header">
-            <div class="col-date">Date</div>
-            <div class="col-ticket">Ticket</div>
-            <div class="col-desc">Task</div>
-            <div class="col-dur">Local</div>
-            <div class="col-dur">Tempo</div>
-            <div class="col-status">Status</div>
-            <div class="col-action"></div>
-          </div>
-          <div
-            v-for="row in filteredReconciled"
-            :key="row.entryId"
-            :class="['table-row', statusClass(row.status)]"
-          >
-            <div class="col-date">{{ row.date }}</div>
-            <div class="col-ticket">
-              <span v-if="row.ticketId" class="ticket-chip">{{ row.ticketId }}</span>
-              <span v-else class="ticket-chip missing" title="No ticket, so this can never reach Tempo">no ticket</span>
-            </div>
-            <div class="col-desc" :title="row.name">{{ row.name }}</div>
-            <div class="col-dur">{{ formatReconciliationDuration(row.durationMins) }}</div>
-            <div class="col-dur">
-              <span v-if="row.tempoDurationMins !== null" :class="{ differs: row.durationDiffers }">
-                {{ formatReconciliationDuration(row.tempoDurationMins) }}
-              </span>
-              <span v-else class="muted">—</span>
-            </div>
-            <div class="col-status">
-              <span :class="['status-chip', statusClass(row.status)]">{{ statusLabel(row.status) }}</span>
-            </div>
-            <div class="col-action">
-              <button
-                v-if="row.status === 'missing_from_tempo'"
-                class="import-btn"
-                :disabled="isResubmitting"
-                title="Mark as not submitted so it can be sent to Tempo again"
-                @click="resubmitMissing([row.entryId])"
-              >
-                Resubmit
-              </button>
-              <button
-                v-else-if="row.durationDiffers && row.worklogId !== null"
-                class="import-btn"
-                :disabled="reconcilingEntryId !== null"
-                title="Update Tempo to match the local duration"
-                @click="reconcileDuration(row)"
-              >
-                {{ reconcilingEntryId === row.entryId ? 'Updating…' : 'Use local time' }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-
-          <p v-if="resubmitMessage" class="import-message">{{ resubmitMessage }}</p>
-          <p v-if="reconcileMessage" class="import-message">{{ reconcileMessage }}</p>
-        </template>
       </div>
       </div>
 
@@ -1338,18 +1339,13 @@ const reconcileDuration = async (row: ReconciledRow) => {
 <style scoped>
 
 /* PI ticket correction review */
-.pi-review {
-  margin: var(--space-md) 0 var(--space-xl);
-  padding: var(--space-lg);
-  background: var(--color-surface-sunken);
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-lg);
-}
-.pi-review-header h2 { font-size: 1.3rem; font-weight: 700; }
-.pi-review-header p { margin-top: var(--space-2xs); color: var(--color-text-subtle); }
+.pi-review { min-width: 0; margin-top: 1rem; }
+.pi-review-header h2 { font-size: 1.1rem; font-weight: 700; }
+.pi-review .section-note { color: var(--color-text-muted); font-size: .85rem; margin: .5rem 0; }
 
 .pi-review .btn-primary,
-.pi-review .btn-secondary { padding: var(--space-xs) var(--space-md); white-space: nowrap; }
+.pi-review .btn-secondary { padding: .4rem .7rem; white-space: nowrap; border: 1px solid var(--color-control-solid); border-radius: 7px; background: var(--color-surface-raised); color: var(--color-text); cursor: pointer; }
+.pi-review .btn-primary { background: var(--color-accent); color: var(--color-on-accent); border-color: var(--color-accent); }
 .pi-review .btn-primary:disabled,
 .pi-review .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
 .pi-review .btn-secondary:hover:not(:disabled) { background: var(--color-control-hover); }
@@ -1441,18 +1437,19 @@ const reconcileDuration = async (row: ReconciledRow) => {
 }
 .pi-review-list ul,
 .pi-review-manual ul { margin: 0; padding: 0; list-style: none; }
-.pi-review-list ul { border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+.pi-review-list ul { background: rgba(30, 41, 59, 0.8); border: 1px solid var(--color-border); border-radius: 0.75rem; overflow: hidden; backdrop-filter: blur(10px); }
 .pi-review-row + .pi-review-row { border-top: 1px solid var(--color-border); }
-.pi-review-row:hover,
+.pi-review-row { transition: background .3s ease; }
+.pi-review-row:hover { background: rgba(51, 65, 85, 0.3); }
 .pi-review-row.is-open { background: var(--color-control); }
 .pi-review-row-main {
   display: grid;
   grid-template-columns: 6.5rem 3rem minmax(0, 1fr) auto 5rem;
   align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-xs) var(--space-sm);
+  gap: .6rem;
+  padding: 1rem 1.5rem;
 }
-.pi-review-row-main .btn-secondary { padding: var(--space-2xs) var(--space-sm); justify-self: end; }
+.pi-review-row-main .btn-secondary { justify-self: end; }
 .pi-review-time { color: var(--color-text-subtle); font-variant-numeric: tabular-nums; }
 .pi-review-task { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pi-review-kind { font-size: 0.8rem; color: var(--color-text-muted); white-space: nowrap; }
@@ -1487,7 +1484,6 @@ const reconcileDuration = async (row: ReconciledRow) => {
 .pi-review-manual li span { color: var(--color-text-subtle); }
 
 @media (max-width: 768px) {
-  .pi-review { padding: var(--space-md); }
   .pi-review-find { margin-left: 0; width: 100%; }
   .pi-review-row-main { grid-template-columns: minmax(0, 1fr) auto; row-gap: var(--space-2xs); }
   .pi-review-date { grid-area: 1 / 1; }

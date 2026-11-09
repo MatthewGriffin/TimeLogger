@@ -18,6 +18,7 @@
             <span class="prompt-subject">{{ item.subject }}</span>
             <span v-if="item.assigned" class="prompt-done">✓ {{ item.assigned }}</span>
           </div>
+          <p v-if="item.reason && !item.assigned" class="prompt-reason">Why: {{ item.reason }}</p>
 
           <template v-if="!item.assigned">
             <div class="prompt-controls">
@@ -93,6 +94,7 @@ import type { UnmappedMeeting } from '@/features/entries/models/entries'
 interface PromptItem {
   subject: string
   entryIds: number[]
+  reason: string
   choice: string
   searchText: string
   searchResults: { key: string; summary: string }[]
@@ -133,6 +135,7 @@ watch(() => props.meetings, meetings => {
   items.value = (meetings || []).map(m => ({
     subject: m.subject,
     entryIds: m.entryIds || [],
+    reason: m.reason || "",
     choice: '',
     searchText: m.subject,
     searchResults: [],
@@ -288,6 +291,7 @@ const skipAll = (): void => close()
 
 .prompt-select,
 .prompt-search,
+.prompt-reason { margin: 0.25rem 0 0.5rem; font-size: 0.85rem; color: var(--color-warning); }
 .prompt-keyword {
   padding: 0.5rem 0.65rem;
   background: rgba(15, 23, 42, 0.7);

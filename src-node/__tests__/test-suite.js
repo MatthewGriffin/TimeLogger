@@ -564,11 +564,11 @@ async function runTests() {
     assert.strictEqual(isBetaVersion('0.8.0'), false);
   });
 
-  test('a version must suit the branch it is going to', () => {
+  test('a release version must suit the branch it is released from', () => {
     assert.strictEqual(branchVersionProblem('0.8.0', 'main'), null);
     assert.strictEqual(branchVersionProblem('0.8.0-beta.1', 'beta'), null);
-    assert.match(branchVersionProblem('0.8.0-beta.1', 'main'), /can't have a beta version/);
-    assert.match(branchVersionProblem('0.8.0', 'beta'), /needs a beta version/);
+    assert.match(branchVersionProblem('0.8.0-beta.1', 'main'), /can't have a beta tag/);
+    assert.match(branchVersionProblem('0.8.0', 'beta'), /needs a beta tag/);
     assert.strictEqual(branchVersionProblem('0.8.0', 'feature'), null);
   });
 
@@ -2649,6 +2649,34 @@ async function runTests() {
     assert.strictEqual(result.success, true);
     assert.strictEqual(result.count, 0, 'Future appointments should stay in the calendar without prompting for a ticket');
     assert.deepStrictEqual(result.unmappedMeetings, []);
+  });
+
+  await testAsync('visiting unticketed meetings assigns keyword matches and explains the misses', async () => {
+    cleanTestFixtures();
+    const saved = db.prepare("SELECT value FROM settings WHERE key = 'sprint_config'").get();
+    db.prepare('INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)')
+      .run('sprint_config', JSON.stringify({
+        piNumber: '44',
+        projectKey: 'TIME',
+        mappings: [
+          { id: 'dailyScrum', label: 'Daily Scrum', jiraType: 'Daily Scrum', aliases: ['daily scrum'], ticketKey: 'TIME-4401' },
+          { id: 'retro', label: 'Retro', jiraType: 'Retro', aliases: ['retro'], ticketKey: '' }
+        ]
+      }));
+    syncDayFromEvents(TEST_DATE, [
+      meetingEvent('evt-ds', 'Discovery Daily Scrum', '09:00', '09:15'),
+      meetingEvent('evt-re', 'Sprint Retro', '10:00', '11:00'),
+      meetingEvent('evt-x', 'Vendor call', '13:00', '13:30')
+    ], {});
+
+    const result = await executeTool('sprint_get_unticketed_meetings', { date: TEST_DATE });
+    const scrum = db.prepare('SELECT ticket_id FROM daily_summary WHERE date = ? AND calendar_event_id = ?').get(TEST_DATE, 'evt-ds');
+    assert.strictEqual(scrum.ticket_id, 'TIME-4401', 'The daily scrum should match its keyword');
+    const bySubject = Object.fromEntries(result.unmappedMeetings.map(m => [m.subject, m.reason.code]));
+    assert.deepStrictEqual(bySubject, { 'Sprint Retro': 'no-ticket', 'Vendor call': 'no-keyword' });
+    if (saved) db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('sprint_config', ?)").run(saved.value);
+    else db.prepare("DELETE FROM settings WHERE key = 'sprint_config'").run();
+    cleanTestFixtures();
   });
 
   await testAsync('the last PI change ignores mapping-only edits and uses the local date', async () => {

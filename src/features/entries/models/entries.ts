@@ -27,6 +27,8 @@ export interface TotalsResponse {
 export interface UnmappedMeeting {
   subject: string
   entryIds: number[]
+  /** Why no keyword resolved this meeting to a ticket. */
+  reason?: string
 }
 
 export interface MeetingConflictResolution {
