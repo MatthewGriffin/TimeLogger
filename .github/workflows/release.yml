@@ -43,7 +43,7 @@ jobs:
           # version into tauri.conf.json, package.json and Cargo.toml.
           $version = node scripts/stamp-version.mjs $env:TAG
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          $isBeta = $version -match '-beta.d+$'
+          $isBeta = $version -match '-beta\.\d+$'
           # A beta tag must be on beta, and a full release on main, or a beta
           # would reach main users and an untested build would be Latest.
           $branch = if ($isBeta) { 'beta' } else { 'main' }
