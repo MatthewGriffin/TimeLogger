@@ -273,7 +273,13 @@ const workdayTarget = computed(() => {
   if (!workday) return '8.0'
   const [startHour, startMinute] = workday.startTime.split(':').map(Number)
   const [endHour, endMinute] = workday.endTime.split(':').map(Number)
-  return ((endHour * 60 + endMinute - startHour * 60 - startMinute) / 60).toFixed(1)
+  const toMinutes = (time: string) => { const [h, m] = time.split(':').map(Number); return h * 60 + m }
+  // Logged hours leave lunch out, so the target must too, or a full day always
+  // shows an hour still remaining.
+  const lunch = configStore.config.lunch
+  const lunchMinutes = lunch?.enabled ? Math.max(0, toMinutes(lunch.endTime) - toMinutes(lunch.startTime)) : 0
+  const dayMinutes = endHour * 60 + endMinute - startHour * 60 - startMinute
+  return (Math.max(0, dayMinutes - lunchMinutes) / 60).toFixed(1)
 })
 const workdayPercent = computed(() => Math.min(100, Math.round((Number(todayHours.value) / Number(workdayTarget.value)) * 100)) || 0)
 const workdayRemaining = computed(() => Math.max(0, Number(workdayTarget.value) - Number(todayHours.value)).toFixed(1))
