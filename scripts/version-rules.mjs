@@ -22,13 +22,16 @@ export function compareVersions(a, b) {
   return 0;
 }
 
-/** Returns what's wrong with a version on a pull request into `branch`, or null. */
+/**
+ * Returns what is wrong with releasing `version` from `branch`, or null.
+ * A beta comes from the beta branch and a full release from main.
+ */
 export function branchVersionProblem(version, branch) {
-  if (branch === 'beta' && !isBetaVersion(version)) {
-    return `The beta branch needs a beta version such as 0.8.0-beta.1, but this is ${version}.`;
+  if (branch === "beta" && !isBetaVersion(version)) {
+    return `The beta branch needs a beta tag such as v0.8.0-beta.1, but this is v${version}.`;
   }
-  if (branch === 'main' && isBetaVersion(version)) {
-    return `The main branch can't have a beta version, but this is ${version}.`;
+  if (branch === "main" && isBetaVersion(version)) {
+    return `The main branch can't have a beta tag, but this is v${version}.`;
   }
   return null;
 }

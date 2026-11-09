@@ -47,24 +47,22 @@ npm run tauri dev
 
 ## Releasing
 
-Releases are automated. Every pull request into `main` or `beta` is a new app
-version.
+A release is made by pushing a tag. Nothing in the repository changes for it, so
+pull requests never conflict over a version number.
 
-1. **Bump the version in your pull request.** It must be increased, and all
-   three declarations must agree:
-   - `src-tauri/tauri.conf.json` (the canonical source)
-   - `package.json`
-   - `src-tauri/Cargo.toml`
+```
+git tag v0.9.0 && git push origin v0.9.0
+```
 
-   The **Version** workflow blocks the pull request until this is done. Run
-   `npm run check:version` locally to verify.
+The **Release** workflow then checks that the commit passed **Quality**, writes the
+version from the tag into `src-tauri/tauri.conf.json`, `package.json` and
+`src-tauri/Cargo.toml`, builds the installer and publishes a GitHub release with
+generated notes. The version in those files is a `0.0.0` placeholder, so a build
+that isn't from a tag reports `0.0.0`.
 
-2. **Merge.** Once the **Quality** workflow passes on the branch, the **Release**
-   workflow builds the installer and publishes a GitHub release tagged
-   `v{version}` with generated release notes.
-
-If a version has already been released the release workflow skips rather than
-failing, so re-runs are safe.
+If a release already exists for the tag the workflow skips, so re-running is safe.
+A tag is final: releases are immutable, so a bad release is fixed by tagging the
+next version.
 
 ### Version numbers
 
@@ -76,22 +74,20 @@ failing, so re-runs are safe.
 
 ### Release channels
 
-| Branch | Version | Release | Who gets it |
+| Tag | Tag it on | Release | Who gets it |
 |---|---|---|---|
-| `main` | `0.8.0` | Normal | Everyone |
-| `beta` | `0.9.0-beta.1` | Pre-release | Anyone on the Beta channel |
+| `v0.8.0` | `main` | Normal | Everyone |
+| `v0.9.0-beta.1` | `beta` | Pre-release | Anyone on the Beta channel |
 
-The **Version** workflow requires a version that suits the target branch.
+The workflow refuses a beta tag that isn't on `beta`, and a full tag that isn't on
+`main`.
 
-To promote a tested beta:
+To promote a tested beta, merge it into `main` and tag that commit with the full
+version, such as `v0.9.0`. Then merge `main` back into `beta` with a merge commit,
+so that the next promotion only contains new work.
 
-1. Create a branch from `beta` and change the version there to the full release,
-   such as `0.9.0-beta.3` to `0.9.0`. Don't push that version to `beta` itself,
-   because the **Release** workflow rejects it there.
-2. Open a pull request from that branch into `main` and squash merge it.
-3. Create another branch from `beta`, merge `main` into it, and set the next beta
-   version, such as `0.9.1-beta.1`. Open a pull request into `beta` and merge it
-   with a merge commit, so that the next promotion only contains new work.
+Tags are the only way to publish, so protect `v*` tags in the repository rules to
+stop anyone else creating one.
 
 Each beta also updates `latest.json` on the `beta-manifest` branch, because GitHub
 has no URL for the latest pre-release and this repository's releases are immutable.
