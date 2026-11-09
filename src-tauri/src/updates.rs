@@ -305,11 +305,24 @@ pub async fn install_update(
         let _ = on_event.send(DownloadEvent::Progress { chunk_length });
       },
       || {
+        // The installer replaces the backend's files, including the native
+        // sqlite module the running backend holds open, and the updater exits
+        // the app right after starting it, so the normal exit cleanup never
+        // runs. Stop the backend now, or the install fails with "Error opening
+        // file for writing" on win32-x64.node.
+        crate::backend::SHUTTING_DOWN.store(true, std::sync::atomic::Ordering::SeqCst);
+        let _ = crate::backend::stop_backend();
         let _ = on_event.send(DownloadEvent::Finished);
       },
     )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(|e| {
+      // The app carries on after a failed install, so bring the backend back.
+      if crate::backend::SHUTTING_DOWN.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        let _ = std::thread::spawn(|| crate::backend::ensure_backend(false));
+      }
+      e.to_string()
+    })
 }
 
 #[cfg(test)]

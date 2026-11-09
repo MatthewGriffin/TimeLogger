@@ -4,6 +4,14 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.0-beta.6
+
+- Meetings that match one of your Current Sprint keywords, like the Daily Scrum, now get their ticket automatically. The ones that don't match say why.
+- The PI Ticket Correction Review now sits below Local Entries vs Tempo on the Submit page, and looks like the rest of that page.
+- The pull requests page no longer fails all its searches at once, retries when GitHub has a hiccup, and shows the first error if one still fails.
+- Fixed the update installer failing with "Error opening file for writing" on a native file. The app now stops its background service before installing. You may see the error once more, installing this version.
+- The dashboard workday target now leaves out lunch, so a full day no longer shows an hour remaining.
+
 ## 0.9.0-beta.5
 
 - The Jira search button on an entry now lists your in-progress tickets to pick from when the name and ticket are empty.
