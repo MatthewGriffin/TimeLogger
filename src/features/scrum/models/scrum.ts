@@ -53,6 +53,7 @@ export interface ScrumPullRequest {
   updatedAt: string | null
   commentCount?: number
   pendingReview?: boolean
+  blockedTicketKeys: string[]
 }
 
 export interface ScrumReport {

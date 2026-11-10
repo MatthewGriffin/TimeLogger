@@ -65,7 +65,8 @@ function toPullRequest(raw: unknown): ScrumPullRequest {
     matchedTicketKeys: Array.isArray(row.matchedTicketKeys) ? row.matchedTicketKeys.map(String) : [],
     updatedAt: asString(row.updatedAt),
     commentCount: row.commentCount === undefined ? undefined : Number(row.commentCount) || 0,
-    pendingReview: row.pendingReview === true
+    pendingReview: row.pendingReview === true,
+    blockedTicketKeys: Array.isArray(row.blockedTicketKeys) ? row.blockedTicketKeys.map(String) : []
   }
 }
 

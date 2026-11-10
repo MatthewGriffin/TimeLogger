@@ -235,6 +235,16 @@ function blockerTicketKeys(blocker) {
 }
 
 /**
+ * Mark the PRs linked to an open blocker's ticket with those tickets, and list
+ * them first. The rest keep their order, which is most recently updated first.
+ */
+function markBlockerPullRequests(pullRequests, blockers) {
+  const blocked = new Set(blockers.flatMap(blockerTicketKeys));
+  const marked = pullRequests.map(pr => ({ ...pr, blockedTicketKeys: pr.ticketKeys.filter(key => blocked.has(key)) }));
+  return [...marked.filter(pr => pr.blockedTicketKeys.length), ...marked.filter(pr => !pr.blockedTicketKeys.length)];
+}
+
+/**
  * The report's pull requests and each open blocker's, from GitHub only when the
  * cached ones don't apply. Blocker PRs are the ones linked to the blocker's
  * ticket that the account authored or reviews.
@@ -346,7 +356,7 @@ export const tools = [
           today: current,
           blockers,
           summary,
-          pullRequests
+          pullRequests: markBlockerPullRequests(pullRequests, blockers)
         };
       } catch (error) {
         return { success: false, message: `Failed to build scrum summary: ${error.message}` };
