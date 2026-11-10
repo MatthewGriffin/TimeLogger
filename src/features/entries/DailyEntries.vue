@@ -53,7 +53,7 @@
           <div class="table-body">
             <div v-for="entry in entriesByDate" :key="entry.id" class="table-row">
               <div class="col-task">{{ entry.isLunch ? 'Lunch break' : entry.taskName }}</div>
-              <div class="col-ticket">{{ entry.ticketId || '-' }}</div>
+              <div class="col-ticket"><TicketLabel :ticket-id="entry.ticketId" empty="-" /></div>
               <div class="col-time">{{ formatTime(entry.startTime) }}</div>
               <div class="col-time">{{ formatTime(entry.endTime) }}</div>
               <div class="col-duration">{{ formatDuration(entry.duration) }}</div>
@@ -135,6 +135,7 @@
               <datalist id="recent-tickets">
                 <option v-for="ticket in ticketOptions" :key="ticket.key" :value="ticket.key" :label="ticket.description" />
               </datalist>
+              <TicketHint :ticket-id="newEntry.ticketId" />
             </div>
             <div class="form-group">
               <label>Duration (calc)</label>
@@ -208,10 +209,15 @@
             <div class="form-group">
               <label>Ticket ID</label>
               <input 
-                v-model="editingEntry.ticketId" 
-                type="text" 
+                v-model="editingEntry.ticketId"
+                type="text"
+                list="edit-entry-tickets"
                 :disabled="entriesStore.isLoading"
               />
+              <datalist id="edit-entry-tickets">
+                <option v-for="ticket in ticketOptions" :key="ticket.key" :value="ticket.key" :label="ticket.description" />
+              </datalist>
+              <TicketHint :ticket-id="editingEntry.ticketId" />
             </div>
           </div>
 
@@ -253,10 +259,24 @@
             </button>
           </div>
 
+          <div v-if="!jiraStore.lastQuery && timeTicketMatches.length" class="suggestion-item">
+            <label class="suggestion-label">Time Tickets:</label>
+            <button
+              v-for="match in timeTicketMatches"
+              :key="match.key"
+              type="button"
+              class="ticket-match"
+              @click="acceptTicket(match)"
+            >
+              <span class="ticket-match-key">{{ match.key }}</span>
+              <span class="ticket-match-summary">{{ match.summary }}</span>
+            </button>
+          </div>
+
           <div class="lookup-note">
             <span>ℹ️</span>
-            <p v-if="jiraStore.lastQuery">Only tickets assigned to you, reported by you, or recently updated by you are searched.</p>
-            <p v-else>These are the tickets assigned to you that are in progress. To find another, type a task name and search again.</p>
+            <p v-if="jiraStore.lastQuery">Only tickets assigned to you, reported by you, or recently updated by you are searched, plus the tickets in your Current Sprint project.</p>
+            <p v-else>These are the tickets assigned to you that are in progress, and your time tickets from Settings. To find another, type a task name and search again.</p>
           </div>
         </div>
         <div class="modal-footer">
@@ -286,6 +306,9 @@ import MeetingConflictPrompt from '@/features/entries/components/MeetingConflict
 import MeetingConflictReview from '@/features/entries/components/MeetingConflictReview.vue'
 import LunchConflictPrompt from '@/features/entries/components/LunchConflictPrompt.vue'
 import { useTicketOptions } from '@/shared/composables/useTicketOptions'
+import { timeTicketDetail, useTimeTickets } from '@/shared/composables/useTimeTickets'
+import TicketHint from '@/shared/components/TicketHint.vue'
+import TicketLabel from '@/shared/components/TicketLabel.vue'
 import { localDate } from '@/shared/utils/dates'
 
 const unmappedMeetings = ref<UnmappedMeeting[]>([])
@@ -315,6 +338,16 @@ const newEntry = ref({
 })
 
 const { ticketOptions, loadPiTickets } = useTicketOptions()
+const { timeTickets } = useTimeTickets()
+
+// The time tickets (PI and meeting tickets) set up in Settings. They are rarely
+// assigned to you, so the in-progress list would never show them.
+const timeTicketMatches = computed<JiraMatch[]>(() => {
+  const listed = new Set(jiraStore.matches.map(match => match.key.toLowerCase()))
+  return timeTickets.value
+    .filter(ticket => !listed.has(ticket.key.toLowerCase()))
+    .map(ticket => ({ key: ticket.key, summary: timeTicketDetail(ticket), status: '', confidence: 1 }))
+})
 
 const entriesByDate = computed(() => {
   return entriesStore.getEntriesByDate(selectedDate.value)
@@ -589,7 +622,7 @@ const findJiraTicket = async (target: 'add' | 'edit' = 'add') => {
     // With nothing to search for, offer what's being worked on instead.
     if (!query) {
       const inProgress = await jiraStore.findInProgress()
-      if (inProgress.length === 0) {
+      if (inProgress.length === 0 && timeTicketMatches.value.length === 0) {
         uiStore.showInfo('You have no Jira tickets in progress. Type a task name to search instead.')
         return
       }

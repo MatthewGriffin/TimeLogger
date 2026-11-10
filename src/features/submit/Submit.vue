@@ -96,7 +96,7 @@
                 </div>
                 <div class="col-date">{{ formatDate(entry.date) }}</div>
                 <div class="col-task">{{ entry.taskName }}</div>
-                <div class="col-ticket">{{ entry.ticketId || '-' }}</div>
+                <div class="col-ticket"><TicketLabel :ticket-id="entry.ticketId" empty="-" /></div>
                 <div class="col-activity">
                   <select
                     class="select-activity"
@@ -159,16 +159,85 @@
                 cannot be submitted — no ticket
               </span>
             </div>
+            <div class="assign-actions">
+              <button
+                type="button"
+                class="btn-range"
+                :disabled="isSuggesting || isAssigning"
+                @click="suggestTickets"
+              >
+                {{ isSuggesting ? 'Asking the local AI…' : '✨ Suggest tickets with local AI' }}
+              </button>
+              <button
+                v-if="approvableSuggestions.length > 1"
+                type="button"
+                class="btn-range active"
+                :disabled="isAssigning"
+                @click="approveAllSuggestions"
+              >
+                Approve all ({{ approvableSuggestions.length }})
+              </button>
+              <span class="assign-note">
+                Suggestions are only saved once you approve them. Or type a ticket on any row yourself.
+              </span>
+            </div>
+            <p v-if="suggestionMessage" class="blocked-hint assign-message">{{ suggestionMessage }}</p>
             <div class="blocked-list">
-              <div v-for="entry in blockedEntries" :key="entry.id" class="blocked-row">
+              <div v-for="entry in blockedEntries" :key="entry.id" class="blocked-row assign-row">
                 <span class="blocked-date">{{ formatDate(entry.date) }}</span>
-                <span class="blocked-task">{{ entry.taskName }}</span>
+                <span class="blocked-task" :title="entry.taskName">{{ entry.taskName }}</span>
                 <span class="blocked-hours">{{ formatDuration(entry.duration) }}</span>
+                <div class="assign-controls">
+                  <template v-if="suggestionFor(entry.id)?.ticketKey">
+                    <div class="suggestion">
+                      <strong class="suggestion-ticket">
+                        <TicketLabel :ticket-id="suggestionFor(entry.id)?.ticketKey" />
+                      </strong>
+                      <span class="source-badge" :class="`source-${suggestionFor(entry.id)?.source}`">
+                        {{ sourceLabel(suggestionFor(entry.id)?.source) }}
+                      </span>
+                      <small class="suggestion-reason">{{ suggestionFor(entry.id)?.reason }}</small>
+                    </div>
+                    <button type="button" class="btn-approve" :disabled="isAssigning" @click="approveSuggestion(entry.id)">
+                      Approve
+                    </button>
+                    <button type="button" class="btn-dismiss" :disabled="isAssigning" @click="dismissSuggestion(entry.id)">
+                      Dismiss
+                    </button>
+                  </template>
+                  <template v-else>
+                    <div class="manual-ticket">
+                      <input
+                        v-model="manualTickets[entry.id]"
+                        type="text"
+                        class="ticket-input"
+                        placeholder="Ticket, e.g. TIME-123"
+                        list="submit-ticket-options"
+                        :aria-label="`Ticket for ${entry.taskName}`"
+                        :disabled="isAssigning"
+                        @keyup.enter="assignManually(entry.id)"
+                      />
+                      <TicketHint :ticket-id="manualTickets[entry.id]" />
+                      <small v-if="suggestionFor(entry.id)" class="suggestion-reason">No ticket suggested for this one.</small>
+                    </div>
+                    <button
+                      type="button"
+                      class="btn-approve"
+                      :disabled="isAssigning || !manualTickets[entry.id]?.trim()"
+                      @click="assignManually(entry.id)"
+                    >
+                      Assign
+                    </button>
+                  </template>
+                </div>
               </div>
             </div>
+            <datalist id="submit-ticket-options">
+              <option v-for="ticket in ticketOptions" :key="ticket.key" :value="ticket.key" :label="ticket.description" />
+            </datalist>
             <p class="blocked-hint">
-              Breaks such as Lunch belong here. Assign a ticket on Daily Entries if any of these
-              should be logged to Tempo.
+              Breaks such as Lunch belong here, so leave those without a ticket. Everything you assign here
+              can then be submitted to Tempo.
             </p>
           </div>
         </div>
@@ -239,7 +308,7 @@
           >
             <div class="col-date">{{ row.date }}</div>
             <div class="col-ticket">
-              <span v-if="row.ticketId" class="ticket-chip">{{ row.ticketId }}</span>
+              <span v-if="row.ticketId" class="ticket-chip"><TicketLabel :ticket-id="row.ticketId" /></span>
               <span v-else class="ticket-chip missing" title="No ticket, so this can never reach Tempo">no ticket</span>
             </div>
             <div class="col-desc" :title="row.name">{{ row.name }}</div>
@@ -424,6 +493,9 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useEntriesStore, TempoVerificationError, type ActivityType } from '@/shared/stores/entries'
 import { useUiStore } from '@/shared/stores/ui'
+import TicketLabel from '@/shared/components/TicketLabel.vue'
+import TicketHint from '@/shared/components/TicketHint.vue'
+import { useTicketOptions } from '@/shared/composables/useTicketOptions'
 import { localDate, startOfWeek } from '@/shared/utils/dates'
 import { executeApi, ApiError } from '@/shared/utils/api'
 import { asRecord, asString, asNumber, asBoolean, readList } from '@/shared/utils/schema'
@@ -620,6 +692,106 @@ const blockedEntries = computed(() =>
     e.taskName.trim().toLowerCase() !== 'lunch'
   )
 )
+
+// Entries without a ticket can't reach Tempo. A ticket can be suggested for them
+// by the local AI, which only ever proposes: nothing is saved until the user
+// approves it. Or the user can type one themselves.
+interface TicketSuggestion {
+  entryId: number
+  ticketKey: string | null
+  source: string | null
+  reason: string
+}
+
+const TICKET_KEY = /^[A-Z][A-Z0-9]+-\d+$/i
+
+const { ticketOptions } = useTicketOptions()
+const ticketSuggestions = ref<TicketSuggestion[]>([])
+const manualTickets = ref<Record<string, string>>({})
+const suggestionMessage = ref('')
+const isSuggesting = ref(false)
+const isAssigning = ref(false)
+
+onMounted(() => { void entriesStore.loadRecentIssues() })
+
+const suggestionFor = (id: string) => ticketSuggestions.value.find(item => String(item.entryId) === id)
+
+const approvableSuggestions = computed(() =>
+  ticketSuggestions.value.filter(item => item.ticketKey && blockedEntries.value.some(e => e.id === String(item.entryId)))
+)
+
+const sourceLabel = (source: string | null | undefined) =>
+  ({ keyword: 'Keyword', history: 'Used before', ai: 'Local AI' } as Record<string, string>)[source ?? ''] ?? ''
+
+const suggestTickets = async () => {
+  const entryIds = blockedEntries.value.map(entry => Number(entry.id))
+  if (entryIds.length === 0) return
+  isSuggesting.value = true
+  suggestionMessage.value = ''
+  try {
+    const result = asRecord(await executeApi('suggest_entry_tickets', { entryIds }))
+    if (!asBoolean(result.success, false)) throw new Error(asString(result.message, 'Could not suggest tickets'))
+    ticketSuggestions.value = readList(result, 'suggestions', raw => ({
+      entryId: asNumber(raw.entryId),
+      ticketKey: asString(raw.ticketKey) || null,
+      source: asString(raw.source) || null,
+      reason: asString(raw.reason)
+    }))
+    const found = ticketSuggestions.value.filter(item => item.ticketKey).length
+    suggestionMessage.value = [
+      found ? `${found} of ${entryIds.length} entries have a suggestion. Approve the ones that look right.` : 'No ticket could be suggested. You can type one on each row.',
+      asBoolean(result.aiAvailable, false) ? '' : 'The local AI isn\'t running, so only keywords and earlier entries were used.'
+    ].filter(Boolean).join(' ')
+  } catch (error) {
+    uiStore.reportError(error, 'Could not suggest tickets')
+  } finally {
+    isSuggesting.value = false
+  }
+}
+
+/** Saves tickets for the given entries, then reloads so they move into the submit list. */
+const assignTickets = async (assignments: Array<{ entryId: string; ticketKey: string }>) => {
+  isAssigning.value = true
+  try {
+    for (const { entryId, ticketKey } of assignments) {
+      const result = asRecord(await executeApi('sprint_assign_meeting_ticket', { ticketKey, entryIds: [Number(entryId)] }))
+      if (!asBoolean(result.success, false) || asNumber(result.updated, 0) < 1) {
+        throw new Error(asString(result.message, `Could not assign ${ticketKey}`))
+      }
+      ticketSuggestions.value = ticketSuggestions.value.filter(item => String(item.entryId) !== entryId)
+      delete manualTickets.value[entryId]
+    }
+    uiStore.showSuccess(assignments.length === 1 ? `Assigned ${assignments[0].ticketKey}` : `Assigned tickets to ${assignments.length} entries`)
+  } catch (error) {
+    uiStore.reportError(error, 'Could not assign the ticket')
+  } finally {
+    await applyRange()
+    isAssigning.value = false
+  }
+}
+
+const approveSuggestion = (id: string) => {
+  const ticketKey = suggestionFor(id)?.ticketKey
+  if (ticketKey) void assignTickets([{ entryId: id, ticketKey }])
+}
+
+const approveAllSuggestions = () =>
+  assignTickets(approvableSuggestions.value.map(item => ({ entryId: String(item.entryId), ticketKey: item.ticketKey as string })))
+
+const dismissSuggestion = (id: string) => {
+  ticketSuggestions.value = ticketSuggestions.value.map(item =>
+    String(item.entryId) === id ? { ...item, ticketKey: null, source: null } : item
+  )
+}
+
+const assignManually = (id: string) => {
+  const ticketKey = (manualTickets.value[id] ?? '').trim().toUpperCase()
+  if (!TICKET_KEY.test(ticketKey)) {
+    uiStore.showError('Enter a ticket such as TIME-123.')
+    return
+  }
+  void assignTickets([{ entryId: id, ticketKey }])
+}
 
 const formatDate = (dateStr: string) => {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-GB', {
@@ -1859,6 +2031,90 @@ const reconcileDuration = async (row: ReconciledRow) => {
 
 .blocked-hours {
   text-align: right;
+}
+
+.assign-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.assign-note {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+
+.assign-message {
+  margin: 0 0 0.5rem;
+}
+
+.assign-row {
+  align-items: center;
+}
+
+.assign-controls {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.suggestion,
+.manual-ticket {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.suggestion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.5rem;
+}
+
+.suggestion-ticket {
+  color: var(--color-accent);
+  overflow-wrap: anywhere;
+}
+
+.suggestion-reason {
+  flex-basis: 100%;
+  opacity: 0.75;
+}
+
+.ticket-input {
+  width: 100%;
+  padding: 0.3rem 0.5rem;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  color: var(--color-text);
+  font-size: 0.85rem;
+}
+
+.btn-approve,
+.btn-dismiss {
+  padding: 0.3rem 0.8rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-control);
+  color: var(--color-text);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.btn-approve {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.btn-approve:disabled,
+.btn-dismiss:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .blocked-hint {
