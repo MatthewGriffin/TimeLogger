@@ -340,46 +340,23 @@ const MAX_CACHED_DETAILS = 200;
 const candidateCache = new Map();
 const detailCache = new Map();
 
-const matchesSearchText = (candidate, text) => {
-  const wanted = text.toLowerCase();
-  return [candidate.title, candidate.repository, candidate.author, String(candidate.number)]
-    .some(value => String(value || '').toLowerCase().includes(wanted));
-};
-
-/**
- * One page of the pull requests the filters list, loading details for that page only.
- *
- * Search text goes to GitHub, which covers titles, descriptions and comments. It
- * is also matched here against the repository, author and number of the 60 most
- * recent PRs, which GitHub's text search doesn't cover. The branch name needs the
- * PR's details, so it can't be matched without loading every one.
- */
-export async function listPullRequestsPage(token, { relationship, state, search, page = 1, pageSize = 3, refresh = false }, diagnostics) {
+/** One page of the pull requests the filters list, loading details for that page only. */
+export async function listPullRequestsPage(token, { relationship, state, page = 1, pageSize = 3, refresh = false }, diagnostics) {
   const login = readConfig().login || await account(token);
   const size = Math.max(1, Math.min(20, Number(pageSize) || 3));
   const pageNumber = Math.max(1, Number(page) || 1);
   // One more than the page needs, to know whether there is a next page.
   const needed = pageNumber * size + 1;
-  const text = String(search || '').trim();
   const filters = { relationship, state };
 
-  const key = JSON.stringify([login, relationship || 'all', state || 'all', text]);
+  const key = JSON.stringify([login, relationship || 'all', state || 'all']);
   const cached = candidateCache.get(key);
   let candidates;
   if (!refresh && cached && cached.expires > Date.now() && cached.limit >= needed) {
     candidates = cached.candidates;
     if (diagnostics) Object.assign(diagnostics, cached.diagnostics);
   } else {
-    const base = await findCandidates(token, login, diagnostics, filters, text ? MAX_PRS : needed);
-    candidates = base;
-    if (text) {
-      const found = await findCandidates(token, login, diagnostics, { ...filters, search: text }, needed);
-      const merged = new Map(found.map(candidate => [`${candidate.repository}#${candidate.number}`, candidate]));
-      for (const candidate of base.filter(item => matchesSearchText(item, text))) {
-        merged.set(`${candidate.repository}#${candidate.number}`, candidate);
-      }
-      candidates = [...merged.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    }
+    candidates = await findCandidates(token, login, diagnostics, filters, needed);
     candidateCache.set(key, {
       expires: Date.now() + CANDIDATE_CACHE_MS,
       limit: needed,
@@ -683,7 +660,7 @@ export const tools = [
         ticketKeys: { type: 'array', items: { type: 'string' } },
         relationship: { type: 'string', enum: ['all', 'authored', 'review', 'mentioned'] },
         state: { type: 'string', enum: ['all', 'open', 'draft', 'merged', 'closed'] },
-        search: { type: 'string', description: 'Words GitHub must find in the title, description or comments' },
+        search: { type: 'string', description: 'Words GitHub must find in the title, description or comments (not used when paging)' },
         page: { type: 'number', description: 'Return only this page (from 1), loading details for its pull requests alone' },
         pageSize: { type: 'number', description: 'Pull requests per page when paging (default 3)' },
         refresh: { type: 'boolean', description: 'Ignore the short-lived cache of earlier results when paging' }
@@ -694,7 +671,7 @@ export const tools = [
       try {
         const diagnostics = { searches: [], candidateCount: 0, detailFailures: [] };
         if (page !== undefined) {
-          const result = await listPullRequestsPage(requireToken(), { relationship, state, search, page, pageSize, refresh }, diagnostics);
+          const result = await listPullRequestsPage(requireToken(), { relationship, state, page, pageSize, refresh }, diagnostics);
           return { success: true, ...result, diagnostics };
         }
         const prs = await listRelevantPullRequests(requireToken(), extractTicketKeys(...ticketKeys), MAX_PRS, diagnostics, { relationship, state, search });
