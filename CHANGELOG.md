@@ -4,6 +4,13 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.1-beta.1
+
+- On the Submit page, entries with no ticket can now get one. Ask the local AI to suggest tickets, then approve or dismiss each one (nothing is saved until you approve), or type a ticket on the row yourself.
+- Time tickets now show their PI and type, like "PI 44 TIME-1234 Daily Scrum", in ticket lists and suggestions, under ticket fields, on the entry and note lists, on Daily Scrum, and when choosing a ticket for a meeting.
+- Editing an entry now suggests tickets in the ticket box, and the search button with an empty task name also lists your time tickets, not only the tickets assigned to you.
+- Fixed the update installer still failing with "Error opening file for writing". The app no longer restarts its background service while an update is installing. You may see the error once more, installing this version.
+
 ## 0.9.0
 
 - Daily Scrum now lists the pull requests behind your open blockers, marked as blockers and shown first, and its pull request cards match the Pull Requests page.
