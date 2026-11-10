@@ -34,6 +34,13 @@ fn backend_is_listening() -> bool {
 pub(crate) fn ensure_backend(force: bool) -> Result<String, String> {
   let _guard = BACKEND_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 
+  // Quitting and installing an update both stop the backend on purpose. A request
+  // that was already in flight would otherwise start it again before the
+  // installer runs, and it would hold the native sqlite module open.
+  if SHUTTING_DOWN.load(std::sync::atomic::Ordering::SeqCst) {
+    return Err("TimeLogger is shutting down.".to_string());
+  }
+
   // A concurrent caller may have already restarted it while we waited.
   if !force && backend_is_listening() {
     return Ok("Backend already running".to_string());
@@ -275,6 +282,16 @@ mod tests {
     assert!(message.contains("port 3001"));
     assert!(message.contains("will not terminate"));
     assert!(message.contains("Close the application"));
+  }
+
+  #[test]
+  fn the_backend_is_not_started_while_shutting_down() {
+    super::SHUTTING_DOWN.store(true, std::sync::atomic::Ordering::SeqCst);
+    let normal = super::ensure_backend(false);
+    let forced = super::ensure_backend(true);
+    super::SHUTTING_DOWN.store(false, std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(normal, Err("TimeLogger is shutting down.".to_string()));
+    assert_eq!(forced, Err("TimeLogger is shutting down.".to_string()));
   }
 }
 
