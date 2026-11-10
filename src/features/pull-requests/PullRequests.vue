@@ -22,10 +22,6 @@
 
     <template v-if="connected">
       <div class="pr-toolbar">
-        <label class="search-field">
-          <span>Search</span>
-          <input v-model="searchText" type="search" placeholder="Title, repository, author…" />
-        </label>
         <label>
           <span>Relationship</span>
           <select v-model="relationshipFilter">
@@ -64,7 +60,7 @@
       </section>
       <div v-else-if="prsLoaded" class="empty-state">
         <h2>No pull requests match these filters</h2>
-        <p>Try changing the search or filters. Pull requests are limited to those authored by you, connected to your review activity, or mentioning you.</p>
+        <p>Try changing the filters. Pull requests are limited to those authored by you, connected to your review activity, or mentioning you.</p>
       </div>
     </template>
     </div>
@@ -72,7 +68,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { executeApi } from '@/shared/utils/api'
 import PullRequestCard from '@/features/pull-requests/components/PullRequestCard.vue'
 
@@ -106,8 +102,6 @@ interface PullRequestListResult {
     detailFailures?: Array<{ repository: string; number: number; endpoint: string; message: string }> }
 }
 
-const SEARCH_DEBOUNCE_MS = 500
-const MIN_GITHUB_SEARCH_LENGTH = 2
 // Only the pull requests on the page are loaded from GitHub, so a small page keeps it quick.
 const PAGE_SIZE = 3
 
@@ -116,7 +110,6 @@ const login = ref('')
 const checkingConnection = ref(false)
 const hasError = ref(false)
 const message = ref('')
-const searchText = ref('')
 const relationshipFilter = ref('all')
 const stateFilter = ref('open')
 const currentPage = ref(1)
@@ -147,11 +140,6 @@ const describeProblems = (result: PullRequestListResult): string => {
   return ''
 }
 
-const githubSearch = computed(() => {
-  const text = searchText.value.trim()
-  return text.length >= MIN_GITHUB_SEARCH_LENGTH ? text : ''
-})
-
 // The page asks GitHub for its own pull requests only, so these are all it shows.
 // They are still checked against the filters, in case GitHub's search index is
 // behind and returns one with another status.
@@ -178,7 +166,6 @@ const loadPage = async (refresh = false) => {
     const result = await executeApi<PullRequestListResult>('github_pr_list', {
       relationship: relationshipFilter.value,
       state: stateFilter.value,
-      search: githubSearch.value,
       page: currentPage.value,
       pageSize: PAGE_SIZE,
       refresh: bypassCache
@@ -208,30 +195,15 @@ const resetResults = () => {
   loadNotice.value = ''
 }
 
-// Changing a filter or the search starts again from the first page. Moving the
-// page number is what loads, so it isn't loaded twice when it was already there.
-const loadFromFirstPage = () => {
-  if (currentPage.value !== 1) currentPage.value = 1
-  else void loadPage()
-}
-
-let searchTimer: ReturnType<typeof setTimeout> | undefined
-
 watch(currentPage, () => { if (connected.value) void loadPage() })
 
+// Changing a filter starts again from the first page. Moving the page number is
+// what loads, so it isn't loaded twice when it was already there.
 watch([relationshipFilter, stateFilter], () => {
-  clearTimeout(searchTimer)
-  if (connected.value) loadFromFirstPage()
-})
-
-watch(githubSearch, () => {
-  clearTimeout(searchTimer)
   if (!connected.value) return
-  loading.value = true
-  searchTimer = setTimeout(loadFromFirstPage, SEARCH_DEBOUNCE_MS)
+  if (currentPage.value !== 1) currentPage.value = 1
+  else void loadPage()
 })
-
-onBeforeUnmount(() => clearTimeout(searchTimer))
 
 const refresh = async () => {
   checkingConnection.value = true
@@ -281,8 +253,6 @@ onMounted(refresh)
 .pr-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; margin: 1.5rem 0 1rem; }
 .pr-toolbar label { display: flex; flex-direction: column; gap: .35rem; color: var(--color-text-muted); font-size: .9rem; }
 .pr-toolbar input, .pr-toolbar select { min-width: 12rem; max-width: 100%; padding: .6rem .7rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text); }
-.pr-toolbar .search-field { flex: 1 1 18rem; }
-.pr-toolbar .search-field input { width: 100%; box-sizing: border-box; }
 .summary-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem; color: var(--color-text-muted); font-size: .9rem; margin-bottom: 1rem; }
 .pr-list { display: grid; grid-template-columns: 1fr; gap: var(--space-md); }
 .empty-state { margin-top: 1.5rem; padding: 2rem; text-align: center; border: 1px dashed var(--color-border); border-radius: var(--radius-md); color: var(--color-text-muted); }

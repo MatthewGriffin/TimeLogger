@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.1-beta.4
+
+- The Pull Requests page no longer has a search box. Use the relationship and status filters, which pick what's loaded, and the page keeps what it has loaded for a minute so going back is instant.
+
 ## 0.9.1-beta.3
 
 - The Pull Requests page now shows 3 pull requests at a time and only asks GitHub for the ones on the page, so it loads much faster and uses far fewer requests. Going back to a page you've seen is instant.
