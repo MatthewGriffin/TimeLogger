@@ -197,15 +197,21 @@ function fallbackSummary(yesterday, today, blockers) {
 function fetchPullRequests(scope) {
   if (pullRequestFetch?.key === scope.key) return pullRequestFetch.promise;
   const promise = (async () => {
-    const [ticketPullRequests, majorUpdatePullRequests] = await Promise.all([
+    const [ticketPullRequests, majorUpdatePullRequests, blockerPullRequests] = await Promise.all([
       getPullRequestsForTickets(scope.tickets),
-      getPullRequestsWithMajorUpdatesOnDate(scope.yesterday, scope.tickets)
+      getPullRequestsWithMajorUpdatesOnDate(scope.yesterday, scope.tickets),
+      getPullRequestsForTickets(scope.blockerTickets)
     ]);
     const byId = new Map();
-    for (const pr of [...ticketPullRequests, ...majorUpdatePullRequests]) byId.set(pr.id, pr);
+    // The same PR can come from both searches. Keep every field either one set,
+    // so the card shows what the Pull Requests page would.
+    for (const pr of [...ticketPullRequests, ...majorUpdatePullRequests]) {
+      const prior = byId.get(pr.id);
+      byId.set(pr.id, prior ? mergePullRequest(prior, pr) : pr);
+    }
     const pullRequests = [...byId.values()].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
-    cachedPullRequests = { ...scope, pullRequests, outdated: false };
-    return pullRequests;
+    cachedPullRequests = { ...scope, pullRequests, blockerPullRequests, outdated: false };
+    return cachedPullRequests;
   })().finally(() => {
     if (pullRequestFetch?.promise === promise) pullRequestFetch = null;
   });
@@ -213,13 +219,36 @@ function fetchPullRequests(scope) {
   return promise;
 }
 
-/** The report's pull requests, from GitHub only when the cached ones don't apply. */
-async function pullRequestsForReport(yesterday, tickets) {
+/** Combine two copies of a PR: flags are kept if either has them, and the newer update wins. */
+function mergePullRequest(a, b) {
+  const merged = { ...a, ...b };
+  for (const flag of ['requestedReviewer', 'isAuthoredByAccount', 'reviewedByAccount', 'mentionsAccount', 'pendingReview']) {
+    merged[flag] = Boolean(a[flag] || b[flag]);
+  }
+  merged.commentCount = Math.max(Number(a.commentCount) || 0, Number(b.commentCount) || 0);
+  return merged;
+}
+
+/** Ticket keys an open blocker is about: its ticket field, plus any named in its title or note. */
+function blockerTicketKeys(blocker) {
+  return extractTicketKeys(blocker.ticket_id, blocker.title, blocker.note);
+}
+
+/**
+ * The report's pull requests and each open blocker's, from GitHub only when the
+ * cached ones don't apply. Blocker PRs are the ones linked to the blocker's
+ * ticket that the account authored or reviews.
+ */
+async function pullRequestsForReport(yesterday, tickets, blockers) {
   const uniqueTickets = [...new Set(tickets)].sort();
+  const blockerTickets = [...new Set(blockers.flatMap(blockerTicketKeys))].sort();
   const account = connectedGitHubAccount();
-  const scope = { key: JSON.stringify([yesterday, uniqueTickets, account]), yesterday, tickets: uniqueTickets, account };
+  const scope = {
+    key: JSON.stringify([yesterday, uniqueTickets, blockerTickets, account]),
+    yesterday, tickets: uniqueTickets, blockerTickets, account
+  };
   const cached = cachedPullRequests?.key === scope.key ? cachedPullRequests : null;
-  if (cached && !cached.outdated) return cached.pullRequests;
+  if (cached && !cached.outdated) return cached;
   try {
     return await fetchPullRequests(scope);
   } catch (error) {
@@ -227,8 +256,19 @@ async function pullRequestsForReport(yesterday, tickets) {
     // core stand-up summary unavailable. Outdated results stay marked as such,
     // so the next poll or page visit tries again.
     console.warn('Could not load GitHub pull requests for scrum:', error.message);
-    return cached?.pullRequests ?? [];
+    return cached ?? { pullRequests: [], blockerPullRequests: [] };
   }
+}
+
+/** Attach to each blocker the PRs linked to its ticket, as the same data the PR page shows. */
+function withBlockerPullRequests(blockers, blockerPullRequests) {
+  return blockers.map(blocker => {
+    const keys = new Set(blockerTicketKeys(blocker));
+    const pullRequests = blockerPullRequests
+      .filter(pr => pr.ticketKeys.some(key => keys.has(key)))
+      .map(pr => ({ ...pr, matchedTicketKeys: pr.ticketKeys.filter(key => keys.has(key)) }));
+    return { ...blocker, pullRequests };
+  });
 }
 
 /**
@@ -245,8 +285,11 @@ function pollAffectsReport(cached, { prs, changed, removed }) {
   const reportKeys = new Set(cached.pullRequests.map(pr => `${pr.repository}#${pr.number}`));
   if (removed.some(key => reportKeys.has(key))) return true;
 
-  const workedTickets = new Set(extractTicketKeys(...cached.tickets));
-  return changed.some(pr => !inReport.has(pr.id) && pr.ticketKeys.some(key => workedTickets.has(key)));
+  const inBlockers = new Map(cached.blockerPullRequests.map(pr => [pr.id, pr]));
+  if (prs.some(pr => inBlockers.has(pr.id) && inBlockers.get(pr.id).updatedAt !== pr.updatedAt)) return true;
+
+  const workedTickets = new Set(extractTicketKeys(...cached.tickets, ...cached.blockerTickets));
+  return changed.some(pr => !inReport.has(pr.id) && !inBlockers.has(pr.id) && pr.ticketKeys.some(key => workedTickets.has(key)));
 }
 
 onPullRequestsPolled(async poll => {
@@ -309,13 +352,13 @@ export const tools = [
 
         const summary = fallbackSummary(previous, current, blockers);
         const workedTicketValues = previous.entries.map(entry => entry.ticket_id).filter(Boolean);
-        const pullRequests = await pullRequestsForReport(yesterday, workedTicketValues);
+        const { pullRequests, blockerPullRequests } = await pullRequestsForReport(yesterday, workedTicketValues, blockers);
 
         return {
           success: true,
           yesterday: previous,
           today: current,
-          blockers,
+          blockers: withBlockerPullRequests(blockers, blockerPullRequests),
           summary,
           pullRequests
         };

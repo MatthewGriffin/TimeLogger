@@ -63,7 +63,17 @@ function toPullRequest(raw: unknown): ScrumPullRequest {
     isAuthoredByAccount: row.isAuthoredByAccount === true,
     ticketKeys: Array.isArray(row.ticketKeys) ? row.ticketKeys.map(String) : [],
     matchedTicketKeys: Array.isArray(row.matchedTicketKeys) ? row.matchedTicketKeys.map(String) : [],
-    updatedAt: asString(row.updatedAt)
+    updatedAt: asString(row.updatedAt),
+    commentCount: row.commentCount === undefined ? undefined : Number(row.commentCount) || 0,
+    pendingReview: row.pendingReview === true
+  }
+}
+
+function toBlocker(raw: unknown): ScrumBlocker {
+  const row = asRecord(raw)
+  return {
+    ...toNote(raw),
+    pullRequests: Array.isArray(row.pullRequests) ? row.pullRequests.map(toPullRequest) : []
   }
 }
 
@@ -90,7 +100,7 @@ function toReport(result: Record<string, unknown>): ScrumReport {
   return {
     yesterday: toDay(result.yesterday),
     today: toDay(result.today),
-    blockers: (Array.isArray(result.blockers) ? result.blockers.map(toNote) : []) as ScrumBlocker[],
+    blockers: Array.isArray(result.blockers) ? result.blockers.map(toBlocker) : [],
     summary: String(result.summary ?? ''),
     pullRequests: Array.isArray(result.pullRequests) ? result.pullRequests.map(toPullRequest) : []
   }

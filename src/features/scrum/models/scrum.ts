@@ -23,6 +23,7 @@ export interface ScrumBlocker {
   note: string
   title: string | null
   ticketId: string | null
+  pullRequests: ScrumPullRequest[]
 }
 
 export interface ScrumDay {
@@ -51,6 +52,8 @@ export interface ScrumPullRequest {
   ticketKeys: string[]
   matchedTicketKeys: string[]
   updatedAt: string | null
+  commentCount?: number
+  pendingReview?: boolean
 }
 
 export interface ScrumReport {
