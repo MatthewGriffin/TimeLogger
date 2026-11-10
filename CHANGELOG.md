@@ -4,6 +4,19 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.0
+
+- Daily Scrum now lists the pull requests behind your open blockers, marked as blockers and shown first, and its pull request cards match the Pull Requests page.
+- Meetings that match one of your Current Sprint keywords, like the Daily Scrum, now get their ticket automatically. The ones that don't match say why.
+- Blockers on a note now show whether they're open or resolved, and you can resolve or reopen one from the note. A resolved blocker no longer comes back after the note is edited.
+- The ticket list on Add Entry and notes says what each ticket is, always includes your current PI tickets, and the Jira search button lists your in-progress tickets when the name and ticket are empty.
+- The PI Ticket Correction Review now sits below Local Entries vs Tempo on the Submit page, and looks like the rest of that page.
+- The pull requests page no longer fails all its searches at once, retries when GitHub has a hiccup, and shows the first error if one still fails.
+- You can roll back to an earlier version in Settings > About. The Main update channel is now called Stable, and the app checks for updates every few hours while it's open.
+- Updates no longer interrupt you: an "Update available" button appears in the sidebar and shows what's new.
+- The update installer no longer fails with "Error opening file for writing". The app now stops its background service before installing. You may see the error once more, installing this version.
+- The dashboard workday target now leaves out lunch, so a full day no longer shows an hour remaining.
+
 ## 0.9.0-beta.7
 
 - Meetings that match one of your Current Sprint keywords, like the Daily Scrum, now get their ticket automatically. The ones that don't match say why.
