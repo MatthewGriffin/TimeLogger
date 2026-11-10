@@ -261,7 +261,7 @@ async function findCandidates(token, login, diagnostics, filters, limit) {
     const key = `${repository}#${number}`;
     const prior = candidates.get(key) || {
       repository, number, title: String(item.title || ''), author: String(item.user?.login || ''),
-      fromReviewSearch: false, mentionsAccount: false, updatedAt: ''
+      closed: item.state === 'closed', fromReviewSearch: false, mentionsAccount: false, updatedAt: ''
     };
     if (reviewedByAccount.includes(item)) prior.fromReviewSearch = true;
     if (mentionsAccount.includes(item)) prior.mentionsAccount = true;
@@ -333,12 +333,53 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS,
 }
 
 // The Pull Requests page shows a few PRs at a time, so it only loads the ones on
-// the page. The candidate lists and the confirmed PRs are kept briefly, which
-// makes paging back and forth free and spares GitHub's search rate limit.
-const CANDIDATE_CACHE_MS = 60 * 1000;
+// the page. What it has loaded is kept so paging back and forth costs nothing:
+//
+//  - Open and draft PRs change all the time, so their lists and details are only
+//    kept for a minute (details are also keyed on the update time GitHub reports).
+//  - Merged and closed PRs stay that way, so each one is saved in the database the
+//    first time it is loaded and never loaded again. Only the searches for new
+//    ones are repeated, and the list of them is reused for ten minutes.
+const OPEN_CACHE_MS = 60 * 1000;
+const FINISHED_CACHE_MS = 10 * 60 * 1000;
 const MAX_CACHED_DETAILS = 200;
+const MAX_SAVED_FINISHED = 500;
 const candidateCache = new Map();
 const detailCache = new Map();
+
+function ensurePrCacheTable() {
+  db.exec(`CREATE TABLE IF NOT EXISTS github_pr_cache (
+    cache_key TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    saved_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+}
+
+const isFinishedPullRequest = pr => pr?.state === 'merged' || pr?.state === 'closed';
+
+function readFinishedPullRequest(cacheKey) {
+  try {
+    ensurePrCacheTable();
+    const row = db.prepare('SELECT data FROM github_pr_cache WHERE cache_key = ?').get(cacheKey);
+    return row ? JSON.parse(row.data) : null;
+  } catch {
+    // A damaged row just means the PR is loaded again.
+    return null;
+  }
+}
+
+function saveFinishedPullRequest(cacheKey, pr) {
+  try {
+    ensurePrCacheTable();
+    db.prepare('INSERT OR REPLACE INTO github_pr_cache (cache_key, data, saved_at) VALUES (?, ?, CURRENT_TIMESTAMP)')
+      .run(cacheKey, JSON.stringify(pr));
+    // Bounded, so the oldest are dropped and simply loaded again if they're wanted.
+    db.prepare(`DELETE FROM github_pr_cache WHERE cache_key NOT IN
+      (SELECT cache_key FROM github_pr_cache ORDER BY saved_at DESC, rowid DESC LIMIT ?)`).run(MAX_SAVED_FINISHED);
+  } catch (error) {
+    console.warn('Could not save a finished pull request:', error.message);
+  }
+}
 
 /** One page of the pull requests the filters list, loading details for that page only. */
 export async function listPullRequestsPage(token, { relationship, state, page = 1, pageSize = 3, refresh = false }, diagnostics) {
@@ -348,6 +389,7 @@ export async function listPullRequestsPage(token, { relationship, state, page = 
   // One more than the page needs, to know whether there is a next page.
   const needed = pageNumber * size + 1;
   const filters = { relationship, state };
+  const onlyFinished = state === 'merged' || state === 'closed';
 
   const key = JSON.stringify([login, relationship || 'all', state || 'all']);
   const cached = candidateCache.get(key);
@@ -358,7 +400,7 @@ export async function listPullRequestsPage(token, { relationship, state, page = 
   } else {
     candidates = await findCandidates(token, login, diagnostics, filters, needed);
     candidateCache.set(key, {
-      expires: Date.now() + CANDIDATE_CACHE_MS,
+      expires: Date.now() + (onlyFinished ? FINISHED_CACHE_MS : OPEN_CACHE_MS),
       limit: needed,
       candidates,
       diagnostics: diagnostics ? JSON.parse(JSON.stringify(diagnostics)) : {}
@@ -368,20 +410,30 @@ export async function listPullRequestsPage(token, { relationship, state, page = 
   const slice = candidates.slice((pageNumber - 1) * size, pageNumber * size);
   const fetchDetail = detailFetcher(token, login, [], diagnostics);
   const prs = await Promise.all(slice.map(async candidate => {
-    const detailKey = `${login}|${candidate.repository}#${candidate.number}@${candidate.updatedAt}|${candidate.fromReviewSearch}|${candidate.mentionsAccount}`;
+    const flags = `${candidate.fromReviewSearch}|${candidate.mentionsAccount}`;
+    const finishedKey = `${login}|${candidate.repository}#${candidate.number}|${flags}`;
+    // The search says whether it's closed, and merged ones are closed too.
+    if (candidate.closed) {
+      const saved = readFinishedPullRequest(finishedKey);
+      if (saved) return saved;
+    }
+    const detailKey = `${finishedKey}@${candidate.updatedAt}`;
     if (detailCache.has(detailKey)) return detailCache.get(detailKey);
     const pr = await fetchDetail(candidate);
     // A failed lookup isn't kept, so the next visit tries it again.
     if (pr) {
-      detailCache.set(detailKey, pr);
-      if (detailCache.size > MAX_CACHED_DETAILS) detailCache.delete(detailCache.keys().next().value);
+      if (isFinishedPullRequest(pr)) {
+        saveFinishedPullRequest(finishedKey, pr);
+      } else {
+        detailCache.set(detailKey, pr);
+        if (detailCache.size > MAX_CACHED_DETAILS) detailCache.delete(detailCache.keys().next().value);
+      }
     }
     return pr;
   }));
 
   return { prs: prs.filter(Boolean), page: pageNumber, pageSize: size, hasMore: candidates.length > pageNumber * size };
 }
-
 function ensureEventTable() {
   db.exec(`CREATE TABLE IF NOT EXISTS github_pr_seen_events (
     event_id TEXT PRIMARY KEY,
@@ -648,6 +700,7 @@ export const tools = [
       db.prepare("DELETE FROM settings WHERE key = 'github_pr_poll_initialized'").run();
       db.prepare("DELETE FROM settings WHERE key = 'github_pr_lifecycle_initialized'").run();
       try { db.prepare('DELETE FROM github_pr_lifecycle').run(); } catch { /* table is created on first poll */ }
+      try { db.prepare('DELETE FROM github_pr_cache').run(); } catch { /* table is created on first use */ }
       return { success: true, connected: false, login: '', message: 'GitHub disconnected.' };
     }
   },

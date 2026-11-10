@@ -48,21 +48,22 @@
         <span v-if="login">Connected as @{{ login }}</span>
       </div>
 
-      <div v-if="loading && !filteredPrs.length" class="empty-state" aria-live="polite">Loading pull requests…</div>
-      <section v-else-if="prsLoaded && (filteredPrs.length || currentPage > 1)" class="pr-list" :aria-busy="loading" aria-label="Pull requests">
+      <div v-if="!prsLoaded && loading" class="empty-state" aria-live="polite">Loading page {{ currentPage }}…</div>
+      <section v-else-if="prsLoaded && filteredPrs.length" class="pr-list" :aria-busy="loading" aria-label="Pull requests">
         <PullRequestCard v-for="pr in filteredPrs" :key="pr.id" :pr="pr" />
-        <p v-if="!filteredPrs.length" class="empty-page">Nothing on this page. Go back to the previous page.</p>
-        <nav v-if="currentPage > 1 || hasMore" class="pagination" aria-label="Pull request pages">
-          <button type="button" class="btn-refresh" :disabled="currentPage === 1 || loading" @click="currentPage--">Previous</button>
-          <span>Page {{ currentPage }}</span>
-          <button type="button" class="btn-refresh" :disabled="!hasMore || loading" @click="currentPage++">Next</button>
-        </nav>
       </section>
       <div v-else-if="prsLoaded" class="empty-state">
         <h2>No pull requests match these filters</h2>
         <p>Try changing the filters. Pull requests are limited to those authored by you, connected to your review activity, or mentioning you.</p>
       </div>
-    </template>
+
+      <!-- Previous stays available while the next page loads, and that page keeps
+           loading in the background so it is ready when you come back to it. -->
+      <nav v-if="currentPage > 1 || hasMore" class="pagination" aria-label="Pull request pages">
+        <button type="button" class="btn-refresh" :disabled="currentPage === 1" @click="currentPage--">Previous</button>
+        <span>Page {{ currentPage }}</span>
+        <button type="button" class="btn-refresh" :disabled="!hasMore" @click="currentPage++">Next</button>
+      </nav>    </template>
     </div>
   </div>
 </template>
@@ -114,12 +115,24 @@ const relationshipFilter = ref('all')
 const stateFilter = ref('open')
 const currentPage = ref(1)
 
-const prs = ref<PullRequest[]>([])
-const prsLoaded = ref(false)
-const loading = ref(false)
-const loadNotice = ref('')
-const hasMore = ref(false)
+// What each page returned, so going back to a page, or on to one that was loading
+// while you were elsewhere, shows it straight away. Merged and closed pull requests
+// don't change, so those pages are kept until Refresh. Open ones are reloaded after
+// a minute.
+interface PageResult { prs: PullRequest[]; hasMore: boolean; notice: string; at: number }
+const OPEN_PAGE_MS = 60 * 1000
+const pages = ref<Record<string, PageResult>>({})
+const failures = ref<Record<string, string>>({})
+const loadingPages = ref<string[]>([])
 
+const keepsPages = computed(() => stateFilter.value === 'merged' || stateFilter.value === 'closed')
+const pageKey = (page: number) => `${relationshipFilter.value}|${stateFilter.value}|${page}`
+const currentResult = computed(() => pages.value[pageKey(currentPage.value)])
+const prs = computed(() => currentResult.value?.prs ?? [])
+const hasMore = computed(() => currentResult.value?.hasMore === true)
+const prsLoaded = computed(() => Boolean(currentResult.value))
+const loading = computed(() => loadingPages.value.includes(pageKey(currentPage.value)))
+const loadNotice = computed(() => currentResult.value?.notice || failures.value[pageKey(currentPage.value)] || '')
 const describeProblems = (result: PullRequestListResult): string => {
   const diagnostics = result.diagnostics
   const searches = diagnostics?.searches || []
@@ -152,57 +165,65 @@ const filteredPrs = computed(() => prs.value.filter(pr => {
   return relationshipMatches && stateMatches
 }))
 
-// A newer request makes any response still in flight stale, so a slow reply
-// can't replace the page the user has moved to.
-let latest = 0
-// Set when Refresh moves back to the first page, whose load then skips the cache.
-let forceRefresh = false
-const loadPage = async (refresh = false) => {
-  const request = ++latest
-  const bypassCache = refresh || forceRefresh
-  forceRefresh = false
-  loading.value = true
+// Bumped by Refresh, so a response still in flight from before it is dropped.
+let generation = 0
+
+/**
+ * Loads a page unless it's already kept or on its way. A load carries on if the
+ * user moves to another page, and is kept for when they come back.
+ */
+const loadPage = async (page: number, refresh = false) => {
+  const key = pageKey(page)
+  const kept = pages.value[key]
+  if (loadingPages.value.includes(key)) return
+  if (!refresh && kept && (keepsPages.value || Date.now() - kept.at < OPEN_PAGE_MS)) return
+
+  const started = generation
+  loadingPages.value = [...loadingPages.value, key]
+  delete failures.value[key]
   try {
     const result = await executeApi<PullRequestListResult>('github_pr_list', {
       relationship: relationshipFilter.value,
       state: stateFilter.value,
-      page: currentPage.value,
+      page,
       pageSize: PAGE_SIZE,
-      refresh: bypassCache
+      refresh
     })
-    if (request !== latest) return
+    if (started !== generation) return
     if (result.success === false) {
-      loadNotice.value = result.message || 'GitHub could not load pull requests.'
+      failures.value[key] = result.message || 'GitHub could not load pull requests.'
       return
     }
-    prs.value = Array.isArray(result.prs) ? result.prs : []
-    hasMore.value = result.hasMore === true
-    prsLoaded.value = true
-    loadNotice.value = describeProblems(result)
+    pages.value = {
+      ...pages.value,
+      [key]: {
+        prs: Array.isArray(result.prs) ? result.prs : [],
+        hasMore: result.hasMore === true,
+        notice: describeProblems(result),
+        at: Date.now()
+      }
+    }
   } catch (error) {
-    if (request === latest) loadNotice.value = error instanceof Error ? error.message : 'Could not load pull requests.'
+    if (started === generation) failures.value[key] = error instanceof Error ? error.message : 'Could not load pull requests.'
   } finally {
-    if (request === latest) loading.value = false
+    if (started === generation) loadingPages.value = loadingPages.value.filter(item => item !== key)
   }
 }
 
 const resetResults = () => {
-  latest++
-  prs.value = []
-  prsLoaded.value = false
-  loading.value = false
-  hasMore.value = false
-  loadNotice.value = ''
+  generation++
+  pages.value = {}
+  failures.value = {}
+  loadingPages.value = []
 }
 
-watch(currentPage, () => { if (connected.value) void loadPage() })
+watch(currentPage, page => { if (connected.value) void loadPage(page) })
 
-// Changing a filter starts again from the first page. Moving the page number is
-// what loads, so it isn't loaded twice when it was already there.
+// Changing a filter starts again from the first page.
 watch([relationshipFilter, stateFilter], () => {
   if (!connected.value) return
-  if (currentPage.value !== 1) currentPage.value = 1
-  else void loadPage()
+  currentPage.value = 1
+  void loadPage(1)
 })
 
 const refresh = async () => {
@@ -214,13 +235,10 @@ const refresh = async () => {
     login.value = result.login || ''
     if (connected.value) {
       message.value = ''
-      // Refresh asks GitHub again rather than reusing results kept for a minute.
-      if (currentPage.value !== 1) {
-        forceRefresh = true
-        currentPage.value = 1
-      } else {
-        await loadPage(true)
-      }
+      // Refresh asks GitHub again for the first page, and forgets the others.
+      resetResults()
+      currentPage.value = 1
+      await loadPage(1, true)
     } else {
       resetResults()
       message.value = result.message || ''
@@ -232,7 +250,6 @@ const refresh = async () => {
     checkingConnection.value = false
   }
 }
-
 onMounted(refresh)
 </script>
 
@@ -257,7 +274,6 @@ onMounted(refresh)
 .pr-list { display: grid; grid-template-columns: 1fr; gap: var(--space-md); }
 .empty-state { margin-top: 1.5rem; padding: 2rem; text-align: center; border: 1px dashed var(--color-border); border-radius: var(--radius-md); color: var(--color-text-muted); }
 .empty-state h2 { font-size: 1.1rem; color: var(--color-text); }
-.empty-page { margin: 0; color: var(--color-text-muted); text-align: center; }
 .pagination { display: flex; justify-content: center; align-items: center; gap: 1rem; margin-top: 1rem; color: var(--color-text-muted); }
 @media (max-width: 700px) { .pr-toolbar { align-items: stretch; } .pr-toolbar label, .pr-toolbar input, .pr-toolbar select { width: 100%; min-width: 0; box-sizing: border-box; } }
 </style>

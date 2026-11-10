@@ -4,6 +4,11 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.1-beta.5
+
+- On the Pull Requests page, you can go back while the next page is still loading. The page keeps loading in the background, so it's ready when you come back to it.
+- Merged and closed pull requests are now saved on your computer the first time they load and never loaded again, since they don't change. Only the check for new ones is repeated, and Refresh does that. Open pull requests are still reloaded after a minute.
+
 ## 0.9.1-beta.4
 
 - The Pull Requests page no longer has a search box. Use the relationship and status filters, which pick what's loaded, and the page keeps what it has loaded for a minute so going back is instant.
