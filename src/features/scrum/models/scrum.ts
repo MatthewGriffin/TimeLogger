@@ -23,7 +23,6 @@ export interface ScrumBlocker {
   note: string
   title: string | null
   ticketId: string | null
-  pullRequests: ScrumPullRequest[]
 }
 
 export interface ScrumDay {

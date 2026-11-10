@@ -18,10 +18,6 @@
             <span class="blocker-age">{{ ageLabel(blocker.date) }}</span>
           </div>
           <p class="blocker-note">{{ blocker.note }}</p>
-          <div v-if="blocker.pullRequests.length" class="blocker-prs">
-            <h4>Related pull requests</h4>
-            <PullRequestCard v-for="pr in blocker.pullRequests" :key="pr.id" :pr="pr" />
-          </div>
         </div>
         <button type="button" class="blocker-resolve" @click="emit('resolve', blocker.id)">
           Resolve
@@ -33,7 +29,6 @@
 
 <script setup lang="ts">
 import JiraTicketLink from '@/features/scrum/components/JiraTicketLink.vue'
-import PullRequestCard from '@/features/pull-requests/components/PullRequestCard.vue'
 import type { ScrumBlocker } from '@/features/scrum/models/scrum'
 
 defineProps<{ blockers: ScrumBlocker[] }>()
@@ -149,19 +144,6 @@ const ageLabel = (date: string) => {
   font-size: 0.9rem;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-.blocker-prs {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
-}
-
-.blocker-prs h4 {
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--color-text-muted);
 }
 
 .blocker-age {

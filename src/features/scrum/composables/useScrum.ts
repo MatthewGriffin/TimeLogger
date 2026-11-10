@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { executeApi, ApiError } from '@/shared/utils/api'
 import { localDate } from '@/shared/utils/dates'
-import type { ScrumBlocker, ScrumDay, ScrumEntry, ScrumNote, ScrumReport, ScrumPullRequest } from '@/features/scrum/models/scrum'
+import type { ScrumDay, ScrumEntry, ScrumNote, ScrumReport, ScrumPullRequest } from '@/features/scrum/models/scrum'
 import type { ScrumPlanItem } from '@/features/scrum/models/scrumPlanItem'
 
 const asRecord = (value: unknown): Record<string, unknown> =>
@@ -69,14 +69,6 @@ function toPullRequest(raw: unknown): ScrumPullRequest {
   }
 }
 
-function toBlocker(raw: unknown): ScrumBlocker {
-  const row = asRecord(raw)
-  return {
-    ...toNote(raw),
-    pullRequests: Array.isArray(row.pullRequests) ? row.pullRequests.map(toPullRequest) : []
-  }
-}
-
 function toDay(raw: unknown): ScrumDay {
   const row = asRecord(raw)
   return {
@@ -100,7 +92,7 @@ function toReport(result: Record<string, unknown>): ScrumReport {
   return {
     yesterday: toDay(result.yesterday),
     today: toDay(result.today),
-    blockers: Array.isArray(result.blockers) ? result.blockers.map(toBlocker) : [],
+    blockers: Array.isArray(result.blockers) ? result.blockers.map(toNote) : [],
     summary: String(result.summary ?? ''),
     pullRequests: Array.isArray(result.pullRequests) ? result.pullRequests.map(toPullRequest) : []
   }

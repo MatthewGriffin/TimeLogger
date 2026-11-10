@@ -205,12 +205,12 @@ function fetchPullRequests(scope) {
     const byId = new Map();
     // The same PR can come from both searches. Keep every field either one set,
     // so the card shows what the Pull Requests page would.
-    for (const pr of [...ticketPullRequests, ...majorUpdatePullRequests]) {
+    for (const pr of [...ticketPullRequests, ...majorUpdatePullRequests, ...blockerPullRequests]) {
       const prior = byId.get(pr.id);
       byId.set(pr.id, prior ? mergePullRequest(prior, pr) : pr);
     }
     const pullRequests = [...byId.values()].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
-    cachedPullRequests = { ...scope, pullRequests, blockerPullRequests, outdated: false };
+    cachedPullRequests = { ...scope, pullRequests, outdated: false };
     return cachedPullRequests;
   })().finally(() => {
     if (pullRequestFetch?.promise === promise) pullRequestFetch = null;
@@ -256,19 +256,8 @@ async function pullRequestsForReport(yesterday, tickets, blockers) {
     // core stand-up summary unavailable. Outdated results stay marked as such,
     // so the next poll or page visit tries again.
     console.warn('Could not load GitHub pull requests for scrum:', error.message);
-    return cached ?? { pullRequests: [], blockerPullRequests: [] };
+    return cached ?? { pullRequests: [] };
   }
-}
-
-/** Attach to each blocker the PRs linked to its ticket, as the same data the PR page shows. */
-function withBlockerPullRequests(blockers, blockerPullRequests) {
-  return blockers.map(blocker => {
-    const keys = new Set(blockerTicketKeys(blocker));
-    const pullRequests = blockerPullRequests
-      .filter(pr => pr.ticketKeys.some(key => keys.has(key)))
-      .map(pr => ({ ...pr, matchedTicketKeys: pr.ticketKeys.filter(key => keys.has(key)) }));
-    return { ...blocker, pullRequests };
-  });
 }
 
 /**
@@ -285,11 +274,8 @@ function pollAffectsReport(cached, { prs, changed, removed }) {
   const reportKeys = new Set(cached.pullRequests.map(pr => `${pr.repository}#${pr.number}`));
   if (removed.some(key => reportKeys.has(key))) return true;
 
-  const inBlockers = new Map(cached.blockerPullRequests.map(pr => [pr.id, pr]));
-  if (prs.some(pr => inBlockers.has(pr.id) && inBlockers.get(pr.id).updatedAt !== pr.updatedAt)) return true;
-
   const workedTickets = new Set(extractTicketKeys(...cached.tickets, ...cached.blockerTickets));
-  return changed.some(pr => !inReport.has(pr.id) && !inBlockers.has(pr.id) && pr.ticketKeys.some(key => workedTickets.has(key)));
+  return changed.some(pr => !inReport.has(pr.id) && pr.ticketKeys.some(key => workedTickets.has(key)));
 }
 
 onPullRequestsPolled(async poll => {
@@ -352,13 +338,13 @@ export const tools = [
 
         const summary = fallbackSummary(previous, current, blockers);
         const workedTicketValues = previous.entries.map(entry => entry.ticket_id).filter(Boolean);
-        const { pullRequests, blockerPullRequests } = await pullRequestsForReport(yesterday, workedTicketValues, blockers);
+        const { pullRequests } = await pullRequestsForReport(yesterday, workedTicketValues, blockers);
 
         return {
           success: true,
           yesterday: previous,
           today: current,
-          blockers: withBlockerPullRequests(blockers, blockerPullRequests),
+          blockers,
           summary,
           pullRequests
         };
