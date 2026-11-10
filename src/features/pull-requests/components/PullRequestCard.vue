@@ -4,6 +4,7 @@
       <span class="state-pill" :class="'state-' + pr.state">{{ statusLabel(pr.state) }}</span>
       <span class="pr-number">{{ pr.repository }}#{{ pr.number }}</span>
       <span v-if="showRelationship" class="pr-relationship">{{ relationshipLabel(pr) }}</span>
+      <span v-if="pr.blockedTicketKeys?.length" class="pr-blocker" :title="`Linked to an open blocker on ${pr.blockedTicketKeys.join(', ')}`">⛔ Blocker {{ pr.blockedTicketKeys.join(', ') }}</span>
     </div>
     <h2><a :href="pr.url" @click.prevent="openPr(pr.url)">{{ pr.title }}</a></h2>
     <p class="pr-description">{{ pr.description || 'No description provided.' }}</p>
@@ -45,6 +46,7 @@ interface PullRequestCardData {
   updatedAt: string | null
   commentCount?: number
   pendingReview?: boolean
+  blockedTicketKeys?: string[]
 }
 
 withDefaults(defineProps<{
@@ -102,5 +104,6 @@ const openPr = async (url: string) => {
 .ticket-keys { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .75rem; }
 .ticket-chip { border-radius: .3rem; padding: .15rem .4rem; background: var(--color-control); font-size: .8rem; }
 .pr-card-footer { margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--color-border); font-size: .9rem; }
+.pr-blocker { color: var(--color-warning, #b7791f); font-weight: 600; }
 .pr-pending-review { color: var(--color-warning, #b7791f); font-weight: 600; }
 </style>
