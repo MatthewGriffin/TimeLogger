@@ -403,7 +403,7 @@ async function runTests() {
         perPages.push(url.searchParams.get('per_page'));
         // Seven PRs, newest first.
         const items = [7, 6, 5, 4, 3, 2, 1].map(number => ({
-          number, title: `PR ${number}`, user: { login: 'me' },
+          number, state: 'closed', title: `PR ${number}`, user: { login: 'me' },
           repository_url: 'https://api.github.com/repos/org/app', updated_at: `2026-11-0${number}T00:00:00Z`
         }));
         return { items: items.slice(0, Number(url.searchParams.get('per_page'))) };
@@ -443,6 +443,53 @@ async function runTests() {
       assert.strictEqual(refreshed.prs.length, 3);
       assert(searches > before.searches, 'Refresh should search again');
     } finally {
+      if (saved) setConfig.run(saved.value);
+      else db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
+    }
+  });
+  await testAsync('merged and closed pull requests are saved once, while open ones are not', async () => {
+    const saved = db.prepare("SELECT value FROM settings WHERE key = 'github_config'").get();
+    const setConfig = db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('github_config', ?, CURRENT_TIMESTAMP)");
+    const details = [];
+    const github = url => {
+      if (url.pathname === '/user') return { login: 'me' };
+      if (url.pathname === '/search/issues') {
+        return { items: [
+          { number: 91, state: 'closed', title: 'Merged work', user: { login: 'me' }, repository_url: 'https://api.github.com/repos/org/saved', updated_at: '2026-11-03T00:00:00Z' },
+          { number: 92, state: 'open', title: 'Open work', user: { login: 'me' }, repository_url: 'https://api.github.com/repos/org/saved', updated_at: '2026-11-02T00:00:00Z' }
+        ] };
+      }
+      const pr = url.pathname.match(/^\/repos\/org\/saved\/pulls\/(\d+)$/);
+      if (pr) {
+        details.push(Number(pr[1]));
+        const merged = Number(pr[1]) === 91;
+        return { id: Number(pr[1]), number: Number(pr[1]), title: `PR ${pr[1]}`, state: merged ? 'closed' : 'open', merged_at: merged ? '2026-11-03T00:00:00Z' : null, user: { login: 'me' }, base: { repo: { full_name: 'org/saved' } }, requested_reviewers: [] };
+      }
+      throw new Error(`Unexpected request: ${url.pathname}`);
+    };
+    const ask = args => withGitHubStub(github, () => executeTool('github_pr_list', { relationship: 'authored', pageSize: 3, page: 1, ...args }));
+    try {
+      setConfig.run(JSON.stringify({ token: 'github-token', login: 'me' }));
+      db.prepare('DROP TABLE IF EXISTS github_pr_cache').run();
+
+      const first = await ask({ state: 'all' });
+      assert.deepStrictEqual(first.prs.map(pr => pr.state), ['merged', 'open']);
+      assert.deepStrictEqual(details.sort(), [91, 92], 'The first load asks for both');
+      assert.strictEqual(db.prepare('SELECT COUNT(*) AS n FROM github_pr_cache').get().n, 1, 'Only the merged one is saved');
+
+      // A different filter and a refresh both search again, but the merged PR is already known.
+      details.length = 0;
+      await ask({ state: 'merged' });
+      await ask({ state: 'all', refresh: true });
+      assert(!details.includes(91), 'A saved merged pull request is never loaded again, even after a refresh');
+
+      db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
+      setConfig.run(JSON.stringify({ token: 'github-token', login: 'me' }));
+      const cleared = await executeTool('github_pr_save_token', { token: '' });
+      assert.strictEqual(cleared.connected, false);
+      assert.strictEqual(db.prepare('SELECT COUNT(*) AS n FROM github_pr_cache').get().n, 0, 'Disconnecting clears what was saved');
+    } finally {
+      db.prepare('DROP TABLE IF EXISTS github_pr_cache').run();
       if (saved) setConfig.run(saved.value);
       else db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
     }
