@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { executeApi, ApiError } from '@/shared/utils/api'
+import type { UpdateChannel } from '@/shared/models/config'
 import {
   normalizeConfig,
   type AppConfig,
@@ -110,6 +111,16 @@ export const useConfigStore = defineStore('config', () => {
     }
   }
 
+  /**
+   * Saves only the channel, because this also runs in the background at startup.
+   * Sending the whole config there could overwrite settings with defaults if
+   * they hadn't loaded. The backend merges this with what it has stored.
+   */
+  const saveUpdateChannel = async (updateChannel: UpdateChannel) => {
+    setConfig(await executeApi('update_config', { config: { updateChannel } }))
+    syncConfigPersist()
+  }
+
   const updateSection = async <K extends ConfigSection>(section: K, value: Partial<NonNullable<AppConfig[K]>>) => {
     const current = (config.value[section] || {}) as object
     return saveConfig({ [section]: { ...current, ...value } } as Partial<AppConfig>)
@@ -160,7 +171,7 @@ export const useConfigStore = defineStore('config', () => {
   return {
     config, integrationStatus, integrationHealth, testStatus, isLoading, isSaving, isTestingConnections, hasLoaded, error,
     isJiraConfigured, isMicrosoftConfigured, isOllamaConfigured, isOneNoteConfigured, isTempoConfigured,
-    loadConfig, loadConfigFromBackend, saveConfig, updateJiraConfig, updateMicrosoftConfig, updateOllamaConfig,
+    loadConfig, loadConfigFromBackend, saveConfig, saveUpdateChannel, updateJiraConfig, updateMicrosoftConfig, updateOllamaConfig,
     updateOneNoteConfig, updateCalendarConfig, updateAutoStart, updateStartMinimized, testConnections,
     testJiraConnection, testOllamaConnectionOnly, syncConfigPersist
   }

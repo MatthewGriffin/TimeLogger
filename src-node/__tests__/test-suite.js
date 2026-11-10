@@ -1,6 +1,5 @@
 import './test-env.js';
 import assert from 'assert';
-import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { tools, db, executeTool, healthCheck } from '../index.js';
@@ -20,14 +19,16 @@ import {
 import { ukBankHolidays, isUkBankHoliday } from '../utils/uk-holidays.js';
 import { previousWorkingDay, isWorkingDay } from '../utils/working-days.js';
 import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, microsoftAuthorityUrl, escapeHtml } from '../utils/safe-url.js';
-import { backendPort } from '../utils/backend-port.js';
+import { singleLine } from '../utils/log-text.js';
+import { redactSecrets } from '../api/setup-routes.js';
 import { extractTicketKeys, classifyPullRequest, isOpenUnmergedPullRequest, buildPullRequestSearches } from '../tools/github-prs.js';
 import { GraphClient, hasStoredGraphToken } from '../api/graph-client.js';
 import { fetchAllTempoPages } from '../tools/jira-tempo-worklogs.js';
-import { localDateKey, parseDateKey } from '../utils/dates.js';
+import { localDateKey } from '../utils/dates.js';
 import { makeHttpRequest, httpClient } from '../api/http-client.js';
 import { buildPiTicketMigration } from '../tools/sprint.js';
 import { branchVersionProblem, compareVersions, isBetaVersion, isValidVersion } from '../../scripts/version-rules.mjs';
+import { changelogProblem, manifestNotes, releaseNotes } from '../../scripts/changelog-rules.mjs';
 
 // Color codes for output
 const colors = {
@@ -569,6 +570,68 @@ async function runTests() {
     assert.match(branchVersionProblem('0.8.0-beta.1', 'main'), /can't have a beta tag/);
     assert.match(branchVersionProblem('0.8.0', 'beta'), /needs a beta tag/);
     assert.strictEqual(branchVersionProblem('0.8.0', 'feature'), null);
+  });
+
+  test('a line break in a logged message cannot start a forged entry', () => {
+    assert.strictEqual(singleLine('Unknown tool: x\r\n[2026-11-06] Backend compromised'), 'Unknown tool: x [2026-11-06] Backend compromised');
+    assert.strictEqual(singleLine('a\u2028b\nc'), 'a b c');
+    assert.strictEqual(singleLine('\n╔═══╗'), '╔═══╗');
+    assert.strictEqual(singleLine(new Error('boom')), 'Error: boom');
+  });
+
+  test('a huge run of spaces in a logged message does not slow the backend', () => {
+    const started = Date.now();
+    assert.strictEqual(singleLine(`a${' '.repeat(200000)}b`).length, 200002);
+    assert(Date.now() - started < 500, 'It should take no noticeable time');
+  });
+
+  test('a __proto__ key in a request only ever becomes a plain field', () => {
+    const body = JSON.parse('{"__proto__":{"polluted":true},"nested":{"__proto__":{"polluted":true}},"apiToken":"abcdefgh"}');
+    const redacted = redactSecrets(body);
+    assert.strictEqual(redacted.polluted, undefined, 'It should not be inherited');
+    assert.strictEqual(redacted.nested.polluted, undefined, 'Nor when nested');
+    assert.strictEqual({}.polluted, undefined, 'Other objects should be untouched');
+    assert.strictEqual(JSON.stringify(redacted.__proto__), '{"polluted":true}', 'It stays a normal field');
+    assert.strictEqual(redacted.apiToken, '****efgh');
+    assert.strictEqual(redacted.apiTokenConfigured, true);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(redactSecrets({ a: [{ b: 1 }] }))), { a: [{ b: 1 }] });
+  });
+
+  const changelog = [
+    '# Changelog', '', 'Intro text with - a dash.', '',
+    '## 0.9.0', '- Stable summary', '',
+    '## 0.9.0-beta.2', '- Second beta', '- Another change', '',
+    '## 0.9.0-beta.1', '- First beta', '',
+    '## 0.8.1', '- Older stable', ''
+  ].join('\r\n');
+
+  test('a version needs its own changelog entry with at least one change', () => {
+    assert.strictEqual(changelogProblem(changelog, '0.9.0-beta.2'), null);
+    assert.match(changelogProblem(changelog, '0.9.1'), /no "## 0.9.1" section/);
+    assert.match(changelogProblem('## 0.9.1\n\nText but no list\n', '0.9.1'), /no "- " lines/);
+    assert.match(changelogProblem('## Next\n- Change\n\n## 0.9.1\n- Change\n', '0.9.1'), /heading that isn't a version: "## Next"/);
+  });
+
+  test('a release page shows only its own version', () => {
+    assert.strictEqual(releaseNotes(changelog, '0.9.0-beta.2'), '- Second beta\n- Another change');
+    assert.throws(() => releaseNotes(changelog, '0.9.1'), /no section for 0.9.1/);
+  });
+
+  test('a beta manifest lists up to its version, and a full release leaves betas out', () => {
+    assert.strictEqual(
+      manifestNotes(changelog, '0.9.0-beta.2'),
+      '## 0.9.0-beta.2\n- Second beta\n- Another change\n\n## 0.9.0-beta.1\n- First beta\n\n## 0.8.1\n- Older stable'
+    );
+    assert.strictEqual(manifestNotes(changelog, '0.9.0'), '## 0.9.0\n- Stable summary\n\n## 0.8.1\n- Older stable');
+  });
+
+  test('a manifest keeps only the newest entries, whatever order the file is in', () => {
+    const versions = Array.from({ length: 12 }, (_, i) => `0.8.${i}`);
+    const notes = manifestNotes(versions.map(version => `## ${version}\n- Change\n`).join('\n'), '0.8.11');
+    const headings = notes.split('\n').filter(line => line.startsWith('## '));
+    assert.strictEqual(headings.length, 10);
+    assert.strictEqual(headings[0], '## 0.8.11');
+    assert.strictEqual(headings.at(-1), '## 0.8.2');
   });
 
   await testAsync('the update channel is saved, survives other settings, and rejects anything else', async () => {
@@ -2516,19 +2579,42 @@ async function runTests() {
         'A resolved blocker should drop out of the open list'
       );
 
-      // Re-raising has to reopen it. A recurring problem that stayed hidden
-      // behind a stale resolution stamp is exactly the one worth reporting.
-      const reraised = await executeTool('update_note', {
+      // The Notes page sends the flag on every save, so saving a resolved
+      // blocker, or filing it under a category, must leave it resolved.
+      const edited = await executeTool('update_note', {
         id: noteId,
-        note: 'Still waiting on credentials',
+        note: 'Credentials arrived',
+        topic: 'General',
         is_blocker: true
       });
-      assert.strictEqual(reraised.success, true);
+      assert.strictEqual(edited.success, true);
+      const afterEdit = await executeTool('get_notes', { open_blockers_only: true });
+      assert(
+        !afterEdit.notes.some(n => n.id === noteId),
+        'Saving a resolved blocker should not reopen it'
+      );
+      const stored = db.prepare('SELECT is_blocker, blocker_resolved_at FROM notes WHERE id = ?').get(noteId);
+      assert.strictEqual(stored.is_blocker, 1, 'It should still be a blocker');
+      assert(stored.blocker_resolved_at, 'It should keep its resolved date');
 
+      // Reopening it directly has to bring it back.
+      const reopened = await executeTool('resolve_blocker', { id: noteId, resolved: false });
+      assert.strictEqual(reopened.success, true);
+      const afterReopen = await executeTool('get_notes', { open_blockers_only: true });
+      assert(afterReopen.notes.some(n => n.id === noteId), 'Reopening a blocker should list it again');
+
+      await executeTool('resolve_blocker', { id: noteId });
+
+      // So does raising it again. A recurring problem that stayed hidden behind
+      // a stale resolution stamp is exactly the one worth reporting.
+      await executeTool('update_note', { id: noteId, note: 'Waiting again', is_blocker: false });
+      const unflagged = await executeTool('get_notes', { open_blockers_only: true });
+      assert(!unflagged.notes.some(n => n.id === noteId), 'An unflagged note is not a blocker');
+      await executeTool('update_note', { id: noteId, note: 'Waiting again', is_blocker: true });
       const afterReraise = await executeTool('get_notes', { open_blockers_only: true });
       assert(
         afterReraise.notes.some(n => n.id === noteId),
-        'Re-raising a blocker should reopen it'
+        'Flagging a note as a blocker again should reopen it'
       );
     } finally {
       await executeTool('delete_note', { id: noteId });

@@ -36,6 +36,17 @@
     </div>
 
     <div class="nav-footer">
+      <button
+        v-if="offer"
+        type="button"
+        class="nav-link nav-update"
+        :title="`TimeLogger ${offer.version} is available`"
+        :aria-label="`${offerLabel}: TimeLogger ${offer.version}`"
+        @click="openDialog"
+      >
+        <CircleArrowUp class="nav-icon-svg" aria-hidden="true" />
+        <span v-if="sidebarOpen" class="nav-label">{{ offerLabel }}</span>
+      </button>
       <router-link
         to="/settings"
         :class="['nav-link', { active: isActive('/settings') }]"
@@ -52,13 +63,20 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Bell, BookOpen, CalendarDays, ClipboardList, GitPullRequest, LayoutDashboard, MessagesSquare, Send, Settings } from 'lucide-vue-next'
+import { Bell, BookOpen, CalendarDays, CircleArrowUp, ClipboardList, GitPullRequest, LayoutDashboard, MessagesSquare, Send, Settings } from 'lucide-vue-next'
+import { useUpdater } from '@/features/updates/composables/useUpdater'
 import { useUiStore } from '@/shared/stores/ui'
 
 const router = useRouter()
 const uiStore = useUiStore()
+const { stage, info, openDialog } = useUpdater()
 const sidebarOpen = computed(() => uiStore.sidebarOpen)
 const unreadCount = computed(() => uiStore.unreadNotifications.length)
+// Stays up during a background recheck. A rollback is only ever offered in its dialog.
+const offer = computed(() =>
+  (stage.value === 'available' || stage.value === 'checking') && info.value?.kind !== 'rollback' ? info.value : null
+)
+const offerLabel = computed(() => (offer.value?.kind === 'switch' ? 'Switch to stable' : 'Update available'))
 
 const navigationTitle = (label: string) => {
   if (label !== 'Notifications' || unreadCount.value === 0) return label
@@ -235,6 +253,19 @@ const isActive = (path: string) => {
   color: var(--color-accent);
   border-bottom: 2px solid var(--color-accent);
   padding-bottom: calc(0.75rem - 2px);
+}
+
+.nav-update {
+  width: 100%;
+  background: none;
+  border: none;
+  font-family: inherit;
+  text-align: left;
+  color: var(--color-accent);
+}
+
+.nav-update:hover {
+  color: var(--color-accent);
 }
 
 .nav-icon-svg {

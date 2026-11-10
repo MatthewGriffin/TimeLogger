@@ -12,6 +12,7 @@ import { router as setupRoutes } from './api/setup-routes.js';
 import { apiLimiter } from './api/rate-limit.js';
 import { tools, executeTool } from './index.js';
 import { backendPort } from './utils/backend-port.js';
+import { singleLine } from './utils/log-text.js';
 
 // Setup file logging
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -29,7 +30,7 @@ logStream.on('error', error => {
 
 function log(msg) {
   const timestamp = new Date().toISOString();
-  const fullMsg = `[${timestamp}] ${msg}`;
+  const fullMsg = `[${timestamp}] ${singleLine(msg)}`;
   console.log(fullMsg);
   logStream.write(fullMsg + '\n');
 }

@@ -94,7 +94,7 @@
                 class="btn-ai btn-ai-inline"
                 @click="findJiraTicket('add')"
                 :disabled="jiraStore.isSearching"
-                title="Look up the Jira ticket for this task name"
+                title="Look up the Jira ticket for this task name, or leave it empty to pick from your in-progress tickets"
               >
                 {{ jiraStore.isSearching ? '⏳' : '🔍' }}
               </button>
@@ -133,7 +133,7 @@
                 :disabled="entriesStore.isLoading"
               />
               <datalist id="recent-tickets">
-                <option v-for="ticket in recentTickets" :key="ticket" :value="ticket" />
+                <option v-for="ticket in ticketOptions" :key="ticket.key" :value="ticket.key" :label="ticket.description" />
               </datalist>
             </div>
             <div class="form-group">
@@ -176,7 +176,7 @@
                 class="btn-ai btn-ai-inline"
                 @click="findJiraTicket('edit')"
                 :disabled="jiraStore.isSearching"
-                title="Look up the Jira ticket for this task name"
+                title="Look up the Jira ticket for this task name, or leave it empty to pick from your in-progress tickets"
               >
                 {{ jiraStore.isSearching ? '⏳' : '🔍' }}
               </button>
@@ -233,13 +233,13 @@
           <button class="modal-close" @click="closeTicketLookup">✕</button>
         </div>
         <div class="modal-content">
-          <div class="suggestion-item">
+          <div v-if="jiraStore.lastQuery" class="suggestion-item">
             <label class="suggestion-label">Searched For:</label>
             <div class="suggestion-preview">{{ jiraStore.lastQuery }}</div>
           </div>
 
           <div class="suggestion-item">
-            <label class="suggestion-label">Your Matching Tickets:</label>
+            <label class="suggestion-label">{{ jiraStore.lastQuery ? 'Your Matching Tickets:' : 'Your In-Progress Tickets:' }}</label>
             <button
               v-for="match in jiraStore.matches"
               :key="match.key"
@@ -255,7 +255,8 @@
 
           <div class="lookup-note">
             <span>ℹ️</span>
-            <p>Only tickets assigned to you, reported by you, or recently updated by you are searched.</p>
+            <p v-if="jiraStore.lastQuery">Only tickets assigned to you, reported by you, or recently updated by you are searched.</p>
+            <p v-else>These are the tickets assigned to you that are in progress. To find another, type a task name and search again.</p>
           </div>
         </div>
         <div class="modal-footer">
@@ -284,6 +285,7 @@ import MeetingTicketPrompt from '@/shared/components/MeetingTicketPrompt.vue'
 import MeetingConflictPrompt from '@/features/entries/components/MeetingConflictPrompt.vue'
 import MeetingConflictReview from '@/features/entries/components/MeetingConflictReview.vue'
 import LunchConflictPrompt from '@/features/entries/components/LunchConflictPrompt.vue'
+import { useTicketOptions } from '@/shared/composables/useTicketOptions'
 import { localDate } from '@/shared/utils/dates'
 
 const unmappedMeetings = ref<UnmappedMeeting[]>([])
@@ -312,19 +314,7 @@ const newEntry = ref({
   endTime: ''
 })
 
-const recentTickets = computed(() => {
-  const tickets = new Set<string>()
-  const entries = Array.isArray(entriesStore.entries) ? entriesStore.entries : []
-  entries.forEach(entry => {
-    if (entry.ticketId) tickets.add(entry.ticketId)
-  })
-  // Also include from loaded issues
-  const issues = Array.isArray(entriesStore.recentIssues) ? entriesStore.recentIssues : []
-  issues.forEach(issue => {
-    tickets.add(issue.key)
-  })
-  return Array.from(tickets).slice(0, 10)
-})
+const { ticketOptions, loadPiTickets } = useTicketOptions()
 
 const entriesByDate = computed(() => {
   return entriesStore.getEntriesByDate(selectedDate.value)
@@ -593,14 +583,20 @@ const findJiraTicket = async (target: 'add' | 'edit' = 'add') => {
 
   const query = form.taskName.trim() || (form.ticketId ?? '').trim()
 
-  if (!query) {
-    uiStore.showError('Enter a task name or ticket ID to search for')
-    return
-  }
-
   ticketLookupTarget.value = target
 
   try {
+    // With nothing to search for, offer what's being worked on instead.
+    if (!query) {
+      const inProgress = await jiraStore.findInProgress()
+      if (inProgress.length === 0) {
+        uiStore.showInfo('You have no Jira tickets in progress. Type a task name to search instead.')
+        return
+      }
+      showTicketLookup.value = true
+      return
+    }
+
     const matches = await jiraStore.findTicket(query)
     if (matches.length === 0) {
       uiStore.showInfo(jiraStore.error || `No Jira tickets found for "${query}"`)
@@ -646,8 +642,8 @@ onMounted(async () => {
     // Load entries for selected date
     await entriesStore.loadEntries(selectedDate.value)
     syncLunchInputs()
-    // Load recent issues for ticket dropdown
-    await entriesStore.loadRecentIssues()
+    // Load the tickets for the ticket dropdown
+    await Promise.all([entriesStore.loadRecentIssues(), loadPiTickets()])
     // A day with nothing from the calendar is pulled in on first view.
     await runAutoSync(selectedDate.value)
   } catch (error) {

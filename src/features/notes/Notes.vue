@@ -85,10 +85,10 @@
             <div class="note-header">
               <h3><button type="button" class="note-open" @click.stop="viewNote(note)">{{ noteHeading(note) }}</button></h3>
               <span
-                v-if="note.isBlocker && !note.blockerResolvedAt"
-                class="blocker-badge"
-                title="Open blocker, shown on the Daily Scrum page"
-              >🚧</span>
+                v-if="note.isBlocker"
+                :class="['blocker-status', note.blockerResolvedAt ? 'resolved' : 'open']"
+                :title="blockerHint(note)"
+              >{{ blockerLabel(note) }}</span>
               <span v-if="note.oneNoteSynced" class="sync-badge">📤</span>
             </div>
             <span v-if="note.ticketId" class="note-ticket">{{ note.ticketId }}</span>
@@ -156,18 +156,26 @@
           <h2 id="note-viewer-title">{{ viewingNote.title || 'Note' }}</h2>
           <button ref="viewerCloseButton" type="button" class="modal-close" aria-label="Close note" @click="closeViewer">✕</button>
         </div>
+        <p
+          v-if="viewingNote.isBlocker"
+          :class="['blocker-status', 'blocker-status-detail', viewingNote.blockerResolvedAt ? 'resolved' : 'open']"
+        >
+          {{ blockerLabel(viewingNote) }}<span class="blocker-status-hint">{{ blockerHint(viewingNote) }}</span>
+        </p>
         <dl class="note-details">
           <div><dt>Category</dt><dd>{{ viewingNote.topic }}</dd></div>
           <div v-if="viewingNote.ticketId"><dt>Ticket</dt><dd>{{ viewingNote.ticketId }}</dd></div>
-          <div v-if="viewingNote.isBlocker">
-            <dt>Blocker</dt>
-            <dd>{{ viewingNote.blockerResolvedAt ? 'Resolved' : '🚧 Open' }}</dd>
-          </div>
           <div><dt>Updated</dt><dd>{{ new Date(viewingNote.updatedAt).toLocaleString() }}</dd></div>
         </dl>
         <p class="note-full-text">{{ viewingNote.content }}</p>
         <div class="modal-footer">
           <button type="button" class="btn-secondary" @click="closeViewer">Close</button>
+          <button
+            v-if="viewingNote.isBlocker"
+            type="button"
+            class="btn-secondary"
+            @click="toggleBlockerResolved(viewingNote)"
+          >{{ viewingNote.blockerResolvedAt ? 'Reopen blocker' : 'Mark resolved' }}</button>
           <button type="button" class="btn-primary" @click="editViewedNote">Edit</button>
         </div>
       </div>
@@ -234,7 +242,7 @@
               list="note-recent-tickets"
             />
             <datalist id="note-recent-tickets">
-              <option v-for="ticket in recentTickets" :key="ticket" :value="ticket" />
+              <option v-for="ticket in ticketOptions" :key="ticket.key" :value="ticket.key" :label="ticket.description" />
             </datalist>
             <div v-if="jiraStore.matches.length > 0" class="ticket-suggestions">
               <button
@@ -288,6 +296,7 @@ import { useConfigStore } from '@/shared/stores/config'
 import { useJiraStore } from '@/shared/stores/jira'
 import type { JiraMatch } from '@/shared/stores/jira'
 import { useEntriesStore } from '@/shared/stores/entries'
+import { useTicketOptions } from '@/shared/composables/useTicketOptions'
 
 const notesStore = useNotesStore()
 const uiStore = useUiStore()
@@ -316,15 +325,11 @@ window.addEventListener('keydown', onEscapeKeydown)
 const originalEditingNote = ref<{ id: string; title: string; content: string; topic: string } | null>(null)
 const editorTicketId = computed(() => (notesStore.editingNote?.ticketId || '').trim())
 
-const recentTickets = computed(() => {
-  const tickets = new Set<string>()
-  notesStore.notes.forEach(note => { if (note.ticketId) tickets.add(note.ticketId) })
-  const entries = Array.isArray(entriesStore.entries) ? entriesStore.entries : []
-  entries.forEach(entry => { if (entry.ticketId) tickets.add(entry.ticketId) })
-  const issues = Array.isArray(entriesStore.recentIssues) ? entriesStore.recentIssues : []
-  issues.forEach(issue => tickets.add(issue.key))
-  return Array.from(tickets).slice(0, 10)
-})
+const { ticketOptions, loadPiTickets } = useTicketOptions(() =>
+  notesStore.notes
+    .filter(note => note.ticketId)
+    .map(note => ({ key: note.ticketId as string, description: note.title }))
+)
 
 const findJiraTicketForNote = async () => {
   const note = notesStore.editingNote
@@ -452,6 +457,19 @@ const onNoteRowClick = (note: Note) => {
 }
 
 const closeViewer = () => { viewingNoteId.value = null }
+
+const blockerLabel = (note: Note) => note.blockerResolvedAt ? '✓ Resolved blocker' : '🚧 Open blocker'
+const blockerHint = (note: Note) => note.blockerResolvedAt ? 'No longer shown on the Daily Scrum page' : 'Shown on the Daily Scrum page until resolved'
+
+const toggleBlockerResolved = async (note: Note) => {
+  const resolved = !note.blockerResolvedAt
+  try {
+    await notesStore.setBlockerResolved(note.id, resolved)
+    uiStore.showSuccess(resolved ? 'Blocker resolved' : 'Blocker reopened')
+  } catch {
+    uiStore.showError(notesStore.error || 'Failed to update blocker')
+  }
+}
 
 const editViewedNote = () => {
   const note = viewingNote.value
@@ -629,9 +647,9 @@ onMounted(async () => {
   } catch (error) {
     console.error('Failed to load config:', error)
   }
-  // Powers the recent-ticket suggestions in the note editor.
+  // Powers the ticket suggestions in the note editor.
   try {
-    await entriesStore.loadRecentIssues()
+    await Promise.all([entriesStore.loadRecentIssues(), loadPiTickets()])
   } catch (error) {
     console.error('Failed to load recent issues:', error)
   }
@@ -989,8 +1007,44 @@ onUnmounted(() => {
   font-size: 1rem;
 }
 
-.blocker-badge {
-  font-size: 1rem;
+.blocker-status {
+  flex-shrink: 0;
+  padding: 0.15rem 0.6rem;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.blocker-status.open {
+  color: var(--color-warning);
+  border-color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 15%, transparent);
+}
+
+.blocker-status.resolved {
+  color: var(--color-success);
+  border-color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+}
+
+.blocker-status-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  white-space: normal;
+}
+
+.blocker-status-hint {
+  font-weight: 400;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
 }
 
 .blocker-toggle {

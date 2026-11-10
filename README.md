@@ -60,6 +60,10 @@ version from the tag into `src-tauri/tauri.conf.json`, `package.json` and
 generated notes. The version in those files is a `0.0.0` placeholder, so a build
 that isn't from a tag reports `0.0.0`.
 
+Before tagging, add the version to `CHANGELOG.md`. Say what changed for the people
+using the app, in plain language. They see it in the update popup and on the
+release. The workflow stops straight away if the entry is missing.
+
 If a release already exists for the tag the workflow skips, so re-running is safe.
 A tag is final: releases are immutable, so a bad release is fixed by tagging the
 next version.
@@ -89,6 +93,9 @@ so that the next promotion only contains new work.
 Tags are the only way to publish, so protect `v*` tags in the repository rules to
 stop anyone else creating one.
 
+A promoted beta needs its own changelog entry that sums up its betas, because main
+users don't see the beta entries.
+
 Each beta also updates `latest.json` on the `beta-manifest` branch, because GitHub
 has no URL for the latest pre-release and this repository's releases are immutable.
 The Release workflow needs that branch to exist, so don't delete it.
@@ -98,14 +105,22 @@ or rewrite them. A beta and an older main build can both open the same database.
 
 ## Updates
 
-Installed copies update themselves. On launch the app quietly asks GitHub for
-the `latest.json` of its channel; if a newer version exists it offers to download
-and install it, then restarts. Users can also trigger the check from
-**Settings → About → Check for Updates**, and choose Main or Beta there.
+Installed copies can update themselves. On launch the app quietly asks GitHub for
+the `latest.json` of its channel. If a newer version exists, an **Update available**
+button appears in the sidebar, which shows what's new and offers to install it.
+Nothing installs without the user choosing to. Users can also trigger the check from
+**Settings → About → Check for Updates**, and choose Stable or Beta there. The app
+checks again every few hours while it's open. The Stable channel is the `main` branch,
+and it's still saved as `main` in the settings.
 
-Beta users are offered whichever of the two channels is newer. Moving from Beta to
-Main never installs an older version: the app keeps its build until Main has a
-newer one.
+Beta users are offered whichever of the two channels is newer. Choosing Stable on a
+beta build offers the latest stable release even though it's older, with a prompt
+explaining that newer features go away.
+
+**Settings → About → Roll Back** installs an earlier version, back to 0.8.0, which
+is the first with the channel switch. Stable users see stable releases, and Beta
+users see betas as well. After a rollback, the sidebar button offers the newer version
+again, so a hotfix arrives as a normal update.
 
 Each installer is signed with a minisign key at release time and the app
 verifies that signature before installing, so a build that was not produced by

@@ -9,7 +9,6 @@ import express from 'express';
 import crypto from 'crypto';
 import { db } from '../index.js';
 import { graphClient, readMicrosoftConfig, hasStoredGraphToken, GRAPH_SCOPE_STRING, buildTokenEndpoint } from './graph-client.js';
-import { ollamaClient } from './ollama-client.js';
 import { httpClient } from './http-client.js';
 import { setupLimiter } from './rate-limit.js';
 import { backendPort } from '../utils/backend-port.js';
@@ -98,11 +97,13 @@ const isSecretKey = (key) => {
  * ambiguous with "not configured", so a configured secret becomes a masked
  * string that shows only the last 4 characters.
  */
-function redactSecrets(value) {
+export function redactSecrets(value) {
   if (Array.isArray(value)) return value.map(redactSecrets);
   if (!value || typeof value !== 'object') return value;
 
-  const out = {};
+  // The keys come from the request body. With no prototype, a "__proto__" key
+  // is just another field rather than changing what this object inherits.
+  const out = Object.create(null);
   for (const [key, val] of Object.entries(value)) {
     if (isSecretKey(key)) {
       out[key] = typeof val === 'string' && val.length > 0
@@ -123,7 +124,7 @@ function redactSecrets(value) {
  */
 router.post('/setup/test-jira', async (req, res) => {
   try {
-    const { baseUrl, email, apiToken, tempoToken } = req.body;
+    const { baseUrl, email, apiToken } = req.body;
 
     if (!baseUrl || !email || !apiToken) {
       return res.status(400).json({
@@ -649,8 +650,6 @@ function keepSecret(incoming, existing) {
 router.post('/setup/complete', async (req, res) => {
   try {
     const config = req.body;
-
-    console.log('📝 Completing setup with config:', redactSecrets(config));
 
     // Previously stored secrets, used to survive a redacted round-trip.
     let previous = {};
