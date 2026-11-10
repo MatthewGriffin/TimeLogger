@@ -4,6 +4,11 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.1-beta.2
+
+- Submit Time takes less room: the "all entries have been submitted" message is now a single line.
+- In Local Entries vs Tempo, the status filters are now a dropdown, with a Refresh button on the same row.
+
 ## 0.9.1-beta.1
 
 - On the Submit page, entries with no ticket can now get one. Ask the local AI to suggest tickets, then approve or dismiss each one (nothing is saved until you approve), or type a ticket on the row yourself.

@@ -120,10 +120,7 @@
             </div>
           </div>
 
-          <div v-else class="empty-state">
-            <div class="empty-icon">✅</div>
-            <p>All entries have been submitted!</p>
-          </div>
+          <p v-else class="all-submitted">✅ All entries have been submitted</p>
 
           <!-- Entries Tempo will not accept yet. Listed rather than offered
                for submission, since selecting them can only ever fail. -->
@@ -245,14 +242,6 @@
 
       <!-- Tempo reconciliation follows the unsubmitted entries so it has the full content width. -->
       <div class="submit-reconciliation">
-        <div class="reconciliation-heading">
-          <button class="btn-range" :disabled="reconciliationLoading" @click="loadReconciliation">
-            {{ reconciliationLoading ? 'Refreshing…' : 'Refresh Tempo status' }}
-          </button>
-        </div>
-        <p v-if="reconciliationLoading" class="range-summary">Checking Tempo worklogs…</p>
-        <p v-else-if="reconciliationError" class="range-error">{{ reconciliationError }}</p>
-        <template v-else>
       <div class="section reconciliation-section">
         <div class="section-header">
           <h2>Local Entries vs Tempo</h2>
@@ -267,17 +256,23 @@
           </button>
         </div>
 
-        <div class="filter-row">
-          <button
-            v-for="filter in statusFilters"
-            :key="filter.value"
-            :class="['btn-filter', { active: statusFilter === filter.value }]"
-            @click="statusFilter = filter.value"
-          >
-            {{ filter.label }}
+        <div class="recon-toolbar">
+          <label class="recon-filter">
+            <span>Show</span>
+            <select v-model="statusFilter" class="select-control">
+              <option v-for="filter in statusFilters" :key="filter.value" :value="filter.value">
+                {{ filter.label }}
+              </option>
+            </select>
+          </label>
+          <button class="btn-range recon-refresh" :disabled="reconciliationLoading" @click="loadReconciliation">
+            {{ reconciliationLoading ? 'Refreshing…' : 'Refresh' }}
           </button>
         </div>
 
+        <p v-if="reconciliationLoading" class="range-summary">Checking Tempo worklogs…</p>
+        <p v-else-if="reconciliationError" class="range-error">{{ reconciliationError }}</p>
+        <template v-else>
         <p v-if="statusFilter === 'missing_from_tempo' && filteredReconciled.length > 0" class="section-note">
           These are marked as submitted here but no longer exist in Tempo — most likely deleted directly there.
           Resubmit to send them again.
@@ -344,12 +339,11 @@
             </div>
           </div>
         </div>
+        </template>
       </div>
-
 
           <p v-if="resubmitMessage" class="import-message">{{ resubmitMessage }}</p>
           <p v-if="reconcileMessage" class="import-message">{{ reconcileMessage }}</p>
-        </template>
 
         <section ref="piReviewSection" class="section pi-review" aria-labelledby="pi-review-title">
           <header class="section-header pi-review-header">
@@ -2333,6 +2327,11 @@ const reconcileDuration = async (row: ReconciledRow) => {
   overflow-y: hidden;
   backdrop-filter: blur(10px);
 }
+.recon-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin: .75rem 0; }
+.recon-filter { display: flex; align-items: center; gap: .5rem; font-size: .85rem; color: var(--color-text-muted); }
+.recon-filter .select-control { min-width: 12rem; }
+.recon-refresh { margin-left: auto; padding: .4rem .9rem; }
+.all-submitted { margin: 0; padding: .6rem .25rem; font-size: .9rem; color: var(--color-text-muted); }
 .reconciliation-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
 .reconciliation-heading h2, .reconciliation-section h2 { font-size: 1.1rem; font-weight: 700; }
 .reconciliation-section { margin-top: 1rem; }
