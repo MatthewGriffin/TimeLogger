@@ -51,6 +51,9 @@ export interface ScrumPullRequest {
   ticketKeys: string[]
   matchedTicketKeys: string[]
   updatedAt: string | null
+  commentCount?: number
+  pendingReview?: boolean
+  blockedTicketKeys: string[]
 }
 
 export interface ScrumReport {
