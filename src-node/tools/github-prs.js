@@ -163,13 +163,15 @@ function safePr(pr, ticketKeys = []) {
   };
 }
 
-async function searchPrs(token, login, query) {
+async function searchPrs(token, login, query, limit = MAX_PRS) {
+  const perPage = Math.min(PAGE_SIZE, limit);
+  const maxPages = Math.min(3, Math.ceil(limit / perPage));
   const all = [];
-  for (let page = 1; page <= 3; page++) {
-    const result = await githubGet(`/search/issues?q=${encodeURIComponent(query)}&per_page=${PAGE_SIZE}&page=${page}&sort=updated&order=desc`, token);
+  for (let page = 1; page <= maxPages; page++) {
+    const result = await githubGet(`/search/issues?q=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}&sort=updated&order=desc`, token);
     const items = Array.isArray(result.items) ? result.items : [];
     all.push(...items);
-    if (items.length < PAGE_SIZE || all.length >= MAX_PRS) break;
+    if (items.length < perPage || all.length >= limit) break;
   }
   return all;
 }
@@ -219,11 +221,17 @@ export function buildPullRequestSearches(login, { relationship = 'all', state = 
   return searches;
 }
 
-async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS, diagnostics = null, filters = {}) {
-  const login = await account(token);
+/**
+ * The PRs a set of filters could list, newest first, from GitHub's searches alone.
+ * A search result has the title, author and update time but not the review state,
+ * so each candidate still has to be confirmed by `detailFetcher` before it's shown.
+ * `limit` is how many each search is asked for, which is all that's needed to
+ * know the newest `limit` PRs across them.
+ */
+async function findCandidates(token, login, diagnostics, filters, limit) {
   const searchAndRecord = async (name, query) => {
     try {
-      const results = await searchPrs(token, login, query);
+      const results = await searchPrs(token, login, query, limit);
       if (diagnostics) diagnostics.searches.push({ name, count: results.length });
       return results;
     } catch (error) {
@@ -251,19 +259,22 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS,
     if (!match || !Number.isInteger(number)) continue;
     const repository = match[1];
     const key = `${repository}#${number}`;
-    const prior = candidates.get(key) || { repository, number, fromReviewSearch: false, mentionsAccount: false, updatedAt: '' };
+    const prior = candidates.get(key) || {
+      repository, number, title: String(item.title || ''), author: String(item.user?.login || ''),
+      fromReviewSearch: false, mentionsAccount: false, updatedAt: ''
+    };
     if (reviewedByAccount.includes(item)) prior.fromReviewSearch = true;
     if (mentionsAccount.includes(item)) prior.mentionsAccount = true;
     if (String(item.updated_at || '') > prior.updatedAt) prior.updatedAt = String(item.updated_at || '');
     candidates.set(key, prior);
   }
-
   if (diagnostics) diagnostics.candidateCount = candidates.size;
-  const selected = [...candidates.values()]
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, limit);
-  const details = [];
-  const fetchDetail = async (item) => {
+  return [...candidates.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+/** Returns a function that loads and confirms one candidate, or null if it isn't linked to the account. */
+function detailFetcher(token, login, ticketKeys, diagnostics) {
+  return async (item) => {
     try {
       const pr = await githubGet(`/repos/${item.repository}/pulls/${item.number}`, token);
       const authoredByAccount = String(pr.user?.login || '').toLowerCase() === login.toLowerCase();
@@ -301,6 +312,13 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS,
       return null;
     }
   };
+}
+
+async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS, diagnostics = null, filters = {}) {
+  const login = await account(token);
+  const selected = (await findCandidates(token, login, diagnostics, filters, MAX_PRS)).slice(0, limit);
+  const fetchDetail = detailFetcher(token, login, ticketKeys, diagnostics);
+  const details = [];
 
   // Keep the number of in-flight detail/review requests bounded. Launching up
   // to 60 requests at once can trigger GitHub secondary rate limits, which
@@ -312,6 +330,79 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS,
   }
 
   return details.filter(Boolean).sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+}
+
+// The Pull Requests page shows a few PRs at a time, so it only loads the ones on
+// the page. The candidate lists and the confirmed PRs are kept briefly, which
+// makes paging back and forth free and spares GitHub's search rate limit.
+const CANDIDATE_CACHE_MS = 60 * 1000;
+const MAX_CACHED_DETAILS = 200;
+const candidateCache = new Map();
+const detailCache = new Map();
+
+const matchesSearchText = (candidate, text) => {
+  const wanted = text.toLowerCase();
+  return [candidate.title, candidate.repository, candidate.author, String(candidate.number)]
+    .some(value => String(value || '').toLowerCase().includes(wanted));
+};
+
+/**
+ * One page of the pull requests the filters list, loading details for that page only.
+ *
+ * Search text goes to GitHub, which covers titles, descriptions and comments. It
+ * is also matched here against the repository, author and number of the 60 most
+ * recent PRs, which GitHub's text search doesn't cover. The branch name needs the
+ * PR's details, so it can't be matched without loading every one.
+ */
+export async function listPullRequestsPage(token, { relationship, state, search, page = 1, pageSize = 3, refresh = false }, diagnostics) {
+  const login = readConfig().login || await account(token);
+  const size = Math.max(1, Math.min(20, Number(pageSize) || 3));
+  const pageNumber = Math.max(1, Number(page) || 1);
+  // One more than the page needs, to know whether there is a next page.
+  const needed = pageNumber * size + 1;
+  const text = String(search || '').trim();
+  const filters = { relationship, state };
+
+  const key = JSON.stringify([login, relationship || 'all', state || 'all', text]);
+  const cached = candidateCache.get(key);
+  let candidates;
+  if (!refresh && cached && cached.expires > Date.now() && cached.limit >= needed) {
+    candidates = cached.candidates;
+    if (diagnostics) Object.assign(diagnostics, cached.diagnostics);
+  } else {
+    const base = await findCandidates(token, login, diagnostics, filters, text ? MAX_PRS : needed);
+    candidates = base;
+    if (text) {
+      const found = await findCandidates(token, login, diagnostics, { ...filters, search: text }, needed);
+      const merged = new Map(found.map(candidate => [`${candidate.repository}#${candidate.number}`, candidate]));
+      for (const candidate of base.filter(item => matchesSearchText(item, text))) {
+        merged.set(`${candidate.repository}#${candidate.number}`, candidate);
+      }
+      candidates = [...merged.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    }
+    candidateCache.set(key, {
+      expires: Date.now() + CANDIDATE_CACHE_MS,
+      limit: needed,
+      candidates,
+      diagnostics: diagnostics ? JSON.parse(JSON.stringify(diagnostics)) : {}
+    });
+  }
+
+  const slice = candidates.slice((pageNumber - 1) * size, pageNumber * size);
+  const fetchDetail = detailFetcher(token, login, [], diagnostics);
+  const prs = await Promise.all(slice.map(async candidate => {
+    const detailKey = `${login}|${candidate.repository}#${candidate.number}@${candidate.updatedAt}|${candidate.fromReviewSearch}|${candidate.mentionsAccount}`;
+    if (detailCache.has(detailKey)) return detailCache.get(detailKey);
+    const pr = await fetchDetail(candidate);
+    // A failed lookup isn't kept, so the next visit tries it again.
+    if (pr) {
+      detailCache.set(detailKey, pr);
+      if (detailCache.size > MAX_CACHED_DETAILS) detailCache.delete(detailCache.keys().next().value);
+    }
+    return pr;
+  }));
+
+  return { prs: prs.filter(Boolean), page: pageNumber, pageSize: size, hasMore: candidates.length > pageNumber * size };
 }
 
 function ensureEventTable() {
@@ -592,13 +683,20 @@ export const tools = [
         ticketKeys: { type: 'array', items: { type: 'string' } },
         relationship: { type: 'string', enum: ['all', 'authored', 'review', 'mentioned'] },
         state: { type: 'string', enum: ['all', 'open', 'draft', 'merged', 'closed'] },
-        search: { type: 'string', description: 'Words GitHub must find in the title, description or comments' }
+        search: { type: 'string', description: 'Words GitHub must find in the title, description or comments' },
+        page: { type: 'number', description: 'Return only this page (from 1), loading details for its pull requests alone' },
+        pageSize: { type: 'number', description: 'Pull requests per page when paging (default 3)' },
+        refresh: { type: 'boolean', description: 'Ignore the short-lived cache of earlier results when paging' }
       },
       required: []
     },
-    handler: async ({ ticketKeys = [], relationship, state, search }) => {
+    handler: async ({ ticketKeys = [], relationship, state, search, page, pageSize, refresh }) => {
       try {
         const diagnostics = { searches: [], candidateCount: 0, detailFailures: [] };
+        if (page !== undefined) {
+          const result = await listPullRequestsPage(requireToken(), { relationship, state, search, page, pageSize, refresh }, diagnostics);
+          return { success: true, ...result, diagnostics };
+        }
         const prs = await listRelevantPullRequests(requireToken(), extractTicketKeys(...ticketKeys), MAX_PRS, diagnostics, { relationship, state, search });
         return { success: true, prs, diagnostics };
       } catch (error) {

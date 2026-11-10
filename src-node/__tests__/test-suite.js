@@ -390,6 +390,63 @@ async function runTests() {
     }
   });
 
+  await testAsync('github_pr_list with a page only loads the pull requests on that page', async () => {
+    const saved = db.prepare("SELECT value FROM settings WHERE key = 'github_config'").get();
+    const setConfig = db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('github_config', ?, CURRENT_TIMESTAMP)");
+    let searches = 0;
+    const details = [];
+    const perPages = [];
+    const github = url => {
+      if (url.pathname === '/user') return { login: 'me' };
+      if (url.pathname === '/search/issues') {
+        searches++;
+        perPages.push(url.searchParams.get('per_page'));
+        // Seven PRs, newest first.
+        const items = [7, 6, 5, 4, 3, 2, 1].map(number => ({
+          number, title: `PR ${number}`, user: { login: 'me' },
+          repository_url: 'https://api.github.com/repos/org/app', updated_at: `2026-11-0${number}T00:00:00Z`
+        }));
+        return { items: items.slice(0, Number(url.searchParams.get('per_page'))) };
+      }
+      const pr = url.pathname.match(/^\/repos\/org\/app\/pulls\/(\d+)$/);
+      if (pr) {
+        details.push(Number(pr[1]));
+        return { id: Number(pr[1]), number: Number(pr[1]), title: `PR ${pr[1]}`, state: 'closed', merged_at: '2026-11-01T00:00:00Z', user: { login: 'me' }, base: { repo: { full_name: 'org/app' } }, requested_reviewers: [] };
+      }
+      throw new Error(`Unexpected request: ${url.pathname}`);
+    };
+    const ask = page => withGitHubStub(github, () => executeTool('github_pr_list', { relationship: 'authored', state: 'merged', page, pageSize: 3 }));
+    try {
+      setConfig.run(JSON.stringify({ token: 'github-token', login: 'me' }));
+      const first = await ask(1);
+      assert.deepStrictEqual(first.prs.map(pr => pr.number), [7, 6, 5]);
+      assert.strictEqual(first.hasMore, true);
+      assert.deepStrictEqual(details.sort(), [5, 6, 7], 'Only the first page should be loaded');
+      assert.deepStrictEqual(perPages, ['4'], 'The search should only ask for what the page needs, plus one');
+
+      details.length = 0;
+      const second = await ask(2);
+      assert.deepStrictEqual(second.prs.map(pr => pr.number), [4, 3, 2]);
+      assert.strictEqual(second.hasMore, true);
+      assert.deepStrictEqual(details.sort(), [2, 3, 4], 'Only the second page should be loaded');
+
+      const third = await ask(3);
+      assert.deepStrictEqual(third.prs.map(pr => pr.number), [1]);
+      assert.strictEqual(third.hasMore, false, 'The last page has no next page');
+
+      const before = { searches, details: details.length };
+      const back = await ask(1);
+      assert.deepStrictEqual(back.prs.map(pr => pr.number), [7, 6, 5]);
+      assert.deepStrictEqual({ searches, details: details.length }, before, 'Going back should not ask GitHub again');
+
+      const refreshed = await withGitHubStub(github, () => executeTool('github_pr_list', { relationship: 'authored', state: 'merged', page: 1, pageSize: 3, refresh: true }));
+      assert.strictEqual(refreshed.prs.length, 3);
+      assert(searches > before.searches, 'Refresh should search again');
+    } finally {
+      if (saved) setConfig.run(saved.value);
+      else db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
+    }
+  });
   await testAsync('a requested PR that left the GitHub searches is still announced when it merges', async () => {
     const settingKeys = ['github_config', 'github_pr_poll_initialized', 'github_pr_lifecycle_initialized'];
     const savedSettings = settingKeys.map(key => [key, db.prepare('SELECT value FROM settings WHERE key = ?').get(key)]);
