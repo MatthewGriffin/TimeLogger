@@ -3034,6 +3034,68 @@ async function runTests() {
     }
   });
 
+  await testAsync('suggest_entry_tickets suggests from keywords, history and the model, and saves nothing', async () => {
+    const day = localDateKey();
+    const savedConfig = db.prepare("SELECT value FROM settings WHERE key = 'sprint_config'").get();
+    const generate = ollamaClient.generate;
+    const initialize = ollamaClient.initialize;
+    const add = (name, ticket, submitted = 0) => db.prepare(
+      'INSERT INTO daily_summary (date, name, ticket_id, duration_mins, submitted) VALUES (?, ?, ?, 30, ?)'
+    ).run(day, name, ticket, submitted).lastInsertRowid;
+    const ask = ids => executeTool('suggest_entry_tickets', { entryIds: ids.map(Number) });
+    try {
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('sprint_config', ?)").run(JSON.stringify({
+        piNumber: '44',
+        projectKey: 'TIME',
+        mappings: [{ id: 'dailyScrum', ticketKey: 'TIME-1234' }, { id: 'retro', ticketKey: 'TIME-5678' }]
+      }));
+      add('ZZ earlier login fix', 'TEST-ET1');
+      const scrum = add('Daily Scrum', null);
+      const repeat = add('ZZ earlier login fix', null);
+      const guess = add('ZZ mystery task', null);
+      const none = add('ZZ other thing', null);
+      const invented = add('ZZ invented answer', null);
+      const submitted = add('ZZ already sent', null, 1);
+      const ticketed = add('ZZ has a ticket', 'TEST-ET2');
+      const all = [scrum, repeat, guess, none, invented, submitted, ticketed];
+
+      ollamaClient.initialize = async () => true;
+      let asked = 0;
+      ollamaClient.generate = async prompt => {
+        asked++;
+        if (prompt.includes('ZZ mystery task')) return { response: ' 2.' };
+        if (prompt.includes('ZZ invented answer')) return { response: '99' };
+        return { response: '0' };
+      };
+      const withAi = await ask(all);
+      const byId = new Map(withAi.suggestions.map(item => [item.entryId, item]));
+      assert.strictEqual(withAi.aiAvailable, true);
+      assert.deepStrictEqual([byId.get(Number(scrum)).ticketKey, byId.get(Number(scrum)).source], ['TIME-1234', 'keyword']);
+      assert.strictEqual(byId.get(Number(scrum)).label, 'PI 44 Daily Scrum');
+      assert.deepStrictEqual([byId.get(Number(repeat)).ticketKey, byId.get(Number(repeat)).source], ['TEST-ET1', 'history']);
+      assert.deepStrictEqual([byId.get(Number(guess)).ticketKey, byId.get(Number(guess)).source], ['TIME-5678', 'ai']);
+      assert.strictEqual(byId.get(Number(none)).ticketKey, null, 'A "none fits" answer should suggest nothing');
+      assert.strictEqual(byId.get(Number(invented)).ticketKey, null, 'An answer outside the list should suggest nothing');
+      assert(!byId.has(Number(submitted)) && !byId.has(Number(ticketed)), 'Submitted and ticketed entries are left alone');
+      assert.strictEqual(asked, 3, 'Only entries without a keyword or history match should ask the model');
+      const stillBlank = db.prepare("SELECT COUNT(*) AS n FROM daily_summary WHERE id IN (?, ?, ?) AND ticket_id IS NULL").get(scrum, repeat, guess).n;
+      assert.strictEqual(stillBlank, 3, 'Suggesting must not save anything');
+
+      ollamaClient.initialize = async () => false;
+      const noAi = await ask(all);
+      assert.strictEqual(noAi.aiAvailable, false);
+      const offline = new Map(noAi.suggestions.map(item => [item.entryId, item]));
+      assert.strictEqual(offline.get(Number(scrum)).ticketKey, 'TIME-1234', 'Keywords work without the model');
+      assert.strictEqual(offline.get(Number(guess)).ticketKey, null);
+    } finally {
+      ollamaClient.generate = generate;
+      ollamaClient.initialize = initialize;
+      if (savedConfig) db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('sprint_config', ?)").run(savedConfig.value);
+      else db.prepare("DELETE FROM settings WHERE key = 'sprint_config'").run();
+      db.prepare("DELETE FROM daily_summary WHERE date = ? AND (name LIKE 'ZZ %' OR (name = 'Daily Scrum' AND ticket_id IS NULL))").run(day);
+    }
+  });
+
   // ============================================================
   // SUMMARY
   // ============================================================

@@ -91,7 +91,7 @@
               >{{ blockerLabel(note) }}</span>
               <span v-if="note.oneNoteSynced" class="sync-badge">📤</span>
             </div>
-            <span v-if="note.ticketId" class="note-ticket">{{ note.ticketId }}</span>
+            <span v-if="note.ticketId" class="note-ticket"><TicketLabel :ticket-id="note.ticketId" /></span>
             <div v-if="notesStore.isCategorizing(note.id)" class="note-ai-status" role="status" aria-live="polite">
               <span class="note-ai-spinner" aria-hidden="true"></span>
               AI is deciding this note's category…
@@ -164,7 +164,7 @@
         </p>
         <dl class="note-details">
           <div><dt>Category</dt><dd>{{ viewingNote.topic }}</dd></div>
-          <div v-if="viewingNote.ticketId"><dt>Ticket</dt><dd>{{ viewingNote.ticketId }}</dd></div>
+          <div v-if="viewingNote.ticketId"><dt>Ticket</dt><dd><TicketLabel :ticket-id="viewingNote.ticketId" /></dd></div>
           <div><dt>Updated</dt><dd>{{ new Date(viewingNote.updatedAt).toLocaleString() }}</dd></div>
         </dl>
         <p class="note-full-text">{{ viewingNote.content }}</p>
@@ -244,6 +244,7 @@
             <datalist id="note-recent-tickets">
               <option v-for="ticket in ticketOptions" :key="ticket.key" :value="ticket.key" :label="ticket.description" />
             </datalist>
+            <TicketHint :ticket-id="notesStore.editingNote!.ticketId" />
             <div v-if="jiraStore.matches.length > 0" class="ticket-suggestions">
               <button
                 v-for="match in jiraStore.matches"
@@ -297,6 +298,8 @@ import { useJiraStore } from '@/shared/stores/jira'
 import type { JiraMatch } from '@/shared/stores/jira'
 import { useEntriesStore } from '@/shared/stores/entries'
 import { useTicketOptions } from '@/shared/composables/useTicketOptions'
+import TicketHint from '@/shared/components/TicketHint.vue'
+import TicketLabel from '@/shared/components/TicketLabel.vue'
 
 const notesStore = useNotesStore()
 const uiStore = useUiStore()

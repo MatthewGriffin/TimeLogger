@@ -1,7 +1,6 @@
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useEntriesStore } from '@/shared/stores/entries'
-import { executeApi, asList } from '@/shared/utils/api'
-import { asRecord, asString } from '@/shared/utils/schema'
+import { timeTicketText, useTimeTickets } from '@/shared/composables/useTimeTickets'
 
 export interface TicketOption {
   key: string
@@ -21,24 +20,12 @@ const RECENT_LIMIT = 10
  */
 export function useTicketOptions(localTickets: () => TicketOption[] = () => []) {
   const entriesStore = useEntriesStore()
-  const piTickets = ref<TicketOption[]>([])
+  const { timeTickets, reload: loadPiTickets } = useTimeTickets()
 
-  const loadPiTickets = async () => {
-    try {
-      const config = asRecord(asRecord(await executeApi('sprint_get_config', {})).config)
-      const pi = asString(config.piNumber).trim()
-      piTickets.value = asList(config.mappings)
-        .map(raw => asRecord(raw))
-        .map(mapping => ({
-          key: asString(mapping.ticketKey).trim(),
-          description: [pi && `PI${pi}`, asString(mapping.label)].filter(Boolean).join(' ')
-        }))
-        .filter(ticket => ticket.key)
-    } catch {
-      // The field still works without them, as a plain text box with recent tickets.
-      piTickets.value = []
-    }
-  }
+  // Each one reads as "PI 44 TIME-1234 Daily Scrum", so a pick can be checked at a glance.
+  const piTickets = computed<TicketOption[]>(() =>
+    timeTickets.value.map(ticket => ({ key: ticket.key, description: timeTicketText(ticket) }))
+  )
 
   const ticketOptions = computed<TicketOption[]>(() => {
     const entries = (Array.isArray(entriesStore.entries) ? entriesStore.entries : [])
