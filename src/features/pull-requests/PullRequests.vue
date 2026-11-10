@@ -24,7 +24,7 @@
       <div class="pr-toolbar">
         <label class="search-field">
           <span>Search</span>
-          <input v-model="searchText" type="search" placeholder="Title, repository, author, branch…" />
+          <input v-model="searchText" type="search" placeholder="Title, repository, author…" />
         </label>
         <label>
           <span>Relationship</span>
@@ -48,17 +48,18 @@
       </div>
 
       <div class="summary-row">
-        <span aria-live="polite">{{ filteredPrs.length }} matching · showing {{ paginatedPrs.length }} on this page<template v-if="loading"> · loading from GitHub…</template></span>
+        <span aria-live="polite">Page {{ currentPage }} · showing {{ filteredPrs.length }}<template v-if="loading"> · loading from GitHub…</template></span>
         <span v-if="login">Connected as @{{ login }}</span>
       </div>
 
       <div v-if="loading && !filteredPrs.length" class="empty-state" aria-live="polite">Loading pull requests…</div>
-      <section v-else-if="prsLoaded && filteredPrs.length" class="pr-list" aria-label="Pull requests">
-        <PullRequestCard v-for="pr in paginatedPrs" :key="pr.id" :pr="pr" />
-        <nav v-if="pageCount > 1" class="pagination" aria-label="Pull request pages">
-          <button type="button" class="btn-refresh" :disabled="currentPage === 1" @click="currentPage--">Previous</button>
-          <span>Page {{ currentPage }} of {{ pageCount }}</span>
-          <button type="button" class="btn-refresh" :disabled="currentPage === pageCount" @click="currentPage++">Next</button>
+      <section v-else-if="prsLoaded && (filteredPrs.length || currentPage > 1)" class="pr-list" :aria-busy="loading" aria-label="Pull requests">
+        <PullRequestCard v-for="pr in filteredPrs" :key="pr.id" :pr="pr" />
+        <p v-if="!filteredPrs.length" class="empty-page">Nothing on this page. Go back to the previous page.</p>
+        <nav v-if="currentPage > 1 || hasMore" class="pagination" aria-label="Pull request pages">
+          <button type="button" class="btn-refresh" :disabled="currentPage === 1 || loading" @click="currentPage--">Previous</button>
+          <span>Page {{ currentPage }}</span>
+          <button type="button" class="btn-refresh" :disabled="!hasMore || loading" @click="currentPage++">Next</button>
         </nav>
       </section>
       <div v-else-if="prsLoaded" class="empty-state">
@@ -100,12 +101,15 @@ interface PullRequestListResult {
   success?: boolean
   message?: string
   prs?: PullRequest[]
+  hasMore?: boolean
   diagnostics?: { searches?: Array<{ name: string; count: number; error?: string }>; candidateCount?: number
     detailFailures?: Array<{ repository: string; number: number; endpoint: string; message: string }> }
 }
 
 const SEARCH_DEBOUNCE_MS = 500
 const MIN_GITHUB_SEARCH_LENGTH = 2
+// Only the pull requests on the page are loaded from GitHub, so a small page keeps it quick.
+const PAGE_SIZE = 3
 
 const connected = ref(false)
 const login = ref('')
@@ -116,7 +120,12 @@ const searchText = ref('')
 const relationshipFilter = ref('all')
 const stateFilter = ref('open')
 const currentPage = ref(1)
-const pageSize = 10
+
+const prs = ref<PullRequest[]>([])
+const prsLoaded = ref(false)
+const loading = ref(false)
+const loadNotice = ref('')
+const hasMore = ref(false)
 
 const describeProblems = (result: PullRequestListResult): string => {
   const diagnostics = result.diagnostics
@@ -138,107 +147,88 @@ const describeProblems = (result: PullRequestListResult): string => {
   return ''
 }
 
-// Holds the results of one kind of request. A newer run or a reset makes any
-// response still in flight stale, so a slow reply can't replace newer results.
-const createLoader = () => {
-  const items = ref<PullRequest[]>([])
-  const loaded = ref(false)
-  const busy = ref(false)
-  const notice = ref('')
-  let latest = 0
-  const run = async (search = '') => {
-    const request = ++latest
-    busy.value = true
-    try {
-      const result = await executeApi<PullRequestListResult>('github_pr_list', {
-        relationship: relationshipFilter.value,
-        state: stateFilter.value,
-        search
-      })
-      if (request !== latest) return
-      if (result.success === false) {
-        notice.value = result.message || 'GitHub could not load pull requests.'
-        return
-      }
-      items.value = Array.isArray(result.prs) ? result.prs : []
-      loaded.value = true
-      notice.value = describeProblems(result)
-    } catch (error) {
-      if (request === latest) notice.value = error instanceof Error ? error.message : 'Could not load pull requests.'
-    } finally {
-      if (request === latest) busy.value = false
-    }
-  }
-  const reset = () => {
-    latest++
-    items.value = []
-    loaded.value = false
-    busy.value = false
-    notice.value = ''
-  }
-  return { items, loaded, busy, notice, run, reset }
-}
-
-// GitHub's search only covers titles, descriptions and comments. So the list is
-// loaded once without the search text and matched here on repository, author,
-// branch and number, and GitHub's matches for the text are added to it.
-const list = createLoader()
-const githubMatches = createLoader()
-const prsLoaded = list.loaded
-const loading = computed(() => list.busy.value || githubMatches.busy.value)
-const loadNotice = computed(() => list.notice.value || githubMatches.notice.value)
 const githubSearch = computed(() => {
   const text = searchText.value.trim()
   return text.length >= MIN_GITHUB_SEARCH_LENGTH ? text : ''
 })
 
-const filteredPrs = computed(() => {
-  const query = searchText.value.trim().toLowerCase()
-  const combined = new Map<string, PullRequest>()
-  for (const pr of list.items.value) {
-    const matches = !query || [pr.title, pr.repository, pr.author, pr.branch, String(pr.number)]
-      .some(value => String(value || '').toLowerCase().includes(query))
-    if (matches) combined.set(pr.id, pr)
-  }
-  if (query) for (const pr of githubMatches.items.value) combined.set(pr.id, pr)
-  // Results stay filtered here too, so the page responds as soon as a filter
-  // changes, and GitHub's search index being behind can't show the wrong status.
-  return [...combined.values()].filter(pr => {
-    const relationshipMatches = relationshipFilter.value === 'all'
-      || (relationshipFilter.value === 'authored' && pr.isAuthoredByAccount)
-      || (relationshipFilter.value === 'review' && !pr.isAuthoredByAccount && (pr.requestedReviewer || pr.reviewedByAccount))
-      || (relationshipFilter.value === 'mentioned' && !pr.isAuthoredByAccount && pr.mentionsAccount)
-    const stateMatches = stateFilter.value === 'all' || pr.state === stateFilter.value
-    return relationshipMatches && stateMatches
-  }).sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
-})
+// The page asks GitHub for its own pull requests only, so these are all it shows.
+// They are still checked against the filters, in case GitHub's search index is
+// behind and returns one with another status.
+const filteredPrs = computed(() => prs.value.filter(pr => {
+  const relationshipMatches = relationshipFilter.value === 'all'
+    || (relationshipFilter.value === 'authored' && pr.isAuthoredByAccount)
+    || (relationshipFilter.value === 'review' && !pr.isAuthoredByAccount && (pr.requestedReviewer || pr.reviewedByAccount))
+    || (relationshipFilter.value === 'mentioned' && !pr.isAuthoredByAccount && pr.mentionsAccount)
+  const stateMatches = stateFilter.value === 'all' || pr.state === stateFilter.value
+  return relationshipMatches && stateMatches
+}))
 
-const pageCount = computed(() => Math.max(1, Math.ceil(filteredPrs.value.length / pageSize)))
-const paginatedPrs = computed(() => filteredPrs.value.slice((currentPage.value - 1) * pageSize, currentPage.value * pageSize))
+// A newer request makes any response still in flight stale, so a slow reply
+// can't replace the page the user has moved to.
+let latest = 0
+// Set when Refresh moves back to the first page, whose load then skips the cache.
+let forceRefresh = false
+const loadPage = async (refresh = false) => {
+  const request = ++latest
+  const bypassCache = refresh || forceRefresh
+  forceRefresh = false
+  loading.value = true
+  try {
+    const result = await executeApi<PullRequestListResult>('github_pr_list', {
+      relationship: relationshipFilter.value,
+      state: stateFilter.value,
+      search: githubSearch.value,
+      page: currentPage.value,
+      pageSize: PAGE_SIZE,
+      refresh: bypassCache
+    })
+    if (request !== latest) return
+    if (result.success === false) {
+      loadNotice.value = result.message || 'GitHub could not load pull requests.'
+      return
+    }
+    prs.value = Array.isArray(result.prs) ? result.prs : []
+    hasMore.value = result.hasMore === true
+    prsLoaded.value = true
+    loadNotice.value = describeProblems(result)
+  } catch (error) {
+    if (request === latest) loadNotice.value = error instanceof Error ? error.message : 'Could not load pull requests.'
+  } finally {
+    if (request === latest) loading.value = false
+  }
+}
+
+const resetResults = () => {
+  latest++
+  prs.value = []
+  prsLoaded.value = false
+  loading.value = false
+  hasMore.value = false
+  loadNotice.value = ''
+}
+
+// Changing a filter or the search starts again from the first page. Moving the
+// page number is what loads, so it isn't loaded twice when it was already there.
+const loadFromFirstPage = () => {
+  if (currentPage.value !== 1) currentPage.value = 1
+  else void loadPage()
+}
 
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 
-const loadGithubMatches = async () => {
-  clearTimeout(searchTimer)
-  if (githubSearch.value) await githubMatches.run(githubSearch.value)
-  else githubMatches.reset()
-}
-
-watch(searchText, () => { currentPage.value = 1 })
-watch(pageCount, count => { if (currentPage.value > count) currentPage.value = count })
+watch(currentPage, () => { if (connected.value) void loadPage() })
 
 watch([relationshipFilter, stateFilter], () => {
-  currentPage.value = 1
-  void list.run()
-  void loadGithubMatches()
+  clearTimeout(searchTimer)
+  if (connected.value) loadFromFirstPage()
 })
 
-watch(githubSearch, text => {
+watch(githubSearch, () => {
   clearTimeout(searchTimer)
-  githubMatches.reset()
-  if (!text) return
-  githubMatches.busy.value = true
-  searchTimer = setTimeout(() => { void loadGithubMatches() }, SEARCH_DEBOUNCE_MS)
+  if (!connected.value) return
+  loading.value = true
+  searchTimer = setTimeout(loadFromFirstPage, SEARCH_DEBOUNCE_MS)
 })
 
 onBeforeUnmount(() => clearTimeout(searchTimer))
@@ -252,11 +242,15 @@ const refresh = async () => {
     login.value = result.login || ''
     if (connected.value) {
       message.value = ''
-      currentPage.value = 1
-      await Promise.all([list.run(), loadGithubMatches()])
+      // Refresh asks GitHub again rather than reusing results kept for a minute.
+      if (currentPage.value !== 1) {
+        forceRefresh = true
+        currentPage.value = 1
+      } else {
+        await loadPage(true)
+      }
     } else {
-      list.reset()
-      githubMatches.reset()
+      resetResults()
       message.value = result.message || ''
     }
   } catch (error) {
@@ -293,6 +287,7 @@ onMounted(refresh)
 .pr-list { display: grid; grid-template-columns: 1fr; gap: var(--space-md); }
 .empty-state { margin-top: 1.5rem; padding: 2rem; text-align: center; border: 1px dashed var(--color-border); border-radius: var(--radius-md); color: var(--color-text-muted); }
 .empty-state h2 { font-size: 1.1rem; color: var(--color-text); }
+.empty-page { margin: 0; color: var(--color-text-muted); text-align: center; }
 .pagination { display: flex; justify-content: center; align-items: center; gap: 1rem; margin-top: 1rem; color: var(--color-text-muted); }
 @media (max-width: 700px) { .pr-toolbar { align-items: stretch; } .pr-toolbar label, .pr-toolbar input, .pr-toolbar select { width: 100%; min-width: 0; box-sizing: border-box; } }
 </style>
