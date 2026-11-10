@@ -53,7 +53,7 @@
           <div class="table-body">
             <div v-for="entry in entriesByDate" :key="entry.id" class="table-row">
               <div class="col-task">{{ entry.isLunch ? 'Lunch break' : entry.taskName }}</div>
-              <div class="col-ticket">{{ entry.ticketId || '-' }}</div>
+              <div class="col-ticket"><TicketLabel :ticket-id="entry.ticketId" empty="-" /></div>
               <div class="col-time">{{ formatTime(entry.startTime) }}</div>
               <div class="col-time">{{ formatTime(entry.endTime) }}</div>
               <div class="col-duration">{{ formatDuration(entry.duration) }}</div>
@@ -135,6 +135,7 @@
               <datalist id="recent-tickets">
                 <option v-for="ticket in ticketOptions" :key="ticket.key" :value="ticket.key" :label="ticket.description" />
               </datalist>
+              <TicketHint :ticket-id="newEntry.ticketId" />
             </div>
             <div class="form-group">
               <label>Duration (calc)</label>
@@ -216,6 +217,7 @@
               <datalist id="edit-entry-tickets">
                 <option v-for="ticket in ticketOptions" :key="ticket.key" :value="ticket.key" :label="ticket.description" />
               </datalist>
+              <TicketHint :ticket-id="editingEntry.ticketId" />
             </div>
           </div>
 
@@ -304,6 +306,9 @@ import MeetingConflictPrompt from '@/features/entries/components/MeetingConflict
 import MeetingConflictReview from '@/features/entries/components/MeetingConflictReview.vue'
 import LunchConflictPrompt from '@/features/entries/components/LunchConflictPrompt.vue'
 import { useTicketOptions } from '@/shared/composables/useTicketOptions'
+import { timeTicketDetail, useTimeTickets } from '@/shared/composables/useTimeTickets'
+import TicketHint from '@/shared/components/TicketHint.vue'
+import TicketLabel from '@/shared/components/TicketLabel.vue'
 import { localDate } from '@/shared/utils/dates'
 
 const unmappedMeetings = ref<UnmappedMeeting[]>([])
@@ -332,15 +337,16 @@ const newEntry = ref({
   endTime: ''
 })
 
-const { ticketOptions, piTickets, loadPiTickets } = useTicketOptions()
+const { ticketOptions, loadPiTickets } = useTicketOptions()
+const { timeTickets } = useTimeTickets()
 
 // The time tickets (PI and meeting tickets) set up in Settings. They are rarely
 // assigned to you, so the in-progress list would never show them.
 const timeTicketMatches = computed<JiraMatch[]>(() => {
   const listed = new Set(jiraStore.matches.map(match => match.key.toLowerCase()))
-  return piTickets.value
+  return timeTickets.value
     .filter(ticket => !listed.has(ticket.key.toLowerCase()))
-    .map(ticket => ({ key: ticket.key, summary: ticket.description, status: '', confidence: 1 }))
+    .map(ticket => ({ key: ticket.key, summary: timeTicketDetail(ticket), status: '', confidence: 1 }))
 })
 
 const entriesByDate = computed(() => {

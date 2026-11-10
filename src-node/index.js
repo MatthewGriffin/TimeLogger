@@ -17,6 +17,7 @@ import * as OneNote from './tools/onenote.js';
 import * as Outlook from './tools/outlook.js';
 import * as Config from './tools/config.js';
 import * as Sprint from './tools/sprint.js';
+import * as EntryTickets from './tools/entry-tickets.js';
 import * as Scrum from './tools/scrum.js';
 import * as ScrumPlan from './tools/scrum-plan.js';
 import * as Setup from './tools/setup.js';
@@ -35,6 +36,7 @@ export const tools = [
   
   // Current Sprint / PI meeting mappings
   ...Sprint.tools,
+  ...EntryTickets.tools,
   
   // Daily Summary
   ...DailySummary.tools,

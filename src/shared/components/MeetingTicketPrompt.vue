@@ -26,7 +26,7 @@
                 <option value="">Select a ticket...</option>
                 <optgroup v-if="ceremonyOptions.length" label="Sprint ceremonies">
                   <option v-for="opt in ceremonyOptions" :key="opt.ticketKey" :value="opt.ticketKey">
-                    {{ opt.label }} — {{ opt.ticketKey }}
+                    {{ labelFor(opt.ticketKey) }}
                   </option>
                 </optgroup>
                 <optgroup v-if="item.searchResults.length" label="Search results">
@@ -89,6 +89,7 @@ import { ref, computed, watch } from 'vue'
 import { executeApi, asList } from '@/shared/utils/api'
 import { asRecord, asString, asNumber } from '@/shared/utils/schema'
 import { useUiStore } from '@/shared/stores/ui'
+import { useTimeTickets } from '@/shared/composables/useTimeTickets'
 
 import type { UnmappedMeeting } from '@/features/entries/models/entries'
 interface PromptItem {
@@ -111,6 +112,7 @@ const emit = defineEmits<{ (e: 'close', assignedCount: number): void }>()
 
 const uiStore = useUiStore()
 const items = ref<PromptItem[]>([])
+const { labelFor } = useTimeTickets()
 const ceremonyOptions = ref<{ label: string; ticketKey: string }[]>([])
 const assignedCount = ref(0)
 
