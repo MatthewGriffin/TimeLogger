@@ -208,10 +208,14 @@
             <div class="form-group">
               <label>Ticket ID</label>
               <input 
-                v-model="editingEntry.ticketId" 
-                type="text" 
+                v-model="editingEntry.ticketId"
+                type="text"
+                list="edit-entry-tickets"
                 :disabled="entriesStore.isLoading"
               />
+              <datalist id="edit-entry-tickets">
+                <option v-for="ticket in ticketOptions" :key="ticket.key" :value="ticket.key" :label="ticket.description" />
+              </datalist>
             </div>
           </div>
 
@@ -253,10 +257,24 @@
             </button>
           </div>
 
+          <div v-if="!jiraStore.lastQuery && timeTicketMatches.length" class="suggestion-item">
+            <label class="suggestion-label">Time Tickets:</label>
+            <button
+              v-for="match in timeTicketMatches"
+              :key="match.key"
+              type="button"
+              class="ticket-match"
+              @click="acceptTicket(match)"
+            >
+              <span class="ticket-match-key">{{ match.key }}</span>
+              <span class="ticket-match-summary">{{ match.summary }}</span>
+            </button>
+          </div>
+
           <div class="lookup-note">
             <span>ℹ️</span>
-            <p v-if="jiraStore.lastQuery">Only tickets assigned to you, reported by you, or recently updated by you are searched.</p>
-            <p v-else>These are the tickets assigned to you that are in progress. To find another, type a task name and search again.</p>
+            <p v-if="jiraStore.lastQuery">Only tickets assigned to you, reported by you, or recently updated by you are searched, plus the tickets in your Current Sprint project.</p>
+            <p v-else>These are the tickets assigned to you that are in progress, and your time tickets from Settings. To find another, type a task name and search again.</p>
           </div>
         </div>
         <div class="modal-footer">
@@ -314,7 +332,16 @@ const newEntry = ref({
   endTime: ''
 })
 
-const { ticketOptions, loadPiTickets } = useTicketOptions()
+const { ticketOptions, piTickets, loadPiTickets } = useTicketOptions()
+
+// The time tickets (PI and meeting tickets) set up in Settings. They are rarely
+// assigned to you, so the in-progress list would never show them.
+const timeTicketMatches = computed<JiraMatch[]>(() => {
+  const listed = new Set(jiraStore.matches.map(match => match.key.toLowerCase()))
+  return piTickets.value
+    .filter(ticket => !listed.has(ticket.key.toLowerCase()))
+    .map(ticket => ({ key: ticket.key, summary: ticket.description, status: '', confidence: 1 }))
+})
 
 const entriesByDate = computed(() => {
   return entriesStore.getEntriesByDate(selectedDate.value)
@@ -589,7 +616,7 @@ const findJiraTicket = async (target: 'add' | 'edit' = 'add') => {
     // With nothing to search for, offer what's being worked on instead.
     if (!query) {
       const inProgress = await jiraStore.findInProgress()
-      if (inProgress.length === 0) {
+      if (inProgress.length === 0 && timeTicketMatches.value.length === 0) {
         uiStore.showInfo('You have no Jira tickets in progress. Type a task name to search instead.')
         return
       }

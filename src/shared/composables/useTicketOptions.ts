@@ -67,5 +67,5 @@ export function useTicketOptions(localTickets: () => TicketOption[] = () => []) 
       .map(key => ({ key, description: descriptions.get(key.toLowerCase()) ?? '' }))
   })
 
-  return { ticketOptions, loadPiTickets }
+  return { ticketOptions, piTickets, loadPiTickets }
 }
