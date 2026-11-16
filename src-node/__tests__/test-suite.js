@@ -21,7 +21,7 @@ import { previousWorkingDay, isWorkingDay } from '../utils/working-days.js';
 import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, microsoftAuthorityUrl, escapeHtml } from '../utils/safe-url.js';
 import { singleLine } from '../utils/log-text.js';
 import { redactSecrets } from '../api/setup-routes.js';
-import { extractTicketKeys, classifyPullRequest, isOpenUnmergedPullRequest, buildPullRequestSearches } from '../tools/github-prs.js';
+import { extractTicketKeys, classifyPullRequest, isOpenUnmergedPullRequest, buildPullRequestSearches, summarizeReviews } from '../tools/github-prs.js';
 import { GraphClient, hasStoredGraphToken } from '../api/graph-client.js';
 import { fetchAllTempoPages } from '../tools/jira-tempo-worklogs.js';
 import { localDateKey } from '../utils/dates.js';
@@ -553,6 +553,61 @@ async function runTests() {
     }
   });
 
+  test('summarizeReviews counts each reviewer once by their latest approval or change request', () => {
+    const review = (user, state) => ({ user: { login: user }, state });
+    assert.deepStrictEqual(
+      summarizeReviews([review('ann', 'CHANGES_REQUESTED'), review('ann', 'APPROVED'), review('bob', 'APPROVED'), review('bob', 'COMMENTED'), review('me', 'APPROVED')], 'me'),
+      { approvedBy: ['ann', 'bob'], changesRequestedBy: [] },
+      'A later approval replaces a change request, a comment changes nothing, and the author is not counted'
+    );
+    assert.deepStrictEqual(
+      summarizeReviews([review('ann', 'APPROVED'), review('ann', 'DISMISSED'), review('cat', 'CHANGES_REQUESTED')]),
+      { approvedBy: [], changesRequestedBy: ['cat'] },
+      'A dismissed review no longer counts'
+    );
+    assert.deepStrictEqual(summarizeReviews(null), { approvedBy: [], changesRequestedBy: [] });
+  });
+
+  await testAsync('an approval of the account\'s PR is reported once, and the page lists who approved it', async () => {
+    const settingKeys = ['github_config', 'github_pr_poll_initialized', 'github_pr_lifecycle_initialized'];
+    const savedSettings = settingKeys.map(key => [key, db.prepare('SELECT value FROM settings WHERE key = ?').get(key)]);
+    const setSetting = db.prepare('INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)');
+    let reviews = [];
+    const github = url => {
+      if (url.pathname === '/user') return { login: 'me' };
+      if (url.pathname === '/search/issues') {
+        return { items: url.searchParams.get('q').includes('author:me') ? [{ number: 31, state: 'open', title: 'My change', user: { login: 'me' }, repository_url: 'https://api.github.com/repos/org/approved', updated_at: '2026-11-05T00:00:00Z' }] : [] };
+      }
+      if (url.pathname === '/repos/org/approved/pulls/31') {
+        return { id: 310, number: 31, title: 'My change', state: 'open', user: { login: 'me' }, base: { repo: { full_name: 'org/approved' } }, html_url: 'https://github.com/org/approved/pull/31', requested_reviewers: [] };
+      }
+      if (url.pathname === '/repos/org/approved/pulls/31/reviews') return reviews;
+      if (url.pathname.endsWith('/comments')) return [];
+      throw new Error(`Unexpected request: ${url.pathname}`);
+    };
+    const poll = () => withGitHubStub(github, () => executeTool('github_pr_poll_activity', {}));
+    try {
+      setSetting.run('github_config', JSON.stringify({ token: 'github-token', login: 'me' }));
+      db.prepare("DELETE FROM settings WHERE key IN ('github_pr_poll_initialized', 'github_pr_lifecycle_initialized')").run();
+      assert.deepStrictEqual((await poll()).events, [], 'The first poll only records what is already there');
+
+      reviews = [{ id: 3100, state: 'APPROVED', user: { login: 'ann' }, body: 'Looks good' }];
+      const approved = (await poll()).events;
+      assert.deepStrictEqual(approved.map(event => [event.kind, event.reviewer, event.number]), [['approval', 'ann', 31]]);
+      assert.deepStrictEqual((await poll()).events, [], 'The same approval is not reported twice');
+
+      const page = await withGitHubStub(github, () => executeTool('github_pr_list', { relationship: 'authored', state: 'open', page: 1, pageSize: 3, refresh: true }));
+      assert.deepStrictEqual(page.prs[0].approvedBy, ['ann'], 'The page shows who approved it');
+      assert.deepStrictEqual(page.prs[0].changesRequestedBy, []);
+    } finally {
+      db.prepare("DELETE FROM github_pr_seen_events WHERE event_id LIKE 'review:org/approved:%'").run();
+      db.prepare("DELETE FROM github_pr_lifecycle WHERE pr_key LIKE 'org/approved#%'").run();
+      for (const [name, saved] of savedSettings) {
+        if (saved) setSetting.run(name, saved.value);
+        else db.prepare('DELETE FROM settings WHERE key = ?').run(name);
+      }
+    }
+  });
   await testAsync('a PR that only mentions the account causes no alerts', async () => {
     const settingKeys = ['github_config', 'github_pr_poll_initialized', 'github_pr_lifecycle_initialized'];
     const savedSettings = settingKeys.map(key => [key, db.prepare('SELECT value FROM settings WHERE key = ?').get(key)]);

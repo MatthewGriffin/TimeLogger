@@ -272,24 +272,52 @@ async function findCandidates(token, login, diagnostics, filters, limit) {
   return [...candidates.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-/** Returns a function that loads and confirms one candidate, or null if it isn't linked to the account. */
-function detailFetcher(token, login, ticketKeys, diagnostics) {
+/**
+ * Who currently approves a PR and who is asking for changes. Each reviewer counts
+ * once, by their latest approval or change request: a later comment doesn't undo
+ * either, and a dismissed review is no longer counted. Reviews come oldest first.
+ */
+export function summarizeReviews(reviews, authorLogin = '') {
+  const author = String(authorLogin).toLowerCase();
+  const latest = new Map();
+  for (const review of Array.isArray(reviews) ? reviews : []) {
+    const user = String(review.user?.login || '');
+    if (!user || user.toLowerCase() === author) continue;
+    const state = String(review.state || '').toUpperCase();
+    if (state === 'APPROVED' || state === 'CHANGES_REQUESTED') latest.set(user, state);
+    else if (state === 'DISMISSED') latest.delete(user);
+  }
+  const by = wanted => [...latest].filter(([, state]) => state === wanted).map(([user]) => user);
+  return { approvedBy: by('APPROVED'), changesRequestedBy: by('CHANGES_REQUESTED') };
+}
+
+/**
+ * Returns a function that loads and confirms one candidate, or null if it isn't
+ * linked to the account. With `withReviews`, the PR also says who approved it.
+ */
+function detailFetcher(token, login, ticketKeys, diagnostics, { withReviews = false } = {}) {
   return async (item) => {
     try {
       const pr = await githubGet(`/repos/${item.repository}/pulls/${item.number}`, token);
       const authoredByAccount = String(pr.user?.login || '').toLowerCase() === login.toLowerCase();
       const requested = (pr.requested_reviewers || []).some(r => String(r.login || '').toLowerCase() === login.toLowerCase());
-      let reviewedByAccount = false;
-      if (!authoredByAccount && !requested && item.fromReviewSearch) {
-        const reviews = await githubGet(`/repos/${item.repository}/pulls/${item.number}/reviews?per_page=100`, token).catch(error => {
+      let reviews = null;
+      const loadReviews = async () => {
+        reviews ??= await githubGet(`/repos/${item.repository}/pulls/${item.number}/reviews?per_page=100`, token).catch(error => {
           if (diagnostics) diagnostics.detailFailures.push({
             repository: item.repository, number: item.number, endpoint: 'reviews',
             message: error instanceof Error ? error.message : String(error)
           });
           return [];
         });
-        reviewedByAccount = Array.isArray(reviews) && reviews.some(review => String(review.user?.login || '').toLowerCase() === login.toLowerCase());
+        return reviews;
+      };
+      let reviewedByAccount = false;
+      if (!authoredByAccount && !requested && item.fromReviewSearch) {
+        const list = await loadReviews();
+        reviewedByAccount = Array.isArray(list) && list.some(review => String(review.user?.login || '').toLowerCase() === login.toLowerCase());
       }
+      const approvals = withReviews ? summarizeReviews(await loadReviews(), pr.user?.login) : {};
       // Verify the account is the author, a current requested reviewer, or
       // actually reviewed the PR. Search results alone are not trusted for those.
       // A mention is the exception: confirming one would mean reading every
@@ -302,7 +330,8 @@ function detailFetcher(token, login, ticketKeys, diagnostics) {
         isAuthoredByAccount: authoredByAccount,
         reviewedByAccount,
         mentionsAccount: item.mentionsAccount,
-        pendingReview: requested
+        pendingReview: requested,
+        ...approvals
       };
     } catch (error) {
       if (diagnostics) diagnostics.detailFailures.push({
@@ -408,7 +437,7 @@ export async function listPullRequestsPage(token, { relationship, state, page = 
   }
 
   const slice = candidates.slice((pageNumber - 1) * size, pageNumber * size);
-  const fetchDetail = detailFetcher(token, login, [], diagnostics);
+  const fetchDetail = detailFetcher(token, login, [], diagnostics, { withReviews: true });
   const prs = await Promise.all(slice.map(async candidate => {
     const flags = `${candidate.fromReviewSearch}|${candidate.mentionsAccount}`;
     const finishedKey = `${login}|${candidate.repository}#${candidate.number}|${flags}`;

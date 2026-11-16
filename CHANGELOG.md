@@ -4,6 +4,11 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.1-beta.6
+
+- Fixed approvals and other GitHub review alerts being lost when they arrived while TimeLogger was open and in front. They now show as a short message in the app (and still go to your notifications when the app is in the background).
+- The Pull Requests page now shows who has approved a pull request, or asked for changes, and reloads by itself when an alert arrives so it matches.
+
 ## 0.9.1-beta.5
 
 - On the Pull Requests page, you can go back while the next page is still loading. The page keeps loading in the background, so it's ready when you come back to it.
