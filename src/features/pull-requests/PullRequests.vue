@@ -69,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { executeApi } from '@/shared/utils/api'
 import PullRequestCard from '@/features/pull-requests/components/PullRequestCard.vue'
 
@@ -92,6 +92,8 @@ interface PullRequest {
   updatedAt: string | null
   commentCount?: number
   pendingReview?: boolean
+  approvedBy?: string[]
+  changesRequestedBy?: string[]
 }
 
 interface PullRequestListResult {
@@ -225,6 +227,19 @@ watch([relationshipFilter, stateFilter], () => {
   currentPage.value = 1
   void loadPage(1)
 })
+
+// A GitHub alert means something changed on a pull request, so the page loads
+// again to show it. Open pages may be out of date now, while merged and closed
+// ones can't have changed. The page on screen stays until its new version arrives.
+const reloadAfterActivity = () => {
+  if (!connected.value) return
+  const current = pageKey(currentPage.value)
+  pages.value = Object.fromEntries(Object.entries(pages.value).filter(([key]) => key === current || /\|(merged|closed)\|/.test(key)))
+  void loadPage(currentPage.value, true)
+}
+
+onMounted(() => window.addEventListener('timelogger:github-activity', reloadAfterActivity))
+onBeforeUnmount(() => window.removeEventListener('timelogger:github-activity', reloadAfterActivity))
 
 const refresh = async () => {
   checkingConnection.value = true

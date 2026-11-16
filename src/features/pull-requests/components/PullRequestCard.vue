@@ -14,6 +14,8 @@
       <span v-if="pr.updatedAt">Updated {{ formatDate(pr.updatedAt) }}</span>
       <span v-if="pr.commentCount !== undefined" class="pr-comment-count" :title="`${pr.commentCount || 0} comments`">💬 {{ pr.commentCount || 0 }}</span>
       <span v-if="pr.pendingReview" class="pr-pending-review" title="Review requested" aria-label="Review requested">⚑ Review needed</span>
+      <span v-if="pr.approvedBy?.length" class="pr-approved" :title="`Approved by ${pr.approvedBy.map(name => '@' + name).join(', ')}`">✓ Approved by {{ pr.approvedBy.map(name => '@' + name).join(', ') }}</span>
+      <span v-if="pr.changesRequestedBy?.length" class="pr-changes" :title="`Changes requested by ${pr.changesRequestedBy.map(name => '@' + name).join(', ')}`">✗ Changes requested by {{ pr.changesRequestedBy.map(name => '@' + name).join(', ') }}</span>
     </div>
     <div v-if="pr.matchedTicketKeys.length" class="ticket-keys">
       <span v-for="ticket in pr.matchedTicketKeys" :key="ticket" class="ticket-chip">{{ ticket }}</span>
@@ -47,6 +49,8 @@ interface PullRequestCardData {
   commentCount?: number
   pendingReview?: boolean
   blockedTicketKeys?: string[]
+  approvedBy?: string[]
+  changesRequestedBy?: string[]
 }
 
 withDefaults(defineProps<{
@@ -104,6 +108,8 @@ const openPr = async (url: string) => {
 .ticket-keys { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .75rem; }
 .ticket-chip { border-radius: .3rem; padding: .15rem .4rem; background: var(--color-control); font-size: .8rem; }
 .pr-card-footer { margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--color-border); font-size: .9rem; }
+.pr-approved { color: var(--color-success); font-weight: 600; }
+.pr-changes { color: var(--color-danger); font-weight: 600; }
 .pr-blocker { color: var(--color-warning, #b7791f); font-weight: 600; }
 .pr-pending-review { color: var(--color-warning, #b7791f); font-weight: 600; }
 </style>
