@@ -122,8 +122,8 @@
 
       <!-- Active: progress, limited to the user's own tickets -->
       <section v-else class="board" aria-label="Sprint progress">
-        <div v-for="column in columns" :key="column.id" class="column">
-          <h2>{{ column.title }} <span class="muted">({{ column.tickets.length }})</span></h2>
+        <div v-for="column in columns" :key="column.name" class="column">
+          <h2>{{ column.name }} <span class="muted">({{ column.tickets.length }})</span></h2>
           <p v-if="!column.tickets.length" class="muted">Nothing here.</p>
           <article v-for="ticket in column.tickets" :key="ticket.key" class="card ticket-card">
             <div><strong>{{ ticket.key }}</strong> <span class="muted">{{ ticket.points ?? '–' }} pts</span></div>
@@ -152,7 +152,7 @@ import { useSprintPlan } from './composables/useSprintPlan'
 
 const {
   state, tickets, summary, loading, busy, error, results, searching, searched, columns, refreshing, refreshedAt,
-  load, search, add, remove, setPoints, setCapacity, setBoard, refresh, start, finish, openBoard, loadNotes, addNote
+  load, loadBoardColumns, search, add, remove, setPoints, setCapacity, setBoard, refresh, start, finish, openBoard, loadNotes, addNote
 } = useSprintPlan()
 
 const query = ref('')
@@ -201,6 +201,9 @@ const refreshedLabel = computed(() =>
 )
 
 // Open with what is saved, then bring the tickets up to date from Jira.
+// The board's columns matter only while the sprint runs, and when the board changes.
+watch(() => `${state.value.phase}|${state.value.boardId}`, () => { if (isActive.value) void loadBoardColumns() })
+
 onMounted(async () => {
   await load()
   if (tickets.value.length) await refresh(true)
@@ -252,7 +255,8 @@ label.wide input, .search-row .grow input { width: 100%; }
 .planned-row .ticket-main { flex: 1 1 16rem; }
 .points-input input { width: 5rem; }
 .empty { padding: 1.5rem; text-align: center; border: 1px dashed var(--color-border); border-radius: var(--radius-md); color: var(--color-text-muted); }
-.board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-md); align-items: start; }
+/* As many columns as fit; the rest wrap onto a new row. */
+.board { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: var(--space-md); align-items: start; }
 .column { display: flex; flex-direction: column; gap: .75rem; padding: .75rem; border-radius: var(--radius-md); background: var(--color-surface); }
 .ticket-card p { margin: .4rem 0; overflow-wrap: anywhere; }
 .ticket-card { padding-bottom: 0; }
@@ -260,5 +264,4 @@ label.wide input, .search-row .grow input { width: 100%; }
 .foot-actions { display: flex; gap: 1rem; }
 .link { background: none; border: 0; color: var(--color-accent); cursor: pointer; padding: 0; font: inherit; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-@media (max-width: 900px) { .board { grid-template-columns: 1fr; } }
 </style>

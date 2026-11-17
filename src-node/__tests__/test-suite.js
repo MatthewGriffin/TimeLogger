@@ -3338,7 +3338,7 @@ async function runTests() {
     }
   };
   const jiraIssue = (key, points, category = 'new', status = 'To Do') => ({
-    key, fields: { summary: `${key} summary`, status: { name: status, statusCategory: { key: category } }, customfield_10016: points }
+    key, fields: { summary: `${key} summary`, status: { id: status === 'Done' ? '30' : status === 'Ready for QA' ? '20' : '10', name: status, statusCategory: { key: category } }, customfield_10016: points }
   });
   // A site whose story points live in a differently named field.
   const jiraIssueAlt = (key, points) => ({
@@ -3346,6 +3346,14 @@ async function runTests() {
   });
   const jira = tickets => url => {
     if (url.pathname.endsWith('/myself')) return { accountId: 'acct-1', displayName: 'Me' };
+    if (url.pathname.endsWith('/configuration')) {
+      return { columnConfig: { columns: [
+        { name: 'To Do', statuses: [{ id: '10' }] },
+        { name: 'Ready for PR', statuses: [] },
+        { name: 'Ready for QA', statuses: [{ id: '20' }] },
+        { name: 'Done', statuses: [{ id: '30' }] }
+      ] } };
+    }
     if (url.pathname.endsWith('/field')) return [{ id: 'customfield_10016', name: 'Story point estimate' }, { id: 'customfield_10026', name: 'Story Points' }, { id: 'customfield_1', name: 'Other' }];
     if (url.pathname.endsWith('/search/jql')) {
       const jql = url.searchParams.get('jql') || '';
@@ -3428,6 +3436,22 @@ async function runTests() {
 
       const byKey = await executeTool('sprint_plan_search', { query: 'see zzplan-2 please' });
       assert.deepStrictEqual(byKey.issues.map(i => i.key), ['ZZPLAN-2'], 'A key inside the text is fetched directly, even when it is done');
+    });
+  });
+
+  await testAsync('sprint board columns come from the Jira board, with the status ids each holds', async () => {
+    await withJira(jira([jiraIssue('ZZPLAN-1', 3, 'indeterminate', 'Ready for QA')]), async urls => {
+      assert.deepStrictEqual((await executeTool('sprint_plan_board_columns', {})).columns, [], 'No board set yet');
+      await executeTool('sprint_plan_settings', { board: '166' });
+      const result = await executeTool('sprint_plan_board_columns', {});
+      assert.deepStrictEqual(result.columns.map(c => c.name), ['To Do', 'Ready for PR', 'Ready for QA', 'Done']);
+      assert.deepStrictEqual(result.columns[2].statusIds, ['20']);
+      assert.strictEqual(result.columns[1].statusIds.length, 0, 'An empty column is still a column');
+      await executeTool('sprint_plan_board_columns', {});
+      assert.strictEqual(urls.filter(u => u.includes('/configuration')).length, 1, 'Columns are cached');
+
+      const added = await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-1' });
+      assert.strictEqual(added.tickets[0].statusId, '20', 'The ticket keeps its status id so it can be placed in a column');
     });
   });
 

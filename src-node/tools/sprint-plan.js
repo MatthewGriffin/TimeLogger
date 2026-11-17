@@ -69,6 +69,10 @@ export function parseBoardUrl(input) {
   } catch { return ''; }
 }
 
+// Board columns change rarely and the page asks every time it opens.
+const COLUMN_CACHE_MS = 5 * 60 * 1000;
+const columnCache = new Map();
+
 let pointsFields = null;
 
 /**
@@ -109,6 +113,7 @@ function normalizeIssue(issue, fieldIds) {
     key: issue.key,
     summary: issue.fields?.summary || '',
     status: issue.fields?.status?.name || '',
+    statusId: issue.fields?.status?.id ? String(issue.fields.status.id) : '',
     statusCategory: issue.fields?.status?.statusCategory?.key || '',
     points
   };
@@ -123,7 +128,7 @@ async function fetchIssues(credentials, jql, limit) {
 
 function planned() {
   return db.prepare(`
-    SELECT t.ticket_id AS key, t.summary, t.status, t.status_category AS statusCategory,
+    SELECT t.ticket_id AS key, t.summary, t.status, t.status_id AS statusId, t.status_category AS statusCategory,
       t.points, t.points_manual AS pointsManual,
       (SELECT COUNT(*) FROM notes n WHERE n.ticket_id = t.ticket_id COLLATE NOCASE) AS noteCount
     FROM sprint_plan_tickets t
@@ -168,13 +173,13 @@ async function refreshFromJira() {
   const found = await fetchIssues(credentials, `key in (${keys.map(key => `"${escapeJql(key)}"`).join(',')})`, keys.length);
   const update = db.prepare(`
     UPDATE sprint_plan_tickets
-    SET summary = ?, status = ?, status_category = ?,
+    SET summary = ?, status = ?, status_category = ?, status_id = ?,
         points = CASE WHEN ? IS NOT NULL THEN ? WHEN points_manual = 1 THEN points ELSE NULL END,
         points_manual = CASE WHEN ? IS NOT NULL THEN 0 ELSE points_manual END
     WHERE ticket_id = ?
   `);
   db.transaction(() => {
-    for (const issue of found) update.run(issue.summary, issue.status, issue.statusCategory, issue.points, issue.points, issue.points, issue.key);
+    for (const issue of found) update.run(issue.summary, issue.status, issue.statusCategory, issue.statusId, issue.points, issue.points, issue.points, issue.key);
   })();
 }
 
@@ -247,10 +252,10 @@ export const tools = [
         const [issue] = await fetchIssues(resolveJiraCredentials({}), `key = "${escapeJql(key)}"`, 1);
         if (!issue) return { success: false, message: `${key} was not found in Jira` };
         db.prepare(`
-          INSERT INTO sprint_plan_tickets (ticket_id, summary, status, status_category, points)
-          VALUES (?, ?, ?, ?, ?)
+          INSERT INTO sprint_plan_tickets (ticket_id, summary, status, status_id, status_category, points)
+          VALUES (?, ?, ?, ?, ?, ?)
           ON CONFLICT(ticket_id) DO NOTHING
-        `).run(issue.key, issue.summary, issue.status, issue.statusCategory, issue.points);
+        `).run(issue.key, issue.summary, issue.status, issue.statusId, issue.statusCategory, issue.points);
         return { success: true, ...view() };
       } catch (error) { return fail('add the ticket', error); }
     }
@@ -359,6 +364,33 @@ export const tools = [
         })();
         return { success: true, ...view() };
       } catch (error) { return fail('finish the sprint', error); }
+    }
+  },
+  {
+    name: 'sprint_plan_board_columns',
+    description: 'The columns of the configured Jira board, in board order, with the status ids each holds',
+    parameters: { type: 'object', properties: {}, required: [] },
+    handler: async () => {
+      try {
+        const { boardId } = readState();
+        if (!boardId) return { success: true, columns: [] };
+        const credentials = resolveJiraCredentials({});
+        const cacheKey = `${credentials.baseUrl}|${boardId}`;
+        const cached = columnCache.get(cacheKey);
+        if (cached && Date.now() - cached.at < COLUMN_CACHE_MS) return { success: true, columns: cached.columns };
+        const response = await makeHttpRequest(`${credentials.baseUrl}/rest/agile/1.0/board/${boardId}/configuration`, {
+          method: 'GET', headers: jiraHeaders(credentials)
+        });
+        const columns = (response.data?.columnConfig?.columns || []).map(column => ({
+          name: String(column.name || ''),
+          statusIds: (column.statuses || []).map(status => String(status.id))
+        })).filter(column => column.name);
+        columnCache.set(cacheKey, { at: Date.now(), columns });
+        return { success: true, columns };
+      } catch (error) {
+        // The page falls back to grouping by status, so this is not an error for the user.
+        return { success: true, columns: [], message: `Could not read the board columns: ${error.message}` };
+      }
     }
   },
   {
