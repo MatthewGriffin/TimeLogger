@@ -91,7 +91,7 @@ test.describe('Settings tabs', () => {
   /* Each tab must mount its own panel, identified by that panel's heading. */
   const TABS = [
     { tab: 'Jira & Tempo', heading: 'Jira & Tempo Settings' },
-    { tab: 'Current Sprint', heading: 'Current Sprint' },
+    { tab: 'Current PI', heading: 'Current PI' },
     { tab: 'OneNote', heading: 'OneNote Configuration' },
     { tab: 'Calendar', heading: 'Outlook Calendar Integration' },
     { tab: 'Ollama', heading: 'Ollama AI Settings' },
