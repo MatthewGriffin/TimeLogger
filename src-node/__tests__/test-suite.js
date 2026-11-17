@@ -3287,9 +3287,13 @@ async function runTests() {
   const jiraIssue = (key, points, category = 'new', status = 'To Do') => ({
     key, fields: { summary: `${key} summary`, status: { name: status, statusCategory: { key: category } }, customfield_10016: points }
   });
+  // A site whose story points live in a differently named field.
+  const jiraIssueAlt = (key, points) => ({
+    key, fields: { summary: `${key} summary`, status: { name: 'To Do', statusCategory: { key: 'new' } }, customfield_10026: points }
+  });
   const jira = tickets => url => {
     if (url.pathname.endsWith('/myself')) return { accountId: 'acct-1', displayName: 'Me' };
-    if (url.pathname.endsWith('/field')) return [{ id: 'customfield_10016', name: 'Story point estimate' }, { id: 'customfield_1', name: 'Other' }];
+    if (url.pathname.endsWith('/field')) return [{ id: 'customfield_10016', name: 'Story point estimate' }, { id: 'customfield_10026', name: 'Story Points' }, { id: 'customfield_1', name: 'Other' }];
     if (url.pathname.endsWith('/search/jql')) {
       const jql = url.searchParams.get('jql') || '';
       const wanted = [...jql.matchAll(/"([A-Z]+-\d+)"/g)].map(match => match[1]);
@@ -3331,6 +3335,27 @@ async function runTests() {
       plan = await executeTool('sprint_plan_remove', { ticket_id: 'ZZPLAN-2' });
       assert.strictEqual(plan.summary.planned, 4);
       assert.strictEqual(plan.summary.overCapacity, false);
+    });
+  });
+
+  await testAsync('sprint plan reads points from whichever story point field the ticket uses and refresh picks up changes', async () => {
+    const live = [jiraIssue('ZZPLAN-1', null), jiraIssueAlt('ZZPLAN-2', 8)];
+    await withJira(jira(live), async () => {
+      await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-1' });
+      const added = await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-2' });
+      assert.strictEqual(added.tickets.find(t => t.key === 'ZZPLAN-2').points, 8, 'The second field is used when the first is empty');
+
+      await executeTool('sprint_plan_set_points', { ticket_id: 'ZZPLAN-1', points: 2 });
+      live[0] = jiraIssue('ZZPLAN-1', 5);
+      live[1] = jiraIssueAlt('ZZPLAN-2', 13);
+      const refreshed = await executeTool('sprint_plan_refresh', {});
+      const points = Object.fromEntries(refreshed.tickets.map(t => [t.key, t.points]));
+      assert.deepStrictEqual(points, { 'ZZPLAN-1': 5, 'ZZPLAN-2': 13 }, 'Jira estimates replace old and hand-entered ones');
+
+      live[0] = jiraIssue('ZZPLAN-1', null);
+      await executeTool('sprint_plan_set_points', { ticket_id: 'ZZPLAN-1', points: 3 });
+      const kept = await executeTool('sprint_plan_refresh', {});
+      assert.strictEqual(kept.tickets.find(t => t.key === 'ZZPLAN-1').points, 3, 'A hand-entered value stays while Jira has none');
     });
   });
 

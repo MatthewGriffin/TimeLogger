@@ -7,7 +7,7 @@
       </div>
       <div class="header-actions">
         <button v-if="state.boardId" class="btn" type="button" @click="openBoard">Open sprint board ↗</button>
-        <button class="btn" type="button" :disabled="busy || !tickets.length" @click="refresh">↻ Refresh</button>
+        <button class="btn" type="button" :disabled="busy || refreshing" :title="refreshedLabel" @click="refresh()">{{ refreshing ? 'Refreshing…' : '↻ Refresh from Jira' }}</button>
         <button v-if="isActive" class="btn" type="button" :disabled="busy" @click="confirmFinish = true">Finish sprint</button>
         <button v-else class="btn btn-primary" type="button" :disabled="busy || !tickets.length" @click="confirmStart = true">Start sprint</button>
       </div>
@@ -15,6 +15,7 @@
 
     <div class="page-body sprint-body">
       <div v-if="error" class="notice error" role="alert">{{ error }}</div>
+      <p v-if="refreshedLabel" class="muted refreshed" role="status">{{ refreshedLabel }}</p>
 
       <div v-if="confirmStart" class="notice confirm" role="alertdialog" aria-label="Start the sprint">
         <p>Start the sprint with {{ summary.tickets }} ticket{{ summary.tickets === 1 ? '' : 's' }} and {{ summary.planned }} points planned<template v-if="summary.capacity != null"> of {{ summary.capacity }} available</template>? The plan is locked until you finish the sprint.</p>
@@ -147,7 +148,7 @@ import SprintTicketNotes from './components/SprintTicketNotes.vue'
 import { useSprintPlan } from './composables/useSprintPlan'
 
 const {
-  state, tickets, summary, loading, busy, error, results, searching, searched, columns,
+  state, tickets, summary, loading, busy, error, results, searching, searched, columns, refreshing, refreshedAt,
   load, search, add, remove, setPoints, setCapacity, setBoard, refresh, start, finish, openBoard, loadNotes, addNote
 } = useSprintPlan()
 
@@ -192,7 +193,15 @@ const doFinish = async () => {
   }
 }
 
-onMounted(load)
+const refreshedLabel = computed(() =>
+  refreshedAt.value ? `Ticket details refreshed from Jira at ${refreshedAt.value.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.` : ''
+)
+
+// Open with what is saved, then bring the tickets up to date from Jira.
+onMounted(async () => {
+  await load()
+  if (tickets.value.length) await refresh(true)
+})
 </script>
 
 <style scoped>
@@ -212,6 +221,7 @@ onMounted(load)
 .confirm-actions { display: flex; gap: .5rem; }
 .card { padding: 1rem 1.25rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface-raised); }
 .muted { color: var(--color-text-muted); }
+p.refreshed { margin: 0; font-size: .85rem; }
 p.muted { margin: .5rem 0 0; }
 h2 { font-size: 1.05rem; margin: 0 0 .75rem; }
 .points-figures { display: flex; flex-wrap: wrap; gap: 2rem; margin-bottom: .75rem; }
