@@ -165,7 +165,7 @@ const pct = (points: number) => `${barMax.value ? Math.min(100, (points / barMax
 
 watch(state, value => {
   capacityText.value = value.capacity == null ? '' : String(value.capacity)
-  boardText.value = value.boardId
+  boardText.value = value.boardUrl || value.boardId
 }, { immediate: true })
 
 const runSearch = () => search(query.value.trim())

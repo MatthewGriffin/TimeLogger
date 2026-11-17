@@ -29,6 +29,7 @@ export interface PlanState {
   phase: 'planning' | 'active'
   capacity: number | null
   boardId: string
+  boardUrl: string
   startedAt: string | null
 }
 
@@ -73,7 +74,7 @@ const localDate = () => new Date().toLocaleDateString('en-CA')
  * to patch its own copy and cannot drift from what is saved.
  */
 export function useSprintPlan() {
-  const state = ref<PlanState>({ phase: 'planning', capacity: null, boardId: '', startedAt: null })
+  const state = ref<PlanState>({ phase: 'planning', capacity: null, boardId: '', boardUrl: '', startedAt: null })
   const tickets = ref<PlanTicket[]>([])
   const summary = ref<PlanSummary>(emptySummary())
   const loading = ref(false)
@@ -90,6 +91,7 @@ export function useSprintPlan() {
       phase: raw.phase === 'active' ? 'active' : 'planning',
       capacity: toNumber(raw.capacity),
       boardId: asString(raw.boardId),
+      boardUrl: asString(raw.boardUrl),
       startedAt: raw.startedAt ? asString(raw.startedAt) : null
     }
     tickets.value = asList(data.tickets).map(toTicket)
