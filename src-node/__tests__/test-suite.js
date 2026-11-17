@@ -21,7 +21,10 @@ import { previousWorkingDay, isWorkingDay } from '../utils/working-days.js';
 import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, microsoftAuthorityUrl, escapeHtml } from '../utils/safe-url.js';
 import { singleLine } from '../utils/log-text.js';
 import { redactSecrets } from '../api/setup-routes.js';
-import { extractTicketKeys, classifyPullRequest, isOpenUnmergedPullRequest, buildPullRequestSearches, summarizeReviews } from '../tools/github-prs.js';
+import { extractTicketKeys, classifyPullRequest, isOpenUnmergedPullRequest, buildPullRequestSearches, summarizeReviews, githubRetry } from '../tools/github-prs.js';
+
+// Retries are real in the app; here they only need to happen, not wait.
+githubRetry.delays = [0, 0, 0];
 import { GraphClient, hasStoredGraphToken } from '../api/graph-client.js';
 import { fetchAllTempoPages } from '../tools/jira-tempo-worklogs.js';
 import { localDateKey } from '../utils/dates.js';
@@ -413,6 +416,7 @@ async function runTests() {
         details.push(Number(pr[1]));
         return { id: Number(pr[1]), number: Number(pr[1]), title: `PR ${pr[1]}`, state: 'closed', merged_at: '2026-11-01T00:00:00Z', user: { login: 'me' }, base: { repo: { full_name: 'org/app' } }, requested_reviewers: [] };
       }
+      if (/^\/repos\/org\/app\/pulls\/\d+\/reviews$/.test(url.pathname)) return [];
       throw new Error(`Unexpected request: ${url.pathname}`);
     };
     const ask = page => withGitHubStub(github, () => executeTool('github_pr_list', { relationship: 'authored', state: 'merged', page, pageSize: 3 }));
@@ -422,10 +426,12 @@ async function runTests() {
       assert.deepStrictEqual(first.prs.map(pr => pr.number), [7, 6, 5]);
       assert.strictEqual(first.hasMore, true);
       assert.deepStrictEqual(details.sort(), [5, 6, 7], 'Only the first page should be loaded');
-      assert.deepStrictEqual(perPages, ['4'], 'The search should only ask for what the page needs, plus one');
+      assert.deepStrictEqual(perPages, ['30'], 'Searches are asked for in chunks so later pages reuse them');
 
       details.length = 0;
+      const searchesAfterFirst = searches;
       const second = await ask(2);
+      assert.strictEqual(searches, searchesAfterFirst, 'The next page reuses the search rather than running it again');
       assert.deepStrictEqual(second.prs.map(pr => pr.number), [4, 3, 2]);
       assert.strictEqual(second.hasMore, true);
       assert.deepStrictEqual(details.sort(), [2, 3, 4], 'Only the second page should be loaded');
@@ -447,6 +453,52 @@ async function runTests() {
       else db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
     }
   });
+  await testAsync('GitHub searches are retried three times, and a page that still fails is marked incomplete and not kept', async () => {
+    const saved = db.prepare("SELECT value FROM settings WHERE key = 'github_config'").get();
+    const setConfig = db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('github_config', ?, CURRENT_TIMESTAMP)");
+    const attempts = { authored: 0, mentions: 0 };
+    let mentionsWork = false;
+    const refuse = () => Object.assign(new Error('refused'), { response: { status: 403, data: '{"message":"You have exceeded a secondary rate limit."}' } });
+    const github = url => {
+      if (url.pathname === '/user') return { login: 'retry-user' };
+      if (url.pathname === '/search/issues') {
+        const query = url.searchParams.get('q');
+        if (query.includes('mentions:')) {
+          attempts.mentions++;
+          if (!mentionsWork) throw refuse();
+          return { items: [] };
+        }
+        if (!query.includes(' author:')) return { items: [] };
+        attempts.authored++;
+        // Refused three times, then answered: the third retry is the one that works.
+        if (attempts.authored <= 3) throw refuse();
+        return { items: [{ number: 5, state: 'open', title: 'Mine', user: { login: 'retry-user' }, repository_url: 'https://api.github.com/repos/org/retry', updated_at: '2026-11-01T00:00:00Z' }] };
+      }
+      if (url.pathname === '/repos/org/retry/pulls/5') {
+        return { id: 5, number: 5, title: 'Mine', state: 'open', user: { login: 'retry-user' }, base: { repo: { full_name: 'org/retry' } }, requested_reviewers: [] };
+      }
+      if (url.pathname === '/repos/org/retry/pulls/5/reviews') return [];
+      throw new Error(`Unexpected request: ${url.pathname}`);
+    };
+    const ask = () => withGitHubStub(github, () => executeTool('github_pr_list', { relationship: 'all', state: 'open', pageSize: 3, page: 1 }));
+    try {
+      setConfig.run(JSON.stringify({ token: 'github-token', login: 'retry-user' }));
+      const first = await ask();
+      assert.strictEqual(attempts.authored, 4, 'The search is tried once and retried three times');
+      assert.strictEqual(attempts.mentions, 4, 'A search that keeps failing is also given three retries, and no more');
+      assert.deepStrictEqual(first.prs.map(pr => pr.number), [5], 'What the other searches found is still shown');
+      assert.strictEqual(first.incomplete, true, 'The page says it is incomplete');
+
+      mentionsWork = true;
+      const again = await ask();
+      assert.strictEqual(again.incomplete, false, 'The failed list was not kept, so it is searched again and is now complete');
+      assert.deepStrictEqual(again.prs.map(pr => pr.number), [5]);
+    } finally {
+      if (saved) setConfig.run(saved.value);
+      else db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
+    }
+  });
+
   await testAsync('merged and closed pull requests are saved once, while open ones are not', async () => {
     const saved = db.prepare("SELECT value FROM settings WHERE key = 'github_config'").get();
     const setConfig = db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('github_config', ?, CURRENT_TIMESTAMP)");
@@ -465,6 +517,7 @@ async function runTests() {
         const merged = Number(pr[1]) === 91;
         return { id: Number(pr[1]), number: Number(pr[1]), title: `PR ${pr[1]}`, state: merged ? 'closed' : 'open', merged_at: merged ? '2026-11-03T00:00:00Z' : null, user: { login: 'me' }, base: { repo: { full_name: 'org/saved' } }, requested_reviewers: [] };
       }
+      if (/^\/repos\/org\/saved\/pulls\/\d+\/reviews$/.test(url.pathname)) return [];
       throw new Error(`Unexpected request: ${url.pathname}`);
     };
     const ask = args => withGitHubStub(github, () => executeTool('github_pr_list', { relationship: 'authored', pageSize: 3, page: 1, ...args }));

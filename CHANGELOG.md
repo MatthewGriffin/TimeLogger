@@ -4,6 +4,12 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.1-beta.14
+
+- Pull Requests: fixed the long "Some GitHub searches failed" error on later pages. GitHub was being asked to run every search again each time you went to the next page, until it started refusing them. Searches now load in bigger batches, so the following pages reuse them.
+- Failed GitHub requests are retried three times before giving up (the retry for server errors and rate limits wasn't working before). If a page is still missing some results, it says "Search incomplete. Press Refresh to try again." instead of showing GitHub's error, and still shows what it found.
+- Refresh on the Pull Requests page now reloads only the page you're on and keeps the other pages you've already loaded.
+
 ## 0.9.1-beta.13
 
 - Searching for tickets to add on the Sprint Planning page now works like the other ticket lookups: a ticket key anywhere in what you type is found directly, and words are matched in the summary, then anywhere in the ticket, then any one of the words, best match first. It still isn't limited to your own tickets, since next sprint's work is often unassigned.

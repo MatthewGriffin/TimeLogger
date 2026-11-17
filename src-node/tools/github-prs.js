@@ -89,16 +89,25 @@ async function reportPoll(prs, diagnostics) {
 // GitHub answers with a 5xx, a rate limit or a dropped connection from time to
 // time, and the four PR searches run together, so one bad moment fails them all.
 // Retrying those briefly is cheaper than showing an error the next refresh fixes.
-const TRANSIENT_GITHUB_ERROR = /HTTP (?:429|5dd)|rate limit|abuse|secondary|timed? ?out|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up/i;
-const GITHUB_RETRY_DELAYS_MS = [800, 2500];
+const TRANSIENT_GITHUB_ERROR = /HTTP (?:429|5\d\d)|rate limit|abuse|secondary|timed? ?out|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up/i;
+// Three retries, each after a longer wait. Exported so tests don't have to wait.
+export const githubRetry = { delays: [800, 2500, 6000] };
+
+function isTransientGitHubError(error, path) {
+  const message = String(error?.message || '');
+  if (TRANSIENT_GITHUB_ERROR.test(message)) return true;
+  // A 403 from the search API is GitHub limiting how fast searches may run.
+  // Other 403s are permissions, which retrying won't fix.
+  return path.startsWith('/search/') && /HTTP 403/.test(message);
+}
 
 async function githubGet(path, token) {
   for (let attempt = 0; ; attempt++) {
     try {
       return await githubGetOnce(path, token);
     } catch (error) {
-      const delay = GITHUB_RETRY_DELAYS_MS[attempt];
-      if (delay === undefined || !TRANSIENT_GITHUB_ERROR.test(error.message)) throw error;
+      const delay = githubRetry.delays[attempt];
+      if (delay === undefined || !isTransientGitHubError(error, path)) throw error;
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
@@ -410,13 +419,23 @@ function saveFinishedPullRequest(cacheKey, pr) {
   }
 }
 
-/** One page of the pull requests the filters list, loading details for that page only. */
-export async function listPullRequestsPage(token, { relationship, state, page = 1, pageSize = 3, refresh = false }, diagnostics) {
+// Searches are asked for in chunks this big, so moving through the pages reuses
+// one search instead of running every search again for each page, which is what
+// made GitHub start refusing them a few pages in.
+const SEARCH_CHUNK = 30;
+
+/**
+ * One page of the pull requests the filters list, loading details for that page only.
+ * `incomplete` says a search or a pull request lookup still failed after its retries,
+ * so the page may be missing some.
+ */
+export async function listPullRequestsPage(token, { relationship, state, page = 1, pageSize = 3, refresh = false }, diagnostics = { searches: [], candidateCount: 0, detailFailures: [] }) {
   const login = readConfig().login || await account(token);
   const size = Math.max(1, Math.min(20, Number(pageSize) || 3));
   const pageNumber = Math.max(1, Number(page) || 1);
   // One more than the page needs, to know whether there is a next page.
   const needed = pageNumber * size + 1;
+  const wanted = Math.ceil(needed / SEARCH_CHUNK) * SEARCH_CHUNK;
   const filters = { relationship, state };
   const onlyFinished = state === 'merged' || state === 'closed';
 
@@ -427,13 +446,16 @@ export async function listPullRequestsPage(token, { relationship, state, page = 
     candidates = cached.candidates;
     if (diagnostics) Object.assign(diagnostics, cached.diagnostics);
   } else {
-    candidates = await findCandidates(token, login, diagnostics, filters, needed);
-    candidateCache.set(key, {
-      expires: Date.now() + (onlyFinished ? FINISHED_CACHE_MS : OPEN_CACHE_MS),
-      limit: needed,
-      candidates,
-      diagnostics: diagnostics ? JSON.parse(JSON.stringify(diagnostics)) : {}
-    });
+    candidates = await findCandidates(token, login, diagnostics, filters, wanted);
+    // A list with a search missing isn't kept, so the next try asks again.
+    if (!diagnostics.searches.some(search => search.error)) {
+      candidateCache.set(key, {
+        expires: Date.now() + (onlyFinished ? FINISHED_CACHE_MS : OPEN_CACHE_MS),
+        limit: wanted,
+        candidates,
+        diagnostics: JSON.parse(JSON.stringify(diagnostics))
+      });
+    }
   }
 
   const slice = candidates.slice((pageNumber - 1) * size, pageNumber * size);
@@ -449,8 +471,10 @@ export async function listPullRequestsPage(token, { relationship, state, page = 
     const detailKey = `${finishedKey}@${candidate.updatedAt}`;
     if (detailCache.has(detailKey)) return detailCache.get(detailKey);
     const pr = await fetchDetail(candidate);
-    // A failed lookup isn't kept, so the next visit tries it again.
-    if (pr) {
+    // A failed lookup isn't kept, and neither is one missing its reviews, so the
+    // next visit tries it again.
+    const lookupFailed = diagnostics.detailFailures.some(failure => failure.repository === candidate.repository && failure.number === candidate.number);
+    if (pr && !lookupFailed) {
       if (isFinishedPullRequest(pr)) {
         saveFinishedPullRequest(finishedKey, pr);
       } else {
@@ -461,7 +485,8 @@ export async function listPullRequestsPage(token, { relationship, state, page = 
     return pr;
   }));
 
-  return { prs: prs.filter(Boolean), page: pageNumber, pageSize: size, hasMore: candidates.length > pageNumber * size };
+  const incomplete = diagnostics.searches.some(search => search.error) || diagnostics.detailFailures.length > 0;
+  return { prs: prs.filter(Boolean), page: pageNumber, pageSize: size, hasMore: candidates.length > pageNumber * size, incomplete };
 }
 function ensureEventTable() {
   db.exec(`CREATE TABLE IF NOT EXISTS github_pr_seen_events (

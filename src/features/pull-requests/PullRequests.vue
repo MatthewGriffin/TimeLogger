@@ -101,6 +101,7 @@ interface PullRequestListResult {
   message?: string
   prs?: PullRequest[]
   hasMore?: boolean
+  incomplete?: boolean
   diagnostics?: { searches?: Array<{ name: string; count: number; error?: string }>; candidateCount?: number
     detailFailures?: Array<{ repository: string; number: number; endpoint: string; message: string }> }
 }
@@ -135,24 +136,12 @@ const hasMore = computed(() => currentResult.value?.hasMore === true)
 const prsLoaded = computed(() => Boolean(currentResult.value))
 const loading = computed(() => loadingPages.value.includes(pageKey(currentPage.value)))
 const loadNotice = computed(() => currentResult.value?.notice || failures.value[pageKey(currentPage.value)] || '')
+// The details go to the console for diagnosis; the page only says to try again.
+// The backend has already retried each failed request three times.
 const describeProblems = (result: PullRequestListResult): string => {
-  const diagnostics = result.diagnostics
-  const searches = diagnostics?.searches || []
-  const failures = diagnostics?.detailFailures || []
-  if (failures.length) {
-    const first = failures[0]
-    return `GitHub found ${diagnostics?.candidateCount || 0} candidate PR(s), but ${failures.length} detail request(s) failed. First failure: ${first.repository}#${first.number} (${first.endpoint}) — ${first.message}`
-  }
-  const failed = searches.filter(search => search.error)
-  if (failed.length) {
-    const counts = searches.map(search => `${search.name}: ${search.count}`).join(', ')
-    const reason = String(failed[0].error || '').replace(/^GitHub API request faileds*/, '').slice(0, 200)
-    return `Some GitHub searches failed (${failed.map(search => search.name).join(', ')}). ${counts}${reason ? ` First error: ${reason}` : ''}`
-  }
-  if (!result.prs?.length && diagnostics?.candidateCount) {
-    return `GitHub found ${diagnostics.candidateCount} candidate PR(s), but none could be confirmed as linked to your account.`
-  }
-  return ''
+  if (!result.incomplete) return ''
+  console.warn('GitHub pull request page incomplete:', result.diagnostics)
+  return 'Search incomplete. Press Refresh to try again.'
 }
 
 // The page asks GitHub for its own pull requests only, so these are all it shows.
@@ -247,13 +236,14 @@ const refresh = async () => {
   try {
     const result = await executeApi<{ connected?: boolean; login?: string; message?: string }>('github_pr_connection_status')
     connected.value = result.connected === true
+    // A different account has different pull requests, so nothing kept applies.
+    if (login.value && login.value !== (result.login || '')) resetResults()
     login.value = result.login || ''
     if (connected.value) {
       message.value = ''
-      // Refresh asks GitHub again for the first page, and forgets the others.
-      resetResults()
-      currentPage.value = 1
-      await loadPage(1, true)
+      // Refresh asks GitHub again for the page on screen only. The other pages
+      // stay as they were, so they are still there when you go back to them.
+      await loadPage(currentPage.value, true)
     } else {
       resetResults()
       message.value = result.message || ''
