@@ -19,6 +19,8 @@ import {
   getCurrentAccount,
   myTicketsClause,
   escapeJql,
+  toSearchTerms,
+  scoreIssue,
   ISSUE_KEY_PATTERN
 } from './jira-tempo-auth.js';
 
@@ -195,16 +197,36 @@ export const tools = [
       try {
         const credentials = resolveJiraCredentials({});
         const text = String(args.query || '').trim();
-        const filters = ['statusCategory != Done'];
+        const open = 'statusCategory != Done';
+        let found = [];
+        const explicitKey = text.toUpperCase().match(ISSUE_KEY_PATTERN);
         if (!text) {
-          filters.push(await myTicketsClause(credentials));
-        } else if (KEY_ONLY.test(text)) {
-          filters.push(`key = "${escapeJql(text.toUpperCase())}"`);
+          found = await fetchIssues(credentials, `${open} AND ${await myTicketsClause(credentials)} ORDER BY updated DESC`, 20);
+        } else if (explicitKey) {
+          // Same as the other ticket lookups: a key is fetched directly, whatever its status.
+          found = await fetchIssues(credentials, `key = "${escapeJql(explicitKey[1])}"`, 1);
         } else {
-          const embedded = text.toUpperCase().match(ISSUE_KEY_PATTERN);
-          filters.push(embedded ? `key = "${escapeJql(embedded[1])}"` : `summary ~ "${escapeJql(text)}"`);
+          // Same attempts as the other ticket lookups: the words in the summary,
+          // then anywhere in the ticket, then any one of the words, so a
+          // partly remembered name still finds it. Unlike them this is not
+          // limited to the user's own tickets, because next sprint's work is
+          // often not assigned to anyone yet.
+          const terms = toSearchTerms(text);
+          const joined = escapeJql(terms.length ? terms.join(' ') : text);
+          const attempts = [`summary ~ "${joined}"`];
+          if (terms.length) {
+            attempts.push(`text ~ "${joined}"`);
+            attempts.push(`(${terms.map(term => `summary ~ "${escapeJql(term)}"`).join(' OR ')})`);
+          }
+          for (const attempt of attempts) {
+            found = await fetchIssues(credentials, `${open} AND ${attempt} ORDER BY updated DESC`, 20);
+            if (found.length > 0) break;
+          }
+          found = found
+            .map(issue => ({ issue, score: scoreIssue(issue.summary, text) }))
+            .sort((a, b) => b.score - a.score)
+            .map(entry => entry.issue);
         }
-        const found = await fetchIssues(credentials, `${filters.join(' AND ')} ORDER BY updated DESC`, 20);
         const already = new Set(planned().map(ticket => ticket.key.toLowerCase()));
         return {
           success: true,

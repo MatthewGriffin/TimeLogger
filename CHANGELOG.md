@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.1-beta.13
+
+- Searching for tickets to add on the Sprint Planning page now works like the other ticket lookups: a ticket key anywhere in what you type is found directly, and words are matched in the summary, then anywhere in the ticket, then any one of the words, best match first. It still isn't limited to your own tickets, since next sprint's work is often unassigned.
+
 ## 0.9.1-beta.12
 
 - Sprint Planning now finds story points whichever story point field your Jira uses, instead of only two exact names, so estimates on the ticket show up.

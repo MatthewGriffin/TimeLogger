@@ -3359,6 +3359,25 @@ async function runTests() {
     });
   });
 
+  await testAsync('sprint plan search works like the other ticket lookups', async () => {
+    const issues = [jiraIssue('ZZPLAN-1', 2), jiraIssue('ZZPLAN-2', 3, 'done', 'Done')];
+    await withJira(url => {
+      const jql = url.searchParams.get('jql') || '';
+      // Only a looser, any-word search finds anything, as with partly remembered names.
+      if (url.pathname.endsWith('/search/jql') && /OR summary ~/.test(jql)) return { issues: [issues[0]] };
+      if (url.pathname.endsWith('/search/jql') && /key = "ZZPLAN-2"/.test(jql)) return { issues: [issues[1]] };
+      return jira([])(url);
+    }, async urls => {
+      const loose = await executeTool('sprint_plan_search', { query: 'remembered nothing exact' });
+      assert.deepStrictEqual(loose.issues.map(i => i.key), ['ZZPLAN-1']);
+      const queries = urls.filter(u => u.includes('/search/jql')).map(u => u.split('jql=')[1].split('&')[0]);
+      assert.ok(queries[0].includes('summary ~ "remembered nothing exact"') && queries[1].includes('text ~'), 'Summary, then anywhere, then any word');
+
+      const byKey = await executeTool('sprint_plan_search', { query: 'see zzplan-2 please' });
+      assert.deepStrictEqual(byKey.issues.map(i => i.key), ['ZZPLAN-2'], 'A key inside the text is fetched directly, even when it is done');
+    });
+  });
+
   await testAsync('sprint plan notes are ordinary notes against the ticket', async () => {
     await withJira(jira([jiraIssue('ZZPLAN-1', 3)]), async () => {
       await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-1' });
