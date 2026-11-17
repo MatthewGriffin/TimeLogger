@@ -238,13 +238,12 @@ export const tools = [
   },
   {
     name: 'sprint_plan_add',
-    description: 'Add a ticket to the sprint plan, reading its summary, status and story points from Jira',
+    description: 'Add a ticket to the sprint plan (also once the sprint has started), reading its summary, status and story points from Jira',
     parameters: { type: 'object', properties: { ticket_id: { type: 'string' } }, required: ['ticket_id'] },
     handler: async (args) => {
       try {
         const key = String(args.ticket_id || '').trim().toUpperCase();
         if (!KEY_ONLY.test(key)) return { success: false, message: 'Enter a Jira ticket key such as ABC-123' };
-        if (readState().phase === 'active') return { success: false, message: 'The sprint has started. Finish it before planning the next one.' };
         const [issue] = await fetchIssues(resolveJiraCredentials({}), `key = "${escapeJql(key)}"`, 1);
         if (!issue) return { success: false, message: `${key} was not found in Jira` };
         db.prepare(`
@@ -258,11 +257,10 @@ export const tools = [
   },
   {
     name: 'sprint_plan_remove',
-    description: 'Remove a ticket from the sprint plan. Its notes are kept',
+    description: 'Remove a ticket from the sprint plan, also once the sprint has started. Its notes are kept',
     parameters: { type: 'object', properties: { ticket_id: { type: 'string' } }, required: ['ticket_id'] },
     handler: async (args) => {
       try {
-        if (readState().phase === 'active') return { success: false, message: 'The sprint has started. Finish it before changing the plan.' };
         db.prepare('DELETE FROM sprint_plan_tickets WHERE ticket_id = ?').run(String(args.ticket_id || '').trim());
         return { success: true, ...view() };
       } catch (error) { return fail('remove the ticket', error); }

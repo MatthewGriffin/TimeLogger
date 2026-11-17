@@ -18,7 +18,7 @@
       <p v-if="refreshedLabel" class="muted refreshed" role="status">{{ refreshedLabel }}</p>
 
       <div v-if="confirmStart" class="notice confirm" role="alertdialog" aria-label="Start the sprint">
-        <p>Start the sprint with {{ summary.tickets }} ticket{{ summary.tickets === 1 ? '' : 's' }} and {{ summary.planned }} points planned<template v-if="summary.capacity != null"> of {{ summary.capacity }} available</template>? The plan is locked until you finish the sprint.</p>
+        <p>Start the sprint with {{ summary.tickets }} ticket{{ summary.tickets === 1 ? '' : 's' }} and {{ summary.planned }} points planned<template v-if="summary.capacity != null"> of {{ summary.capacity }} available</template>? You can still add or remove tickets after it starts.</p>
         <div class="confirm-actions">
           <button class="btn btn-primary" type="button" :disabled="busy" @click="doStart">Start sprint</button>
           <button class="btn" type="button" @click="confirmStart = false">Keep planning</button>
@@ -60,7 +60,7 @@
           <span v-else class="seg" :class="summary.overCapacity ? 'seg-over' : 'seg-done'" :style="{ width: pct(summary.planned) }" />
         </div>
         <p v-if="summary.unestimated" class="muted">{{ summary.unestimated }} ticket{{ summary.unestimated === 1 ? ' has' : 's have' }} no story points, so they are not in the total. Enter points on the ticket to include them.</p>
-        <div v-if="!isActive" class="settings-row">
+        <div class="settings-row">
           <label>
             <span>Points available</span>
             <input v-model="capacityText" type="number" min="0" step="0.5" inputmode="decimal" @change="saveCapacity">
@@ -75,7 +75,7 @@
       </section>
 
       <!-- Adding tickets -->
-      <section v-if="!isActive" class="card" aria-label="Add tickets">
+      <section class="card" aria-label="Add tickets">
         <form class="search-row" @submit.prevent="runSearch">
           <label class="grow">
             <span>Find tickets to add</span>
@@ -130,9 +130,12 @@
             <p>{{ ticket.summary }}</p>
             <div class="ticket-foot">
               <span class="muted">{{ ticket.status }}</span>
-              <button class="link" type="button" :aria-expanded="openNotes === ticket.key" @click="toggleNotes(ticket.key)">
-                Notes<template v-if="ticket.noteCount"> ({{ ticket.noteCount }})</template>
-              </button>
+              <span class="foot-actions">
+                <button class="link" type="button" :aria-expanded="openNotes === ticket.key" @click="toggleNotes(ticket.key)">
+                  Notes<template v-if="ticket.noteCount"> ({{ ticket.noteCount }})</template>
+                </button>
+                <button class="link" type="button" :disabled="busy" :aria-label="`Remove ${ticket.key} from the sprint`" @click="remove(ticket.key)">Remove</button>
+              </span>
             </div>
             <SprintTicketNotes v-if="openNotes === ticket.key" :ticket-key="ticket.key" :note-count="ticket.noteCount" :load="loadNotes" :add="addNote" />
           </article>
@@ -254,6 +257,7 @@ label.wide input, .search-row .grow input { width: 100%; }
 .ticket-card p { margin: .4rem 0; overflow-wrap: anywhere; }
 .ticket-card { padding-bottom: 0; }
 .ticket-foot { display: flex; justify-content: space-between; align-items: center; padding-bottom: .75rem; font-size: .85rem; }
+.foot-actions { display: flex; gap: 1rem; }
 .link { background: none; border: 0; color: var(--color-accent); cursor: pointer; padding: 0; font: inherit; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 @media (max-width: 900px) { .board { grid-template-columns: 1fr; } }

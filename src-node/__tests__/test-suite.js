@@ -3442,14 +3442,21 @@ async function runTests() {
     });
   });
 
-  await testAsync('starting the sprint needs tickets, locks the plan, and finishing carries unfinished work over', async () => {
+  await testAsync('starting the sprint needs tickets, tickets can still be added and removed mid-sprint, and finishing carries unfinished work over', async () => {
     const live = [jiraIssue('ZZPLAN-1', 3), jiraIssue('ZZPLAN-2', 5)];
     await withJira(jira(live), async () => {
       assert.strictEqual((await executeTool('sprint_plan_start', {})).success, false, 'An empty plan cannot start');
       await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-1' });
       await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-2' });
       assert.strictEqual((await executeTool('sprint_plan_start', {})).state.phase, 'active');
-      assert.strictEqual((await executeTool('sprint_plan_remove', { ticket_id: 'ZZPLAN-1' })).success, false, 'Active plans are locked');
+
+      live.push(jiraIssue('ZZPLAN-3', 2));
+      const midSprint = await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-3' });
+      assert.strictEqual(midSprint.success, true, 'A ticket can be added after the sprint starts');
+      assert.strictEqual(midSprint.state.phase, 'active');
+      const removed = await executeTool('sprint_plan_remove', { ticket_id: 'ZZPLAN-3' });
+      assert.strictEqual(removed.success, true, 'and removed again');
+      assert.deepStrictEqual(removed.tickets.map(ticket => ticket.key), ['ZZPLAN-1', 'ZZPLAN-2']);
 
       live[0] = jiraIssue('ZZPLAN-1', 3, 'done', 'Done');
       const refreshed = await executeTool('sprint_plan_refresh', {});
