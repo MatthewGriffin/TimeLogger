@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.1-beta.10
+
+- Fixed scrolling on the Sprint Planning page: the whole window used to shift up and leave a blank area instead of the page scrolling normally.
+
 ## 0.9.1-beta.9
 
 - The Settings tab and its hints that said "Current Sprint" now say "Current PI", since it holds the PI number and PI tickets.
