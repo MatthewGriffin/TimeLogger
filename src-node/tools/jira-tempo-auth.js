@@ -97,6 +97,25 @@ export async function getCurrentAccount(credentials) {
   return value;
 }
 
+/** How far back "recently updated by me" reaches when looking up tickets. */
+export const RECENT_UPDATE_DAYS = 30;
+
+/**
+ * JQL for the tickets that are mine: assigned to me, or updated by me lately.
+ *
+ * Assigned alone drops a ticket the moment it is passed on (to QA, say), yet
+ * time can still be logged against it. updatedBy() rejects a nested
+ * currentUser(), so the literal account id is used.
+ */
+export async function myTicketsClause(credentials, days = RECENT_UPDATE_DAYS) {
+  const account = await getCurrentAccount(credentials);
+  const id = escapeJql(account.accountId);
+  return `(assignee = "${id}" OR issue in updatedBy("${id}", "-${days}d"))`;
+}
+
+/** Placeholder a query may use for {@link myTicketsClause}, replaced before it is sent. */
+export const MINE_TOKEN = '{mine}';
+
 /**
  * JQL escaping: quotes and backslashes must be escaped or the query is
  * rejected, and a stray quote in user input would otherwise break out of the

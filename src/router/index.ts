@@ -49,6 +49,12 @@ const routes: RouteRecordRaw[] = [
     meta: { title: 'Notifications' }
   },
   {
+    path: '/sprint-planning',
+    name: 'SprintPlanning',
+    component: () => import('@/features/sprint-planning/SprintPlanning.vue'),
+    meta: { title: 'Sprint Planning' }
+  },
+  {
     path: '/pull-requests',
     name: 'PullRequests',
     component: () => import('@/features/pull-requests/PullRequests.vue'),

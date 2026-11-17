@@ -55,7 +55,8 @@ export const useJiraStore = defineStore('jira', () => {
     lastQuery.value = ''
     try {
       const response = await executeApi<{ issues?: Array<{ key: string; summary?: string; status?: string }> }>('tempo_get_issues', {
-        query: 'assignee = currentUser() AND statusCategory = "In Progress" ORDER BY updated DESC',
+        // {mine}: assigned to me or recently updated by me, so tickets passed on to QA still appear.
+        query: '{mine} AND statusCategory = "In Progress" ORDER BY updated DESC',
         limit
       })
       matches.value = asList<{ key: string; summary?: string; status?: string }>(response, 'issues')
