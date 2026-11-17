@@ -38,10 +38,10 @@
           <div v-if="!isActive"><strong>{{ summary.planned }}</strong><span>planned</span></div>
           <div v-if="!isActive && summary.capacity != null"><strong :class="{ over: summary.overCapacity }">{{ summary.remaining }}</strong><span>{{ summary.overCapacity ? 'over capacity' : 'remaining' }}</span></div>
           <template v-if="isActive">
-            <div><strong>{{ summary.done }}</strong><span>done</span></div>
-            <div><strong>{{ summary.inProgress }}</strong><span>in progress</span></div>
-            <div><strong>{{ summary.todo }}</strong><span>to do</span></div>
-            <div><strong>{{ summary.planned }}</strong><span>planned{{ summary.capacity != null ? ` of ${summary.capacity}` : '' }}</span></div>
+            <div><strong>{{ summary.done }}</strong><span>pts done · {{ plural(summary.doneCount) }}</span></div>
+            <div><strong>{{ summary.inProgress }}</strong><span>pts in progress · {{ plural(summary.inProgressCount) }}</span></div>
+            <div><strong>{{ summary.todo }}</strong><span>pts to do · {{ plural(summary.todoCount) }}</span></div>
+            <div><strong>{{ summary.planned }}</strong><span>pts planned{{ summary.capacity != null ? ` of ${summary.capacity}` : '' }} · {{ plural(summary.tickets) }}</span></div>
           </template>
         </div>
         <div
@@ -165,6 +165,7 @@ const confirmFinish = ref(false)
 const isActive = computed(() => state.value.phase === 'active')
 // The bar fills against the points available, or the total when none is set.
 const barMax = computed(() => Math.max(summary.value.capacity ?? 0, summary.value.planned))
+const plural = (count: number) => `${count} ticket${count === 1 ? '' : 's'}`
 const pct = (points: number) => `${barMax.value ? Math.min(100, (points / barMax.value) * 100) : 0}%`
 
 watch(state, value => {

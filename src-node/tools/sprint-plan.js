@@ -148,6 +148,10 @@ export function summarisePlan(tickets, capacity) {
     done,
     inProgress,
     todo: total - done - inProgress,
+    // Tickets as well as points: a ticket with no estimate adds no points, so points alone read as zero.
+    doneCount: tickets.filter(ticket => ticket.statusCategory === 'done').length,
+    inProgressCount: tickets.filter(ticket => ticket.statusCategory === 'indeterminate').length,
+    todoCount: tickets.filter(ticket => ticket.statusCategory !== 'done' && ticket.statusCategory !== 'indeterminate').length,
     unestimated: tickets.filter(ticket => ticket.points == null).length,
     capacity,
     remaining: capacity == null ? null : capacity - total,

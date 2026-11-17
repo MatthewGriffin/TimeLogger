@@ -20,6 +20,9 @@ export interface PlanSummary {
   done: number
   inProgress: number
   todo: number
+  doneCount: number
+  inProgressCount: number
+  todoCount: number
   unestimated: number
   capacity: number | null
   remaining: number | null
@@ -103,7 +106,7 @@ const toTicket = (raw: unknown): PlanTicket => {
 }
 
 const emptySummary = (): PlanSummary => ({
-  tickets: 0, planned: 0, done: 0, inProgress: 0, todo: 0, unestimated: 0, capacity: null, remaining: null, overCapacity: false
+  tickets: 0, planned: 0, done: 0, inProgress: 0, todo: 0, doneCount: 0, inProgressCount: 0, todoCount: 0, unestimated: 0, capacity: null, remaining: null, overCapacity: false
 })
 
 const localDate = () => new Date().toLocaleDateString('en-CA')

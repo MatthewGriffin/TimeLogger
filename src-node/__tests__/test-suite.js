@@ -3486,6 +3486,7 @@ async function runTests() {
       const refreshed = await executeTool('sprint_plan_refresh', {});
       assert.strictEqual(refreshed.summary.done, 3);
       assert.strictEqual(refreshed.summary.todo, 5);
+      assert.deepStrictEqual([refreshed.summary.doneCount, refreshed.summary.todoCount], [1, 1], 'Tickets are counted as well as points');
 
       const finished = await executeTool('sprint_plan_finish', {});
       assert.strictEqual(finished.state.phase, 'planning');
