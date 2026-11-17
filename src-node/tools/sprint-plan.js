@@ -67,44 +67,56 @@ export function parseBoardUrl(input) {
   } catch { return ''; }
 }
 
-let pointsField = null;
+let pointsFields = null;
 
 /**
- * The custom field holding story points. Its id differs between Jira sites, so
- * it is found by name once per site and remembered.
+ * The custom fields that hold story points. Their ids differ between Jira
+ * sites, and a site can have several ("Story point estimate" in team-managed
+ * projects, "Story Points" in company-managed ones), so every field named like
+ * story points is used and the first one a ticket has a value for wins. Only a
+ * successful lookup is remembered, so a failed one is retried.
  */
-async function findPointsField(credentials) {
-  if (pointsField?.baseUrl === credentials.baseUrl) return pointsField.id;
-  let id = null;
+async function findPointsFields(credentials) {
+  if (pointsFields?.baseUrl === credentials.baseUrl) return pointsFields.ids;
   try {
     const response = await makeHttpRequest(`${credentials.baseUrl}/rest/api/3/field`, {
       method: 'GET', headers: jiraHeaders(credentials)
     });
     const fields = Array.isArray(response.data) ? response.data : [];
-    const named = name => fields.find(field => String(field.name || '').toLowerCase() === name);
-    id = (named('story point estimate') || named('story points') || named('story point'))?.id || null;
-  } catch { /* points are then entered by hand */ }
-  pointsField = { baseUrl: credentials.baseUrl, id };
-  return id;
+    const rank = name => (name === 'story point estimate' ? 0 : name === 'story points' ? 1 : 2);
+    const ids = fields
+      .map(field => ({ id: field.id, name: String(field.name || '').toLowerCase() }))
+      .filter(field => field.id && /story\s*points?/.test(field.name))
+      .sort((a, b) => rank(a.name) - rank(b.name))
+      .map(field => field.id);
+    pointsFields = { baseUrl: credentials.baseUrl, ids };
+    return ids;
+  } catch {
+    return []; // points are then entered by hand
+  }
 }
 
-function normalizeIssue(issue, fieldId) {
-  const raw = fieldId ? issue.fields?.[fieldId] : null;
-  const points = Number(raw);
+function normalizeIssue(issue, fieldIds) {
+  let points = null;
+  for (const id of fieldIds) {
+    const raw = issue.fields?.[id];
+    if (raw == null || raw === '') continue;
+    if (Number.isFinite(Number(raw))) { points = Number(raw); break; }
+  }
   return {
     key: issue.key,
     summary: issue.fields?.summary || '',
     status: issue.fields?.status?.name || '',
     statusCategory: issue.fields?.status?.statusCategory?.key || '',
-    points: raw == null || !Number.isFinite(points) ? null : points
+    points
   };
 }
 
 async function fetchIssues(credentials, jql, limit) {
-  const fieldId = await findPointsField(credentials);
-  const fields = ['key', 'summary', 'status', fieldId].filter(Boolean).join(',');
+  const fieldIds = await findPointsFields(credentials);
+  const fields = ['key', 'summary', 'status', ...fieldIds].join(',');
   const issues = await searchIssues(credentials, jql, { limit, fields });
-  return issues.map(issue => normalizeIssue(issue, fieldId));
+  return issues.map(issue => normalizeIssue(issue, fieldIds));
 }
 
 function planned() {
@@ -142,7 +154,11 @@ function view() {
   return { state, tickets, summary: summarisePlan(tickets, state.capacity) };
 }
 
-/** Refresh stored tickets from Jira in one query. Hand-entered points are kept. */
+/**
+ * Refresh stored tickets from Jira in one query. Points estimated in Jira win,
+ * since they change during planning; hand-entered points stay only while Jira
+ * has no estimate.
+ */
 async function refreshFromJira() {
   const keys = db.prepare('SELECT ticket_id FROM sprint_plan_tickets').all().map(row => row.ticket_id);
   if (keys.length === 0) return;
@@ -151,11 +167,12 @@ async function refreshFromJira() {
   const update = db.prepare(`
     UPDATE sprint_plan_tickets
     SET summary = ?, status = ?, status_category = ?,
-        points = CASE WHEN points_manual = 1 THEN points ELSE ? END
+        points = CASE WHEN ? IS NOT NULL THEN ? WHEN points_manual = 1 THEN points ELSE NULL END,
+        points_manual = CASE WHEN ? IS NOT NULL THEN 0 ELSE points_manual END
     WHERE ticket_id = ?
   `);
   db.transaction(() => {
-    for (const issue of found) update.run(issue.summary, issue.status, issue.statusCategory, issue.points, issue.key);
+    for (const issue of found) update.run(issue.summary, issue.status, issue.statusCategory, issue.points, issue.points, issue.points, issue.key);
   })();
 }
 

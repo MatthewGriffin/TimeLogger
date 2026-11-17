@@ -83,6 +83,8 @@ export function useSprintPlan() {
   const results = ref<SearchResult[]>([])
   const searching = ref(false)
   const searched = ref(false)
+  const refreshing = ref(false)
+  const refreshedAt = ref<Date | null>(null)
 
   const apply = (value: unknown) => {
     const data = asRecord(value)
@@ -147,7 +149,23 @@ export function useSprintPlan() {
   const setPoints = (key: string, points: number | null) => run('sprint_plan_set_points', { ticket_id: key, points })
   const setCapacity = (capacity: number | null) => run('sprint_plan_settings', { capacity })
   const setBoard = (board: string) => run('sprint_plan_settings', { board })
-  const refresh = () => run('sprint_plan_refresh')
+  /**
+   * Re-read every planned ticket from Jira, since status, points and titles
+   * change while planning. `quiet` is for the automatic refresh on opening the
+   * page, which must not complain when Jira is simply not connected.
+   */
+  const refresh = async (quiet = false) => {
+    refreshing.value = true
+    const before = error.value
+    try {
+      const ok = await run('sprint_plan_refresh')
+      if (ok) refreshedAt.value = new Date()
+      else if (quiet) error.value = before
+      return ok
+    } finally {
+      refreshing.value = false
+    }
+  }
   const start = () => run('sprint_plan_start')
   const finish = () => run('sprint_plan_finish')
 
@@ -190,7 +208,7 @@ export function useSprintPlan() {
   ])
 
   return {
-    state, tickets, summary, loading, busy, error, results, searching, searched, columns,
+    state, tickets, summary, loading, busy, error, results, searching, searched, columns, refreshing, refreshedAt,
     load, search, add, remove, setPoints, setCapacity, setBoard, refresh, start, finish, openBoard, loadNotes, addNote
   }
 }

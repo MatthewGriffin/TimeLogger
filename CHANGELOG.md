@@ -4,6 +4,11 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.1-beta.12
+
+- Sprint Planning now finds story points whichever story point field your Jira uses, instead of only two exact names, so estimates on the ticket show up.
+- Refresh from Jira re-reads every planned ticket (status, title and points), and it also runs when you open the page, since tickets change during planning. A story point estimate in Jira replaces one you typed in; one you typed in stays only while Jira has none.
+
 ## 0.9.1-beta.11
 
 - Sprint Planning: if you paste a full Jira board link, the Open sprint board button now opens exactly that link. Otherwise the link it builds no longer alters your Jira account ID, which could lead to a "can't find what you're looking for" page.
