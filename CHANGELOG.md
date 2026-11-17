@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.1-beta.11
+
+- Sprint Planning: if you paste a full Jira board link, the Open sprint board button now opens exactly that link. Otherwise the link it builds no longer alters your Jira account ID, which could lead to a "can't find what you're looking for" page.
+
 ## 0.9.1-beta.10
 
 - Fixed scrolling on the Sprint Planning page: the whole window used to shift up and leave a blank area instead of the page scrolling normally.

@@ -35,6 +35,8 @@ function readState() {
     phase: stored.phase === 'active' ? 'active' : 'planning',
     capacity: Number.isFinite(stored.capacity) && stored.capacity >= 0 ? stored.capacity : null,
     boardId: /^\d+$/.test(String(stored.boardId || '')) ? String(stored.boardId) : '',
+    // A board link pasted by the user, opened exactly as given.
+    boardUrl: typeof stored.boardUrl === 'string' ? stored.boardUrl : '',
     startedAt: stored.startedAt || null
   };
 }
@@ -50,6 +52,19 @@ export function parseBoardId(input) {
   if (!text) return '';
   if (/^\d+$/.test(text)) return text;
   return text.match(/\/boards\/(\d+)/)?.[1] || null;
+}
+
+/**
+ * A pasted board link, kept only if it is an https link with /boards/<number>.
+ * It is opened as the user gave it, since that is the link known to work for
+ * them. Its host is checked against the Jira site when it is opened.
+ */
+export function parseBoardUrl(input) {
+  try {
+    const url = new URL(String(input || '').trim());
+    if (url.protocol !== 'https:' || !/\/boards\/\d+/.test(url.pathname)) return '';
+    return url.toString();
+  } catch { return ''; }
 }
 
 let pointsField = null;
@@ -260,6 +275,7 @@ export const tools = [
           const boardId = parseBoardId(args.board);
           if (boardId === null) return { success: false, message: 'Enter a board number or a Jira board link containing /boards/<number>' };
           next.boardId = boardId;
+          next.boardUrl = parseBoardUrl(args.board);
         }
         writeState(next);
         return { success: true, ...view() };
@@ -314,11 +330,12 @@ export const tools = [
     parameters: { type: 'object', properties: {}, required: [] },
     handler: async () => {
       try {
-        const { boardId } = readState();
+        const { boardId, boardUrl } = readState();
         if (!boardId) return { success: false, message: 'Set the Jira board first' };
         const credentials = resolveJiraCredentials({});
+        if (boardUrl && new URL(boardUrl).host === new URL(credentials.baseUrl).host) return { success: true, url: boardUrl };
         const account = await getCurrentAccount(credentials);
-        return { success: true, url: `${credentials.baseUrl}/jira/people/${encodeURIComponent(account.accountId)}/boards/${boardId}` };
+        return { success: true, url: `${credentials.baseUrl}/jira/people/${account.accountId}/boards/${boardId}` };
       } catch (error) { return fail('build the board link', error); }
     }
   }

@@ -3371,7 +3371,15 @@ async function runTests() {
       assert.strictEqual((await executeTool('sprint_plan_settings', { board: 'not a board' })).success, false);
       await executeTool('sprint_plan_settings', { board: 'https://example.atlassian.net/jira/people/abc/boards/166' });
       const link = await executeTool('sprint_plan_board_link', {});
-      assert.strictEqual(link.url, 'https://example.atlassian.net/jira/people/acct-1/boards/166');
+      assert.strictEqual(link.url, 'https://example.atlassian.net/jira/people/abc/boards/166', 'A pasted link is opened exactly as given');
+
+      await executeTool('sprint_plan_settings', { board: '166' });
+      const built = await executeTool('sprint_plan_board_link', {});
+      assert.strictEqual(built.url, 'https://example.atlassian.net/jira/people/acct-1/boards/166');
+
+      await executeTool('sprint_plan_settings', { board: 'https://other.example.com/jira/people/abc/boards/166' });
+      const foreign = await executeTool('sprint_plan_board_link', {});
+      assert.ok(foreign.url.startsWith('https://example.atlassian.net/'), 'A link on another site is never opened');
     });
   });
 
