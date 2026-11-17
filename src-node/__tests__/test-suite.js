@@ -3256,6 +3256,126 @@ async function runTests() {
   });
 
   // ============================================================
+  // SECTION 21: Sprint Planning and ticket lookups
+  // ============================================================
+  log(colors.yellow, '\n🧭 SECTION 21: Sprint Planning\n');
+
+  const withJira = async (route, run) => {
+    const saved = db.prepare("SELECT value FROM settings WHERE key = 'jira_config'").get();
+    const savedPlan = db.prepare("SELECT value FROM settings WHERE key = 'sprint_plan_state'").get();
+    const urls = [];
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('jira_config', ?)")
+      .run(JSON.stringify({ baseUrl: 'https://example.atlassian.net', email: 'me@example.com', apiToken: 'token' }));
+    db.prepare("DELETE FROM settings WHERE key = 'sprint_plan_state'").run();
+    db.prepare('DELETE FROM sprint_plan_tickets').run();
+    const previous = httpClient.defaults.adapter;
+    httpClient.defaults.adapter = async config => {
+      const url = new URL(config.url);
+      urls.push(decodeURIComponent(url.pathname + url.search));
+      return { data: JSON.stringify(route(url)), status: 200, statusText: 'OK', headers: {}, config };
+    };
+    try { return await run(urls); } finally {
+      httpClient.defaults.adapter = previous;
+      if (saved) db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('jira_config', ?)").run(saved.value);
+      else db.prepare("DELETE FROM settings WHERE key = 'jira_config'").run();
+      if (savedPlan) db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('sprint_plan_state', ?)").run(savedPlan.value);
+      else db.prepare("DELETE FROM settings WHERE key = 'sprint_plan_state'").run();
+      db.prepare('DELETE FROM sprint_plan_tickets').run();
+      db.prepare("DELETE FROM notes WHERE ticket_id LIKE 'ZZPLAN-%'").run();
+    }
+  };
+  const jiraIssue = (key, points, category = 'new', status = 'To Do') => ({
+    key, fields: { summary: `${key} summary`, status: { name: status, statusCategory: { key: category } }, customfield_10016: points }
+  });
+  const jira = tickets => url => {
+    if (url.pathname.endsWith('/myself')) return { accountId: 'acct-1', displayName: 'Me' };
+    if (url.pathname.endsWith('/field')) return [{ id: 'customfield_10016', name: 'Story point estimate' }, { id: 'customfield_1', name: 'Other' }];
+    if (url.pathname.endsWith('/search/jql')) {
+      const jql = url.searchParams.get('jql') || '';
+      const wanted = [...jql.matchAll(/"([A-Z]+-\d+)"/g)].map(match => match[1]);
+      return { issues: wanted.length ? tickets.filter(t => wanted.includes(t.key)) : tickets };
+    }
+    return {};
+  };
+
+  await testAsync('ticket lookups include tickets updated by me, not only assigned ones', async () => {
+    await withJira(jira([jiraIssue('ZZPLAN-1', 2)]), async urls => {
+      await executeTool('tempo_get_recent_issues', {});
+      await executeTool('tempo_get_issues', { query: '{mine} AND statusCategory = "In Progress" ORDER BY updated DESC' });
+      const searches = urls.filter(url => url.includes('/search/jql'));
+      assert.strictEqual(searches.length, 2);
+      for (const search of searches) {
+        assert.ok(search.includes('assignee = "acct-1" OR issue in updatedBy("acct-1", "-30d")'), search);
+        assert.ok(!search.includes('{mine}'), 'The placeholder must be replaced');
+      }
+    });
+  });
+
+  await testAsync('sprint plan adds tickets with Jira points and totals them against capacity', async () => {
+    await withJira(jira([jiraIssue('ZZPLAN-1', 3), jiraIssue('ZZPLAN-2', 5), jiraIssue('ZZPLAN-3', null)]), async () => {
+      for (const key of ['zzplan-1', 'ZZPLAN-2', 'ZZPLAN-3']) assert.strictEqual((await executeTool('sprint_plan_add', { ticket_id: key })).success, true);
+      const duplicate = await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-1' });
+      assert.strictEqual(duplicate.tickets.length, 3, 'Adding twice must not duplicate');
+      assert.strictEqual((await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-9' })).success, false, 'A ticket Jira does not know is rejected');
+
+      let plan = await executeTool('sprint_plan_settings', { capacity: 6 });
+      assert.strictEqual(plan.summary.planned, 8);
+      assert.strictEqual(plan.summary.unestimated, 1);
+      assert.strictEqual(plan.summary.remaining, -2);
+      assert.strictEqual(plan.summary.overCapacity, true);
+
+      plan = await executeTool('sprint_plan_set_points', { ticket_id: 'ZZPLAN-3', points: 1 });
+      assert.strictEqual(plan.summary.planned, 9);
+      assert.strictEqual(plan.summary.unestimated, 0);
+
+      plan = await executeTool('sprint_plan_remove', { ticket_id: 'ZZPLAN-2' });
+      assert.strictEqual(plan.summary.planned, 4);
+      assert.strictEqual(plan.summary.overCapacity, false);
+    });
+  });
+
+  await testAsync('sprint plan notes are ordinary notes against the ticket', async () => {
+    await withJira(jira([jiraIssue('ZZPLAN-1', 3)]), async () => {
+      await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-1' });
+      await executeTool('create_note', { date: '2026-01-05', note: 'Needs API change', ticket_id: 'ZZPLAN-1' });
+      const plan = await executeTool('sprint_plan_get', {});
+      assert.strictEqual(plan.tickets[0].noteCount, 1);
+      const notes = await executeTool('get_notes', { topic: 'ZZPLAN-1' });
+      assert.strictEqual(notes.notes[0].note, 'Needs API change');
+    });
+  });
+
+  await testAsync('starting the sprint needs tickets, locks the plan, and finishing carries unfinished work over', async () => {
+    const live = [jiraIssue('ZZPLAN-1', 3), jiraIssue('ZZPLAN-2', 5)];
+    await withJira(jira(live), async () => {
+      assert.strictEqual((await executeTool('sprint_plan_start', {})).success, false, 'An empty plan cannot start');
+      await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-1' });
+      await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-2' });
+      assert.strictEqual((await executeTool('sprint_plan_start', {})).state.phase, 'active');
+      assert.strictEqual((await executeTool('sprint_plan_remove', { ticket_id: 'ZZPLAN-1' })).success, false, 'Active plans are locked');
+
+      live[0] = jiraIssue('ZZPLAN-1', 3, 'done', 'Done');
+      const refreshed = await executeTool('sprint_plan_refresh', {});
+      assert.strictEqual(refreshed.summary.done, 3);
+      assert.strictEqual(refreshed.summary.todo, 5);
+
+      const finished = await executeTool('sprint_plan_finish', {});
+      assert.strictEqual(finished.state.phase, 'planning');
+      assert.deepStrictEqual(finished.tickets.map(ticket => ticket.key), ['ZZPLAN-2']);
+    });
+  });
+
+  await testAsync('sprint board link points at the user\'s own view and accepts a pasted board link', async () => {
+    await withJira(jira([]), async () => {
+      assert.strictEqual((await executeTool('sprint_plan_board_link', {})).success, false, 'No board set yet');
+      assert.strictEqual((await executeTool('sprint_plan_settings', { board: 'not a board' })).success, false);
+      await executeTool('sprint_plan_settings', { board: 'https://example.atlassian.net/jira/people/abc/boards/166' });
+      const link = await executeTool('sprint_plan_board_link', {});
+      assert.strictEqual(link.url, 'https://example.atlassian.net/jira/people/acct-1/boards/166');
+    });
+  });
+
+  // ============================================================
   // SUMMARY
   // ============================================================
   log(colors.cyan, '\n╔════════════════════════════════════════════╗');

@@ -26,6 +26,8 @@ import {
   jiraHeaders,
   searchIssues,
   getCurrentAccount,
+  myTicketsClause,
+  MINE_TOKEN,
   escapeJql,
   ISSUE_KEY_PATTERN,
   toSearchTerms,
@@ -496,7 +498,7 @@ export const tools = [
         baseUrl: { type: 'string', description: 'Jira base URL' },
         email: { type: 'string', description: 'Jira user email' },
         apiToken: { type: 'string', description: 'Jira API token' },
-        query: { type: 'string', description: 'JQL query (e.g., "project = TIME AND assignee = currentUser()")' },
+        query: { type: 'string', description: 'JQL query. {mine} stands for issues assigned to or recently updated by the user (e.g., "{mine} AND statusCategory = \\"In Progress\\"")' },
         limit: { type: 'number', description: 'Max results (default: 10)' }
       },
       required: []
@@ -505,7 +507,8 @@ export const tools = [
       try {
         const credentials = resolveJiraCredentials(args);
         const limit = args.limit || 10;
-        const jql = args.query || 'assignee = currentUser() ORDER BY updated DESC';
+        let jql = args.query || `${MINE_TOKEN} ORDER BY updated DESC`;
+        if (jql.includes(MINE_TOKEN)) jql = jql.split(MINE_TOKEN).join(await myTicketsClause(credentials));
 
         const issues = (await searchIssues(credentials, jql, { limit })).map(issue => ({
           key: issue.key,
@@ -546,7 +549,7 @@ export const tools = [
 
         const issues = (await searchIssues(
           credentials,
-          'assignee = currentUser() ORDER BY updated DESC',
+          `${await myTicketsClause(credentials)} ORDER BY updated DESC`,
           { limit }
         )).map(issue => ({
           key: issue.key,

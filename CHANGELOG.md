@@ -4,6 +4,12 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.1-beta.7
+
+- New Sprint Planning page, above Pull Requests. Search Jira and add the tickets you plan to take on next sprint, remove them again, and see their story points added up against the points you have available. Notes you add to a ticket here also show on the Notes page.
+- When you're ready, Start sprint locks the plan and the page becomes a progress view of your tickets (To Do, In Progress, Done) with points done. A button opens your own view of the sprint board in Jira, once you've entered the board number or pasted a board link. Finish sprint takes you back to planning with unfinished tickets carried over.
+- Ticket lookups now include tickets you've recently updated as well as the ones assigned to you, so a ticket you've passed on to QA can still be logged against.
+
 ## 0.9.1-beta.6
 
 - Fixed approvals and other GitHub review alerts being lost when they arrived while TimeLogger was open and in front. They now show as a short message in the app (and still go to your notifications when the app is in the background).
