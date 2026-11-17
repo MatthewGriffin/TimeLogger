@@ -4,6 +4,12 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.1-beta.15
+
+- Sprint Planning no longer locks once the sprint starts. You can still search for and add tickets, and remove them, while the sprint is running, since tickets do get added mid-sprint.
+- While the sprint runs, the progress view now uses your Jira board's own columns (such as Ready for PR and Ready for QA), in the board's order, instead of just To Do, In Progress and Done. Columns that don't fit on one row wrap onto the next. This needs the board number or link set on the page; without it, tickets are grouped by their status instead.
+- The sprint counters now show tickets as well as story points (for example "0 pts to do · 7 tickets"), because tickets with no estimate add no points and a points-only counter read as zero.
+
 ## 0.9.1-beta.14
 
 - Pull Requests: fixed the long "Some GitHub searches failed" error on later pages. GitHub was being asked to run every search again each time you went to the next page, until it started refusing them. Searches now load in bigger batches, so the following pages reuse them.
