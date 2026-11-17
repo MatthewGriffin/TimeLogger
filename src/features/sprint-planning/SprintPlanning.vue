@@ -196,6 +196,10 @@ onMounted(load)
 </script>
 
 <style scoped>
+/* The screen-reader-only labels are absolutely positioned. Without a positioned
+   ancestor they are placed against the whole document, which stretches it past
+   the window so the page itself scrolls instead of the content area. */
+.sprint-page { position: relative; }
 .page-sub { margin: .35rem 0 0; color: var(--color-text-muted); }
 .header-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 .sprint-body { display: flex; flex-direction: column; gap: var(--space-lg); }
