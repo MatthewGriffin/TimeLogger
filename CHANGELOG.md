@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.1-beta.8
+
+- Updated the libraries TimeLogger is built on (including the database, Vue and Vuetify). No visible changes, but if an update fails to install or the app misbehaves after this one, please let me know.
+
 ## 0.9.1-beta.7
 
 - New Sprint Planning page, above Pull Requests. Search Jira and add the tickets you plan to take on next sprint, remove them again, and see their story points added up against the points you have available. Notes you add to a ticket here also show on the Notes page.
