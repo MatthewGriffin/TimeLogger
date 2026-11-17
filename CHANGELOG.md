@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.1-beta.9
+
+- The Settings tab and its hints that said "Current Sprint" now say "Current PI", since it holds the PI number and PI tickets.
+
 ## 0.9.1-beta.8
 
 - Updated the libraries TimeLogger is built on (including the database, Vue and Vuetify). No visible changes, but if an update fails to install or the app misbehaves after this one, please let me know.

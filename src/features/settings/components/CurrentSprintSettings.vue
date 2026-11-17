@@ -1,6 +1,6 @@
 <template>
   <div class="settings-section">
-    <h2>Current Sprint</h2>
+    <h2>Current PI</h2>
     <p class="section-intro">
       Recurring meetings are booked in Tempo against per-PI placeholder tickets.
       These keys are reissued every Programme Increment, so set the PI number and
@@ -141,7 +141,7 @@ defineEmits<{
 .history-mapping-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-top: 0.5rem; }
 .history-row summary { cursor: pointer; font-size: 0.85rem; }
 
-/* Current Sprint */
+/* Current PI */
 .section-intro {
   font-size: 0.875rem;
   color: var(--color-text-subtle);

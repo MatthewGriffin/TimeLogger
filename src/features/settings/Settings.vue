@@ -31,7 +31,7 @@
         />
         <GitHubSettings v-if="activeTab === 'GitHub'" />
         <CurrentSprintSettings
-          v-if="activeTab === 'Current Sprint'"
+          v-if="activeTab === 'Current PI'"
           :form-data="sprintForm"
           :lookup-busy="sprintLookupBusy"
           :lookup-message="sprintLookupMessage"
@@ -151,7 +151,7 @@ const uiStore = useUiStore()
 const updater = useUpdater()
 const dataManagement = useDataManagement()
 
-const tabs: SettingsTabName[] = ['Jira & Tempo', 'GitHub', 'Current Sprint', 'OneNote', 'Calendar', 'Ollama', 'App Settings', 'Database & Data', 'About']
+const tabs: SettingsTabName[] = ['Jira & Tempo', 'GitHub', 'Current PI', 'OneNote', 'Calendar', 'Ollama', 'App Settings', 'Database & Data', 'About']
 const initialTab = tabs.find(tab => tab === route.query.tab)
 const activeTab = ref<SettingsTabName>(initialTab ?? 'Jira & Tempo')
 const isSaving = ref(false)
@@ -356,7 +356,7 @@ const hasChanges = computed(() => {
 const tabIcons: Record<SettingsTabName, Component> = {
   'Jira & Tempo': Link,
   'GitHub': Github,
-  'Current Sprint': Flag,
+  'Current PI': Flag,
   'OneNote': Notebook,
   'Calendar': CalendarDays,
   'Ollama': Bot,
