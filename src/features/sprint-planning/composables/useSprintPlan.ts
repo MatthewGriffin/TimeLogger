@@ -7,6 +7,7 @@ export interface PlanTicket {
   key: string
   summary: string
   status: string
+  statusId: string
   statusCategory: string
   points: number | null
   pointsManual: boolean
@@ -19,6 +20,9 @@ export interface PlanSummary {
   done: number
   inProgress: number
   todo: number
+  doneCount: number
+  inProgressCount: number
+  todoCount: number
   unestimated: number
   capacity: number | null
   remaining: number | null
@@ -47,6 +51,44 @@ export interface PlanNote {
   date: string
 }
 
+export interface BoardColumn {
+  name: string
+  statusIds: string[]
+}
+
+export interface BoardColumnView {
+  name: string
+  tickets: PlanTicket[]
+}
+
+const categoryRank = (category: string) => (category === 'done' ? 2 : category === 'indeterminate' ? 1 : 0)
+
+/**
+ * Lay tickets out in the Jira board's own columns (Ready for PR, Ready for QA
+ * and so on), in board order, and keep columns that are empty because they are
+ * where a ticket goes next. A ticket whose status is on no board column, or any
+ * ticket when the board is unknown, gets a column named for its status, placed
+ * after the board's columns and ordered To Do, In Progress, Done.
+ */
+export function groupIntoColumns(tickets: PlanTicket[], boardColumns: BoardColumn[]): BoardColumnView[] {
+  const placed = new Set<string>()
+  const columns: BoardColumnView[] = boardColumns.map(column => {
+    const members = tickets.filter(ticket => ticket.statusId && column.statusIds.includes(ticket.statusId))
+    members.forEach(ticket => placed.add(ticket.key))
+    return { name: column.name, tickets: members }
+  })
+
+  const byStatus = new Map<string, PlanTicket[]>()
+  for (const ticket of tickets.filter(ticket => !placed.has(ticket.key))) {
+    const name = ticket.status || 'No status'
+    byStatus.set(name, [...(byStatus.get(name) ?? []), ticket])
+  }
+  const extra = [...byStatus.entries()]
+    .map(([name, members]) => ({ name, tickets: members }))
+    .sort((a, b) => categoryRank(a.tickets[0].statusCategory) - categoryRank(b.tickets[0].statusCategory) || a.name.localeCompare(b.name))
+  return [...columns, ...extra]
+}
+
 const toNumber = (value: unknown): number | null => (value == null || value === '' ? null : Number(value))
 
 const toTicket = (raw: unknown): PlanTicket => {
@@ -55,6 +97,7 @@ const toTicket = (raw: unknown): PlanTicket => {
     key: asString(row.key),
     summary: asString(row.summary),
     status: asString(row.status),
+    statusId: asString(row.statusId),
     statusCategory: asString(row.statusCategory),
     points: toNumber(row.points),
     pointsManual: Boolean(row.pointsManual),
@@ -63,7 +106,7 @@ const toTicket = (raw: unknown): PlanTicket => {
 }
 
 const emptySummary = (): PlanSummary => ({
-  tickets: 0, planned: 0, done: 0, inProgress: 0, todo: 0, unestimated: 0, capacity: null, remaining: null, overCapacity: false
+  tickets: 0, planned: 0, done: 0, inProgress: 0, todo: 0, doneCount: 0, inProgressCount: 0, todoCount: 0, unestimated: 0, capacity: null, remaining: null, overCapacity: false
 })
 
 const localDate = () => new Date().toLocaleDateString('en-CA')
@@ -83,6 +126,7 @@ export function useSprintPlan() {
   const results = ref<SearchResult[]>([])
   const searching = ref(false)
   const searched = ref(false)
+  const boardColumns = ref<BoardColumn[]>([])
   const refreshing = ref(false)
   const refreshedAt = ref<Date | null>(null)
 
@@ -201,14 +245,22 @@ export function useSprintPlan() {
     }
   }
 
-  const columns = computed(() => [
-    { id: 'new', title: 'To Do', tickets: tickets.value.filter(t => t.statusCategory !== 'indeterminate' && t.statusCategory !== 'done') },
-    { id: 'indeterminate', title: 'In Progress', tickets: tickets.value.filter(t => t.statusCategory === 'indeterminate') },
-    { id: 'done', title: 'Done', tickets: tickets.value.filter(t => t.statusCategory === 'done') }
-  ])
+  // Missing columns are not an error: the page then groups tickets by status.
+  const loadBoardColumns = async () => {
+    try {
+      boardColumns.value = asList(asRecord(await executeApi('sprint_plan_board_columns')).columns).map(raw => {
+        const row = asRecord(raw)
+        return { name: asString(row.name), statusIds: asList<unknown>(row.statusIds).map(id => asString(id)) }
+      })
+    } catch {
+      boardColumns.value = []
+    }
+  }
+
+  const columns = computed(() => groupIntoColumns(tickets.value, boardColumns.value))
 
   return {
     state, tickets, summary, loading, busy, error, results, searching, searched, columns, refreshing, refreshedAt,
-    load, search, add, remove, setPoints, setCapacity, setBoard, refresh, start, finish, openBoard, loadNotes, addNote
+    load, loadBoardColumns, search, add, remove, setPoints, setCapacity, setBoard, refresh, start, finish, openBoard, loadNotes, addNote
   }
 }

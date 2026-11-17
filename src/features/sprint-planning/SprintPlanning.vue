@@ -18,7 +18,7 @@
       <p v-if="refreshedLabel" class="muted refreshed" role="status">{{ refreshedLabel }}</p>
 
       <div v-if="confirmStart" class="notice confirm" role="alertdialog" aria-label="Start the sprint">
-        <p>Start the sprint with {{ summary.tickets }} ticket{{ summary.tickets === 1 ? '' : 's' }} and {{ summary.planned }} points planned<template v-if="summary.capacity != null"> of {{ summary.capacity }} available</template>? The plan is locked until you finish the sprint.</p>
+        <p>Start the sprint with {{ summary.tickets }} ticket{{ summary.tickets === 1 ? '' : 's' }} and {{ summary.planned }} points planned<template v-if="summary.capacity != null"> of {{ summary.capacity }} available</template>? You can still add or remove tickets after it starts.</p>
         <div class="confirm-actions">
           <button class="btn btn-primary" type="button" :disabled="busy" @click="doStart">Start sprint</button>
           <button class="btn" type="button" @click="confirmStart = false">Keep planning</button>
@@ -38,10 +38,10 @@
           <div v-if="!isActive"><strong>{{ summary.planned }}</strong><span>planned</span></div>
           <div v-if="!isActive && summary.capacity != null"><strong :class="{ over: summary.overCapacity }">{{ summary.remaining }}</strong><span>{{ summary.overCapacity ? 'over capacity' : 'remaining' }}</span></div>
           <template v-if="isActive">
-            <div><strong>{{ summary.done }}</strong><span>done</span></div>
-            <div><strong>{{ summary.inProgress }}</strong><span>in progress</span></div>
-            <div><strong>{{ summary.todo }}</strong><span>to do</span></div>
-            <div><strong>{{ summary.planned }}</strong><span>planned{{ summary.capacity != null ? ` of ${summary.capacity}` : '' }}</span></div>
+            <div><strong>{{ summary.done }}</strong><span>pts done · {{ plural(summary.doneCount) }}</span></div>
+            <div><strong>{{ summary.inProgress }}</strong><span>pts in progress · {{ plural(summary.inProgressCount) }}</span></div>
+            <div><strong>{{ summary.todo }}</strong><span>pts to do · {{ plural(summary.todoCount) }}</span></div>
+            <div><strong>{{ summary.planned }}</strong><span>pts planned{{ summary.capacity != null ? ` of ${summary.capacity}` : '' }} · {{ plural(summary.tickets) }}</span></div>
           </template>
         </div>
         <div
@@ -60,7 +60,7 @@
           <span v-else class="seg" :class="summary.overCapacity ? 'seg-over' : 'seg-done'" :style="{ width: pct(summary.planned) }" />
         </div>
         <p v-if="summary.unestimated" class="muted">{{ summary.unestimated }} ticket{{ summary.unestimated === 1 ? ' has' : 's have' }} no story points, so they are not in the total. Enter points on the ticket to include them.</p>
-        <div v-if="!isActive" class="settings-row">
+        <div class="settings-row">
           <label>
             <span>Points available</span>
             <input v-model="capacityText" type="number" min="0" step="0.5" inputmode="decimal" @change="saveCapacity">
@@ -75,7 +75,7 @@
       </section>
 
       <!-- Adding tickets -->
-      <section v-if="!isActive" class="card" aria-label="Add tickets">
+      <section class="card" aria-label="Add tickets">
         <form class="search-row" @submit.prevent="runSearch">
           <label class="grow">
             <span>Find tickets to add</span>
@@ -122,17 +122,20 @@
 
       <!-- Active: progress, limited to the user's own tickets -->
       <section v-else class="board" aria-label="Sprint progress">
-        <div v-for="column in columns" :key="column.id" class="column">
-          <h2>{{ column.title }} <span class="muted">({{ column.tickets.length }})</span></h2>
+        <div v-for="column in columns" :key="column.name" class="column">
+          <h2>{{ column.name }} <span class="muted">({{ column.tickets.length }})</span></h2>
           <p v-if="!column.tickets.length" class="muted">Nothing here.</p>
           <article v-for="ticket in column.tickets" :key="ticket.key" class="card ticket-card">
             <div><strong>{{ ticket.key }}</strong> <span class="muted">{{ ticket.points ?? '–' }} pts</span></div>
             <p>{{ ticket.summary }}</p>
             <div class="ticket-foot">
               <span class="muted">{{ ticket.status }}</span>
-              <button class="link" type="button" :aria-expanded="openNotes === ticket.key" @click="toggleNotes(ticket.key)">
-                Notes<template v-if="ticket.noteCount"> ({{ ticket.noteCount }})</template>
-              </button>
+              <span class="foot-actions">
+                <button class="link" type="button" :aria-expanded="openNotes === ticket.key" @click="toggleNotes(ticket.key)">
+                  Notes<template v-if="ticket.noteCount"> ({{ ticket.noteCount }})</template>
+                </button>
+                <button class="link" type="button" :disabled="busy" :aria-label="`Remove ${ticket.key} from the sprint`" @click="remove(ticket.key)">Remove</button>
+              </span>
             </div>
             <SprintTicketNotes v-if="openNotes === ticket.key" :ticket-key="ticket.key" :note-count="ticket.noteCount" :load="loadNotes" :add="addNote" />
           </article>
@@ -149,7 +152,7 @@ import { useSprintPlan } from './composables/useSprintPlan'
 
 const {
   state, tickets, summary, loading, busy, error, results, searching, searched, columns, refreshing, refreshedAt,
-  load, search, add, remove, setPoints, setCapacity, setBoard, refresh, start, finish, openBoard, loadNotes, addNote
+  load, loadBoardColumns, search, add, remove, setPoints, setCapacity, setBoard, refresh, start, finish, openBoard, loadNotes, addNote
 } = useSprintPlan()
 
 const query = ref('')
@@ -162,6 +165,7 @@ const confirmFinish = ref(false)
 const isActive = computed(() => state.value.phase === 'active')
 // The bar fills against the points available, or the total when none is set.
 const barMax = computed(() => Math.max(summary.value.capacity ?? 0, summary.value.planned))
+const plural = (count: number) => `${count} ticket${count === 1 ? '' : 's'}`
 const pct = (points: number) => `${barMax.value ? Math.min(100, (points / barMax.value) * 100) : 0}%`
 
 watch(state, value => {
@@ -198,6 +202,9 @@ const refreshedLabel = computed(() =>
 )
 
 // Open with what is saved, then bring the tickets up to date from Jira.
+// The board's columns matter only while the sprint runs, and when the board changes.
+watch(() => `${state.value.phase}|${state.value.boardId}`, () => { if (isActive.value) void loadBoardColumns() })
+
 onMounted(async () => {
   await load()
   if (tickets.value.length) await refresh(true)
@@ -249,12 +256,13 @@ label.wide input, .search-row .grow input { width: 100%; }
 .planned-row .ticket-main { flex: 1 1 16rem; }
 .points-input input { width: 5rem; }
 .empty { padding: 1.5rem; text-align: center; border: 1px dashed var(--color-border); border-radius: var(--radius-md); color: var(--color-text-muted); }
-.board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-md); align-items: start; }
+/* As many columns as fit; the rest wrap onto a new row. */
+.board { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: var(--space-md); align-items: start; }
 .column { display: flex; flex-direction: column; gap: .75rem; padding: .75rem; border-radius: var(--radius-md); background: var(--color-surface); }
 .ticket-card p { margin: .4rem 0; overflow-wrap: anywhere; }
 .ticket-card { padding-bottom: 0; }
 .ticket-foot { display: flex; justify-content: space-between; align-items: center; padding-bottom: .75rem; font-size: .85rem; }
+.foot-actions { display: flex; gap: 1rem; }
 .link { background: none; border: 0; color: var(--color-accent); cursor: pointer; padding: 0; font: inherit; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-@media (max-width: 900px) { .board { grid-template-columns: 1fr; } }
 </style>

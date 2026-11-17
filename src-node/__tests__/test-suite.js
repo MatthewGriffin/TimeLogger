@@ -3338,7 +3338,7 @@ async function runTests() {
     }
   };
   const jiraIssue = (key, points, category = 'new', status = 'To Do') => ({
-    key, fields: { summary: `${key} summary`, status: { name: status, statusCategory: { key: category } }, customfield_10016: points }
+    key, fields: { summary: `${key} summary`, status: { id: status === 'Done' ? '30' : status === 'Ready for QA' ? '20' : '10', name: status, statusCategory: { key: category } }, customfield_10016: points }
   });
   // A site whose story points live in a differently named field.
   const jiraIssueAlt = (key, points) => ({
@@ -3346,6 +3346,14 @@ async function runTests() {
   });
   const jira = tickets => url => {
     if (url.pathname.endsWith('/myself')) return { accountId: 'acct-1', displayName: 'Me' };
+    if (url.pathname.endsWith('/configuration')) {
+      return { columnConfig: { columns: [
+        { name: 'To Do', statuses: [{ id: '10' }] },
+        { name: 'Ready for PR', statuses: [] },
+        { name: 'Ready for QA', statuses: [{ id: '20' }] },
+        { name: 'Done', statuses: [{ id: '30' }] }
+      ] } };
+    }
     if (url.pathname.endsWith('/field')) return [{ id: 'customfield_10016', name: 'Story point estimate' }, { id: 'customfield_10026', name: 'Story Points' }, { id: 'customfield_1', name: 'Other' }];
     if (url.pathname.endsWith('/search/jql')) {
       const jql = url.searchParams.get('jql') || '';
@@ -3431,6 +3439,22 @@ async function runTests() {
     });
   });
 
+  await testAsync('sprint board columns come from the Jira board, with the status ids each holds', async () => {
+    await withJira(jira([jiraIssue('ZZPLAN-1', 3, 'indeterminate', 'Ready for QA')]), async urls => {
+      assert.deepStrictEqual((await executeTool('sprint_plan_board_columns', {})).columns, [], 'No board set yet');
+      await executeTool('sprint_plan_settings', { board: '166' });
+      const result = await executeTool('sprint_plan_board_columns', {});
+      assert.deepStrictEqual(result.columns.map(c => c.name), ['To Do', 'Ready for PR', 'Ready for QA', 'Done']);
+      assert.deepStrictEqual(result.columns[2].statusIds, ['20']);
+      assert.strictEqual(result.columns[1].statusIds.length, 0, 'An empty column is still a column');
+      await executeTool('sprint_plan_board_columns', {});
+      assert.strictEqual(urls.filter(u => u.includes('/configuration')).length, 1, 'Columns are cached');
+
+      const added = await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-1' });
+      assert.strictEqual(added.tickets[0].statusId, '20', 'The ticket keeps its status id so it can be placed in a column');
+    });
+  });
+
   await testAsync('sprint plan notes are ordinary notes against the ticket', async () => {
     await withJira(jira([jiraIssue('ZZPLAN-1', 3)]), async () => {
       await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-1' });
@@ -3442,19 +3466,27 @@ async function runTests() {
     });
   });
 
-  await testAsync('starting the sprint needs tickets, locks the plan, and finishing carries unfinished work over', async () => {
+  await testAsync('starting the sprint needs tickets, tickets can still be added and removed mid-sprint, and finishing carries unfinished work over', async () => {
     const live = [jiraIssue('ZZPLAN-1', 3), jiraIssue('ZZPLAN-2', 5)];
     await withJira(jira(live), async () => {
       assert.strictEqual((await executeTool('sprint_plan_start', {})).success, false, 'An empty plan cannot start');
       await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-1' });
       await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-2' });
       assert.strictEqual((await executeTool('sprint_plan_start', {})).state.phase, 'active');
-      assert.strictEqual((await executeTool('sprint_plan_remove', { ticket_id: 'ZZPLAN-1' })).success, false, 'Active plans are locked');
+
+      live.push(jiraIssue('ZZPLAN-3', 2));
+      const midSprint = await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-3' });
+      assert.strictEqual(midSprint.success, true, 'A ticket can be added after the sprint starts');
+      assert.strictEqual(midSprint.state.phase, 'active');
+      const removed = await executeTool('sprint_plan_remove', { ticket_id: 'ZZPLAN-3' });
+      assert.strictEqual(removed.success, true, 'and removed again');
+      assert.deepStrictEqual(removed.tickets.map(ticket => ticket.key), ['ZZPLAN-1', 'ZZPLAN-2']);
 
       live[0] = jiraIssue('ZZPLAN-1', 3, 'done', 'Done');
       const refreshed = await executeTool('sprint_plan_refresh', {});
       assert.strictEqual(refreshed.summary.done, 3);
       assert.strictEqual(refreshed.summary.todo, 5);
+      assert.deepStrictEqual([refreshed.summary.doneCount, refreshed.summary.todoCount], [1, 1], 'Tickets are counted as well as points');
 
       const finished = await executeTool('sprint_plan_finish', {});
       assert.strictEqual(finished.state.phase, 'planning');

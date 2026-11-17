@@ -152,6 +152,9 @@ const submissionHistoryColumns = columns('submission_history');
 if (!submissionHistoryColumns.includes('status')) db.exec("ALTER TABLE submission_history ADD COLUMN status TEXT DEFAULT 'success'");
 if (!submissionHistoryColumns.includes('failed_count')) db.exec('ALTER TABLE submission_history ADD COLUMN failed_count INTEGER DEFAULT 0');
 
+// The status id maps a ticket onto the Jira board column that holds its status.
+if (!columns('sprint_plan_tickets').includes('status_id')) db.exec('ALTER TABLE sprint_plan_tickets ADD COLUMN status_id TEXT');
+
 const calendarConflictColumns = columns('calendar_conflict_choices');
 // Overrides let a resolution say "left this one early" instead of only an
 // all-or-nothing attended/declined choice, so a real half-and-half meeting
