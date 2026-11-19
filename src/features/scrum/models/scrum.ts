@@ -7,6 +7,7 @@ export interface ScrumEntry {
   startTime: string | null
   endTime: string | null
   durationMins: number
+  fromCalendar: boolean
 }
 
 export interface ScrumNote {

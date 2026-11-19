@@ -31,14 +31,27 @@
         </button>
       </li>
     </ul>
+
+    <div class="planned-meetings">
+      <h4>Meetings</h4>
+      <p v-if="meetings.length === 0" class="planned-empty">No meetings today.</p>
+      <ul v-else class="meeting-list">
+        <li v-for="meeting in meetings" :key="meeting.id" class="meeting-item">
+          <span class="meeting-time">{{ meeting.startTime }}</span>
+          <span class="meeting-name">{{ meeting.name }}</span>
+          <JiraTicketLink v-if="meeting.ticketId" class="planned-ticket" :ticket-id="meeting.ticketId" />
+        </li>
+      </ul>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import JiraTicketLink from '@/features/scrum/components/JiraTicketLink.vue'
 import type { ScrumPlanItem } from '@/features/scrum/models/scrumPlanItem'
+import type { ScrumEntry } from '@/features/scrum/models/scrum'
 
-defineProps<{ planned: ScrumPlanItem[] }>()
+defineProps<{ planned: ScrumPlanItem[]; meetings: ScrumEntry[] }>()
 const emit = defineEmits<{ 'open-search': []; remove: [id: number] }>()
 </script>
 
@@ -152,5 +165,36 @@ const emit = defineEmits<{ 'open-search': []; remove: [id: number] }>()
 .planned-remove:hover {
   border-color: var(--color-danger);
   color: var(--color-danger-soft);
+}
+
+.planned-meetings {
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--color-border);
+}
+
+.planned-meetings h4 {
+  margin: 0 0 var(--space-2xs);
+  font-size: 0.85rem;
+}
+
+.meeting-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.meeting-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-xs);
+  padding: var(--space-2xs) 0;
+  font-size: 0.9rem;
+}
+
+.meeting-time {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--color-text-subtle);
 }
 </style>
