@@ -338,6 +338,8 @@ const loadTempoSummary = async () => {
 
 const recentActivity = computed(() => {
   return entriesStore.entries
+    // Lunch is a break, not an activity.
+    .filter(entry => !entry.isLunch)
     // An entry's date is only a calendar day, so the time of day has to come
     // from startTime or every item collapses to midnight and the relative
     // times below become meaningless.
