@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.1-beta.18
+
+- Daily Scrum: Planned for today now includes the tickets assigned to you that are In Progress in Jira, without you having to add them. They come straight from Jira, so they disappear once the ticket moves on, and they have no Remove button.
+
 ## 0.9.1-beta.17
 
 - Dashboard: Recent Activity no longer lists Lunch. It's a break rather than an activity, and it was the one item that showed a different tick because it can never be sent to Tempo.
