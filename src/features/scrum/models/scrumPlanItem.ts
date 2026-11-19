@@ -12,4 +12,6 @@ export interface ScrumPlanItem {
   ticketId: string
   summary: string | null
   status: string | null
+  /** Added because Jira has the ticket In Progress, rather than chosen. Not stored, so not removable. */
+  automatic?: boolean
 }

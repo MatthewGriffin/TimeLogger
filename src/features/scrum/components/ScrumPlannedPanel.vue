@@ -11,7 +11,7 @@
     </header>
 
     <p v-if="planned.length === 0" class="planned-empty">
-      Nothing planned yet. Add the tickets you intend to pick up so they appear in your update.
+      Nothing planned yet. Tickets you have In Progress in Jira appear here on their own; add any others you intend to pick up.
     </p>
 
     <ul v-else class="planned-list">
@@ -22,6 +22,7 @@
           <span v-if="item.status" class="planned-status">{{ item.status }}</span>
         </div>
         <button
+          v-if="!item.automatic"
           type="button"
           class="planned-remove"
           :aria-label="`Remove ${item.ticketId} from planned work`"
