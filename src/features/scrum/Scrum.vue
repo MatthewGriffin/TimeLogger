@@ -17,6 +17,7 @@
           <ScrumDayPanel :day="report.yesterday" label="Yesterday" />
           <ScrumPlannedPanel
             :planned="report.today.planned"
+            :meetings="report.today.entries.filter(entry => entry.fromCalendar)"
             @open-search="openSearch"
             @remove="removePlanned"
           />
@@ -45,6 +46,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useEntriesStore } from '@/shared/stores/entries'
+import { localDate } from '@/shared/utils/dates'
 import ScrumDayPanel from '@/features/scrum/components/ScrumDayPanel.vue'
 import ScrumBlockersPanel from '@/features/scrum/components/ScrumBlockersPanel.vue'
 import ScrumPlannedPanel from '@/features/scrum/components/ScrumPlannedPanel.vue'
@@ -78,7 +81,18 @@ const removePlanned = async (id: number) => {
   if (await remove(id)) await refresh()
 }
 
-onMounted(load)
+const entriesStore = useEntriesStore()
+
+// The first visit of the day pulls today's meetings from the calendar; later
+// visits find them already there. A failed sync never blocks the page.
+onMounted(async () => {
+  try {
+    await entriesStore.autoSyncCalendarIfEmpty(localDate())
+  } catch {
+    // Meetings are a bonus here; the report still loads without them.
+  }
+  await load()
+})
 </script>
 
 <style scoped>

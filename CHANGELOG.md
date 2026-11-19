@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.1-beta.16
+
+- The Daily Scrum page now shows today's meetings. The first time you open it each day it pulls them from your calendar automatically, and lists them in a Meetings section under Planned for today, in the same box so everything still fits on screen.
+
 ## 0.9.1-beta.15
 
 - Sprint Planning no longer locks once the sprint starts. You can still search for and add tickets, and remove them, while the sprint is running, since tickets do get added mid-sprint.

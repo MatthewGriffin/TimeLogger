@@ -18,7 +18,8 @@ function toEntry(raw: unknown): ScrumEntry {
     name: String(row.name ?? ''),
     startTime: asString(row.start_time),
     endTime: asString(row.end_time),
-    durationMins: Number(row.duration_mins) || 0
+    durationMins: Number(row.duration_mins) || 0,
+    fromCalendar: Number(row.from_calendar) === 1 || row.from_calendar === true
   }
 }
 
