@@ -167,6 +167,9 @@ function planned() {
 }
 
 /** Story points planned against the points available. Unestimated tickets are counted, not guessed. */
+// The board column where a ticket's development is finished and it waits for review.
+const PULL_REQUEST_COLUMN = /\bPR\b|pull request|code review|in review/i;
+
 export function summarisePlan(tickets, capacity, boardColumns = []) {
   const sum = list => list.reduce((total, ticket) => total + (ticket.points || 0), 0);
   const total = sum(tickets);
@@ -180,6 +183,16 @@ export function summarisePlan(tickets, capacity, boardColumns = []) {
     return ticket.statusCategory === 'done' ? 'done' : ticket.statusCategory === 'indeterminate' ? 'inProgress' : 'todo';
   };
   const inStage = stage => tickets.filter(ticket => stageOf(ticket) === stage);
+  // Development is finished once a ticket reaches the pull request column, or any
+  // after it, so those count as completed. It only goes back if QA bounces it.
+  // With no such column, or no columns, only done tickets are completed.
+  const prColumn = boardColumns.findIndex(column => PULL_REQUEST_COLUMN.test(column.name));
+  const isCompleted = ticket => {
+    const index = boardColumns.findIndex(column => ticket.statusId && column.statusIds.includes(ticket.statusId));
+    if (prColumn >= 0 && index >= 0) return index >= prColumn;
+    return stageOf(ticket) === 'done';
+  };
+  const completedTickets = tickets.filter(isCompleted);
   const done = sum(inStage('done'));
   const inProgress = sum(inStage('inProgress'));
   return {
@@ -189,6 +202,8 @@ export function summarisePlan(tickets, capacity, boardColumns = []) {
     inProgress,
     todo: total - done - inProgress,
     // Tickets as well as points: a ticket with no estimate adds no points, so points alone read as zero.
+    completed: sum(completedTickets),
+    completedCount: completedTickets.length,
     doneCount: inStage('done').length,
     inProgressCount: inStage('inProgress').length,
     todoCount: inStage('todo').length,
@@ -481,7 +496,7 @@ export const tools = [
           active: true,
           timeline,
           hoursPerDay: Math.round((workday.minutes / 60) * 100) / 100,
-          points: { done: summary.done, planned: summary.planned, expected, behind: Math.round((expected - summary.done) * 10) / 10 },
+          points: { completed: summary.completed, planned: summary.planned, expected, behind: Math.round((expected - summary.completed) * 10) / 10 },
           support
         };
       } catch (error) { return fail('work out the sprint progress', error); }

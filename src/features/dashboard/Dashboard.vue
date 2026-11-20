@@ -124,7 +124,7 @@
           </div>
           <div class="progress-track"><span :style="{ width: `${sprintDonePercent}%` }"></span></div>
           <p class="panel-message" :class="{ warning: sprint.points.behind > 0.5 }">
-            {{ sprint.points.done }} completed · {{ sprint.points.expected }} expected by now · {{ sprint.points.planned }} planned
+            {{ sprint.points.completed }} completed · {{ sprint.points.expected }} expected by now · {{ sprint.points.planned }} planned
           </p>
         </section>
 
@@ -460,7 +460,7 @@ const sprint = ref<SprintProgress | null>(null)
 let sprintTimer: ReturnType<typeof setInterval> | undefined
 const refreshSprint = async () => { sprint.value = await loadSprintProgress() }
 const percentOf = (part: number, whole: number) => (whole > 0 ? Math.min(100, Math.max(0, (part / whole) * 100)) : 0)
-const sprintDonePercent = computed(() => percentOf(sprint.value?.points.done ?? 0, sprint.value?.points.planned ?? 0))
+const sprintDonePercent = computed(() => percentOf(sprint.value?.points.completed ?? 0, sprint.value?.points.planned ?? 0))
 const supportPercent = computed(() => percentOf(sprint.value?.support?.spentMins ?? 0, sprint.value?.support?.budgetMins ?? 0))
 const sprintEnd = computed(() => {
   const day = sprint.value?.endDate

@@ -3487,6 +3487,10 @@ async function runTests() {
     assert.deepStrictEqual([byColumns.todoCount, byColumns.inProgressCount, byColumns.doneCount], [1, 2, 1]);
     const byCategory = summarisePlan(tickets, null, []);
     assert.deepStrictEqual([byCategory.todo, byCategory.inProgress, byCategory.done], [2, 4, 5], 'With no columns Jira categories decide');
+    assert.deepStrictEqual([byColumns.completed, byColumns.completedCount], [8, 2], 'Ready for PR and the Done column after it are completed');
+    assert.strictEqual(summarisePlan(tickets, null, []).completed, 5, 'With no columns only done tickets are completed');
+    const withPr = summarisePlan(tickets, null, [{ name: 'To Do', statusIds: ['10'] }, { name: 'In Progress', statusIds: ['11'] }, { name: 'Ready for PR', statusIds: ['12'] }, { name: 'Ready for QA', statusIds: ['13'] }, { name: 'Done', statusIds: ['30'] }]);
+    assert.deepStrictEqual([withPr.completed, withPr.completedCount], [8, 2], 'Ready for PR and anything after it is completed');
     // A ticket parked in the column after the first is not "in progress" by category alone
     const parked = summarisePlan([ticket('B-1', 3, '10', 'indeterminate')], null, columns);
     assert.deepStrictEqual([parked.todo, parked.inProgress], [3, 0], 'A ticket in the To Do column is to do, whatever Jira calls its status');
@@ -3551,7 +3555,7 @@ async function runTests() {
         const progress = await executeTool('sprint_plan_progress', {});
         assert.strictEqual(progress.success, true);
         assert.strictEqual(progress.active, true);
-        assert.strictEqual(progress.points.done, 5);
+        assert.strictEqual(progress.points.completed, 8, 'Completed is the pull request column and everything after it: Ready for QA (3) and Done (5)');
         assert.strictEqual(progress.points.planned, 10);
         assert.ok(progress.points.expected >= 0 && progress.points.expected <= 10);
         assert.strictEqual(progress.support.perWeek, 1);
