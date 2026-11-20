@@ -66,12 +66,41 @@
             <input v-model="capacityText" type="number" min="0" step="0.5" inputmode="decimal" @change="saveCapacity">
           </label>
         </div>
+        <div class="settings-row settings-pair">
+          <label>
+            <span>Support story points a week (1 point = 1 day)</span>
+            <input v-model="supportText" type="number" min="0" max="5" step="0.5" inputmode="decimal" @change="saveSupport">
+          </label>
+          <label>
+            <span>Sprint ends{{ isActive ? '' : ' (once started; two weeks from the start if empty)' }}</span>
+            <input v-model="endsOnText" type="date" @change="saveEndsOn">
+          </label>
+        </div>
         <div class="settings-row">
           <label class="wide">
             <span>Jira sprint board (number or board link)</span>
             <input v-model="boardText" type="text" placeholder="e.g. 166 or https://your-site.atlassian.net/jira/people/…/boards/166" @change="saveBoard">
           </label>
         </div>
+      </section>
+
+      <!-- Running sprint: points and support time against where the sprint should be -->
+      <section v-if="isActive && progress" class="card progress-card" aria-label="Sprint progress">
+        <p class="muted dates">
+          {{ formatDay(progress.startDate) }} – {{ formatDay(progress.endDate) }}<template v-if="progress.endIsDefault"> (two weeks from the start)</template>
+          · {{ progress.daysLeft }} working day{{ progress.daysLeft === 1 ? '' : 's' }} left
+        </p>
+        <div class="points-figures">
+          <div>
+            <strong :class="{ over: progress.points.behind > 0.5 }">{{ progress.points.done }} / {{ progress.points.expected }}</strong>
+            <span>pts completed / expected by now · {{ progress.points.planned }} planned</span>
+          </div>
+          <div v-if="progress.support">
+            <strong :class="{ over: progress.support.remainingMins < 0 }">{{ formatMinutes(progress.support.spentMins) }} / {{ formatMinutes(progress.support.budgetMins) }}</strong>
+            <span>support time spent / kept for support · {{ formatMinutes(progress.support.remainingMins) }} {{ progress.support.remainingMins < 0 ? 'over' : 'left' }}</span>
+          </div>
+        </div>
+        <p v-if="progress.support?.tempoError" class="muted">Support time from Tempo isn't included: {{ progress.support.tempoError }}</p>
       </section>
 
       <!-- Adding tickets -->
@@ -123,7 +152,7 @@
       <!-- Active: progress, limited to the user's own tickets -->
       <section v-else class="board" aria-label="Sprint progress">
         <div v-for="column in columns" :key="column.name" class="column">
-          <h2>{{ column.name }} <span class="muted">({{ column.tickets.length }})</span></h2>
+          <h2>{{ column.name }} <span class="muted">({{ column.tickets.length }} · {{ columnPoints(column) }} pts)</span></h2>
           <p v-if="!column.tickets.length" class="muted">Nothing here.</p>
           <article v-for="ticket in column.tickets" :key="ticket.key" class="card ticket-card">
             <div><strong>{{ ticket.key }}</strong> <span class="muted">{{ ticket.points ?? '–' }} pts</span></div>
@@ -146,18 +175,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import SprintTicketNotes from './components/SprintTicketNotes.vue'
-import { useSprintPlan } from './composables/useSprintPlan'
+import { useSprintPlan, formatMinutes } from './composables/useSprintPlan'
+import type { BoardColumnView } from './composables/useSprintPlan'
 
 const {
-  state, tickets, summary, loading, busy, error, results, searching, searched, columns, refreshing, refreshedAt,
-  load, loadBoardColumns, search, add, remove, setPoints, setCapacity, setBoard, refresh, start, finish, openBoard, loadNotes, addNote
+  state, progress, tickets, summary, loading, busy, error, results, searching, searched, columns, refreshing, refreshedAt,
+  load, loadBoardColumns, loadProgress, setSupport, setEndsOn, search, add, remove, setPoints, setCapacity, setBoard, refresh, start, finish, openBoard, loadNotes, addNote
 } = useSprintPlan()
 
 const query = ref('')
 const capacityText = ref('')
 const boardText = ref('')
+const supportText = ref('')
+const endsOnText = ref('')
 const openNotes = ref<string | null>(null)
 const confirmStart = ref(false)
 const confirmFinish = ref(false)
@@ -171,6 +203,8 @@ const pct = (points: number) => `${barMax.value ? Math.min(100, (points / barMax
 watch(state, value => {
   capacityText.value = value.capacity == null ? '' : String(value.capacity)
   boardText.value = value.boardUrl || value.boardId
+  supportText.value = value.supportPerWeek == null ? '' : String(value.supportPerWeek)
+  endsOnText.value = value.endsOn
 }, { immediate: true })
 
 const runSearch = () => search(query.value.trim())
@@ -181,6 +215,14 @@ const saveCapacity = () => {
   return setCapacity(text === '' ? null : Number(text))
 }
 const saveBoard = () => setBoard(boardText.value.trim())
+const saveSupport = () => {
+  const text = supportText.value.trim()
+  return setSupport(text === '' ? null : Number(text))
+}
+const saveEndsOn = () => setEndsOn(endsOnText.value || null)
+
+const columnPoints = (column: BoardColumnView) => column.tickets.reduce((total, ticket) => total + (ticket.points ?? 0), 0)
+const formatDay = (day: string) => new Date(`${day}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
 
 const onPoints = (key: string, event: Event) => {
   const text = (event.target as HTMLInputElement).value.trim()
@@ -205,10 +247,29 @@ const refreshedLabel = computed(() =>
 // The board's columns matter only while the sprint runs, and when the board changes.
 watch(() => `${state.value.phase}|${state.value.boardId}`, () => { if (isActive.value) void loadBoardColumns() })
 
+// Progress follows the plan and the sprint settings, so it is worked out again when they change.
+watch(() => JSON.stringify([state.value, summary.value]), () => { void loadProgress() })
+
+// Tickets change in Jira all the time, so the page brings itself up to date
+// without waiting to be asked. Typing is never interrupted by it.
+const REFRESH_EVERY_MS = 5 * 60 * 1000
+let refreshTimer: ReturnType<typeof setInterval> | undefined
+const typing = () => document.activeElement instanceof HTMLInputElement
+
 onMounted(async () => {
   await load()
   if (tickets.value.length) await refresh(true)
+  if (isActive.value) await loadBoardColumns()
+  await loadProgress()
+  refreshTimer = setInterval(async () => {
+    if (typing() || !tickets.value.length) return
+    await refresh(true)
+    if (isActive.value) await loadBoardColumns()
+    await loadProgress()
+  }, REFRESH_EVERY_MS)
 })
+
+onUnmounted(() => clearInterval(refreshTimer))
 </script>
 
 <style scoped>
@@ -242,8 +303,11 @@ h2 { font-size: 1.05rem; margin: 0 0 .75rem; }
 .seg-progress { background: var(--color-accent); }
 .seg-over { background: var(--color-danger); }
 .settings-row { margin-top: 1rem; }
+.settings-pair { display: flex; flex-wrap: wrap; gap: 1rem; }
+.settings-pair label { flex: 1 1 14rem; }
+.dates { margin: 0 0 .75rem; }
 label { display: flex; flex-direction: column; gap: .35rem; color: var(--color-text-muted); font-size: .9rem; }
-input[type="number"], input[type="text"], input[type="search"] { padding: .55rem .7rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text); font: inherit; min-width: 0; box-sizing: border-box; }
+input[type="number"], input[type="text"], input[type="search"], input[type="date"] { padding: .55rem .7rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text); font: inherit; min-width: 0; box-sizing: border-box; }
 label.wide input, .search-row .grow input { width: 100%; }
 .search-row { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; }
 .search-row .grow { flex: 1 1 18rem; }

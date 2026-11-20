@@ -4,6 +4,15 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.1-beta.19
+
+- Submit Time now has a Today filter, and it is the one selected when you open the page.
+- Sprint Planning: the counters now follow the Jira board's columns. The first column counts as to do, the last as done and the ones between (such as In Progress and Ready for PR) as in progress, so they match the columns below. Each column also shows its points.
+- Sprint Planning now refreshes itself from Jira every five minutes while it is open, without interrupting you if you are typing.
+- New sprint settings: the story points a week kept for support (one point is one day's work) and the date the sprint ends. If no end date is set, the sprint ends two weeks after it started.
+- While the sprint runs, Sprint Planning shows story points completed against the points expected by now, and the support time spent against the time kept for support. Support time is the time in Tempo logged as Support-Fix or Support-Investigation, plus entries not sent yet that would be given one of those types.
+- The Dashboard shows the same two summaries (sprint story points and support time) while a sprint is running.
+
 ## 0.9.1-beta.18
 
 - Daily Scrum: Planned for today now includes the tickets assigned to you that are In Progress in Jira, without you having to add them. They come straight from Jira, so they disappear once the ticket moves on, and they have no Remove button.
