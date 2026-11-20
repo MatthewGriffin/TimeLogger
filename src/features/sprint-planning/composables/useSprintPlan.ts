@@ -21,6 +21,8 @@ export interface PlanSummary {
   inProgress: number
   todo: number
   doneCount: number
+  completed: number
+  completedCount: number
   inProgressCount: number
   todoCount: number
   unestimated: number
@@ -49,7 +51,7 @@ export interface SprintProgress {
   elapsedDays: number
   daysLeft: number
   hoursPerDay: number
-  points: { done: number; planned: number; expected: number; behind: number }
+  points: { completed: number; planned: number; expected: number; behind: number }
   support: {
     perWeek: number | null
     spentMins: number
@@ -82,7 +84,7 @@ export async function loadSprintProgress(): Promise<SprintProgress | null> {
       daysLeft: Number(timeline.daysLeft) || 0,
       hoursPerDay: Number(data.hoursPerDay) || 0,
       points: {
-        done: Number(points.done) || 0,
+        completed: Number(points.completed) || 0,
         planned: Number(points.planned) || 0,
         expected: Number(points.expected) || 0,
         behind: Number(points.behind) || 0
@@ -181,7 +183,7 @@ const toTicket = (raw: unknown): PlanTicket => {
 }
 
 const emptySummary = (): PlanSummary => ({
-  tickets: 0, planned: 0, done: 0, inProgress: 0, todo: 0, doneCount: 0, inProgressCount: 0, todoCount: 0, unestimated: 0, capacity: null, remaining: null, overCapacity: false
+  tickets: 0, planned: 0, done: 0, inProgress: 0, todo: 0, doneCount: 0, completed: 0, completedCount: 0, inProgressCount: 0, todoCount: 0, unestimated: 0, capacity: null, remaining: null, overCapacity: false
 })
 
 const localDate = () => new Date().toLocaleDateString('en-CA')
