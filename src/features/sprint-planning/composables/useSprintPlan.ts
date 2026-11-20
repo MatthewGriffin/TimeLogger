@@ -35,6 +35,81 @@ export interface PlanState {
   boardId: string
   boardUrl: string
   startedAt: string | null
+  /** Story points a week kept for support, where a point is a day's work. */
+  supportPerWeek: number | null
+  /** Last day of the sprint, or empty for two weeks from the start. */
+  endsOn: string
+}
+
+export interface SprintProgress {
+  startDate: string
+  endDate: string
+  endIsDefault: boolean
+  workingDays: number
+  elapsedDays: number
+  daysLeft: number
+  hoursPerDay: number
+  points: { done: number; planned: number; expected: number; behind: number }
+  support: {
+    perWeek: number | null
+    spentMins: number
+    tempoMins: number
+    localMins: number
+    tempoError: string
+    budgetMins: number
+    remainingMins: number
+  } | null
+}
+
+/**
+ * How the running sprint is going, or null when no sprint is running or Jira
+ * can't be read. Shared by the sprint page and the dashboard.
+ */
+export async function loadSprintProgress(): Promise<SprintProgress | null> {
+  try {
+    const data = asRecord(await executeApi('sprint_plan_progress'))
+    if (!data.active) return null
+    const timeline = asRecord(data.timeline)
+    const points = asRecord(data.points)
+    const support = asRecord(data.support)
+    const hasSupport = support.perWeek != null && support.budgetMins != null
+    return {
+      startDate: asString(timeline.startDate),
+      endDate: asString(timeline.endDate),
+      endIsDefault: Boolean(timeline.endIsDefault),
+      workingDays: Number(timeline.workingDays) || 0,
+      elapsedDays: Number(timeline.elapsedDays) || 0,
+      daysLeft: Number(timeline.daysLeft) || 0,
+      hoursPerDay: Number(data.hoursPerDay) || 0,
+      points: {
+        done: Number(points.done) || 0,
+        planned: Number(points.planned) || 0,
+        expected: Number(points.expected) || 0,
+        behind: Number(points.behind) || 0
+      },
+      support: hasSupport ? {
+        perWeek: Number(support.perWeek),
+        spentMins: Number(support.spentMins) || 0,
+        tempoMins: Number(support.tempoMins) || 0,
+        localMins: Number(support.localMins) || 0,
+        tempoError: asString(support.tempoError),
+        budgetMins: Number(support.budgetMins) || 0,
+        remainingMins: Number(support.remainingMins) || 0
+      } : null
+    }
+  } catch {
+    return null
+  }
+}
+
+/** 90 -> "1h 30m", with a minus sign when negative. */
+export function formatMinutes(total: number): string {
+  const sign = total < 0 ? '-' : ''
+  const abs = Math.round(Math.abs(total))
+  const hours = Math.floor(abs / 60)
+  const mins = abs % 60
+  if (!hours) return `${sign}${mins}m`
+  return mins ? `${sign}${hours}h ${mins}m` : `${sign}${hours}h`
 }
 
 export interface SearchResult {
@@ -117,7 +192,8 @@ const localDate = () => new Date().toLocaleDateString('en-CA')
  * to patch its own copy and cannot drift from what is saved.
  */
 export function useSprintPlan() {
-  const state = ref<PlanState>({ phase: 'planning', capacity: null, boardId: '', boardUrl: '', startedAt: null })
+  const state = ref<PlanState>({ phase: 'planning', capacity: null, boardId: '', boardUrl: '', startedAt: null, supportPerWeek: null, endsOn: '' })
+  const progress = ref<SprintProgress | null>(null)
   const tickets = ref<PlanTicket[]>([])
   const summary = ref<PlanSummary>(emptySummary())
   const loading = ref(false)
@@ -138,7 +214,9 @@ export function useSprintPlan() {
       capacity: toNumber(raw.capacity),
       boardId: asString(raw.boardId),
       boardUrl: asString(raw.boardUrl),
-      startedAt: raw.startedAt ? asString(raw.startedAt) : null
+      startedAt: raw.startedAt ? asString(raw.startedAt) : null,
+      supportPerWeek: toNumber(raw.supportPerWeek),
+      endsOn: asString(raw.endsOn)
     }
     tickets.value = asList(data.tickets).map(toTicket)
     summary.value = { ...emptySummary(), ...asRecord(data.summary) } as PlanSummary
@@ -193,6 +271,9 @@ export function useSprintPlan() {
   const setPoints = (key: string, points: number | null) => run('sprint_plan_set_points', { ticket_id: key, points })
   const setCapacity = (capacity: number | null) => run('sprint_plan_settings', { capacity })
   const setBoard = (board: string) => run('sprint_plan_settings', { board })
+  const setSupport = (supportPerWeek: number | null) => run('sprint_plan_settings', { supportPerWeek })
+  const setEndsOn = (endsOn: string | null) => run('sprint_plan_settings', { endsOn })
+  const loadProgress = async () => { progress.value = state.value.phase === 'active' ? await loadSprintProgress() : null }
   /**
    * Re-read every planned ticket from Jira, since status, points and titles
    * change while planning. `quiet` is for the automatic refresh on opening the
@@ -260,7 +341,7 @@ export function useSprintPlan() {
   const columns = computed(() => groupIntoColumns(tickets.value, boardColumns.value))
 
   return {
-    state, tickets, summary, loading, busy, error, results, searching, searched, columns, refreshing, refreshedAt,
-    load, loadBoardColumns, search, add, remove, setPoints, setCapacity, setBoard, refresh, start, finish, openBoard, loadNotes, addNote
+    state, progress, tickets, summary, loading, busy, error, results, searching, searched, columns, refreshing, refreshedAt,
+    load, loadBoardColumns, loadProgress, search, add, remove, setPoints, setCapacity, setBoard, setSupport, setEndsOn, refresh, start, finish, openBoard, loadNotes, addNote
   }
 }

@@ -11,6 +11,8 @@
  * Notes page with every other note for that ticket.
  */
 import { db } from '../index.js';
+import { localDateKey } from '../utils/dates.js';
+import { sprintTimeline, workdayHours, supportSpent, clearSupportCache } from './sprint-progress.js';
 import { makeHttpRequest } from '../api/http-client.js';
 import {
   resolveJiraCredentials,
@@ -39,7 +41,11 @@ function readState() {
     boardId: /^\d+$/.test(String(stored.boardId || '')) ? String(stored.boardId) : '',
     // A board link pasted by the user, opened exactly as given.
     boardUrl: typeof stored.boardUrl === 'string' ? stored.boardUrl : '',
-    startedAt: stored.startedAt || null
+    startedAt: stored.startedAt || null,
+    // Story points a week to keep for support, where one point is a day's work.
+    supportPerWeek: Number.isFinite(stored.supportPerWeek) && stored.supportPerWeek >= 0 ? stored.supportPerWeek : null,
+    // Last day of the sprint; empty means two weeks from the start.
+    endsOn: /^\d{4}-\d{2}-\d{2}$/.test(String(stored.endsOn || '')) ? stored.endsOn : ''
   };
 }
 
@@ -71,7 +77,31 @@ export function parseBoardUrl(input) {
 
 // Board columns change rarely and the page asks every time it opens.
 const COLUMN_CACHE_MS = 5 * 60 * 1000;
+const QUIET_REFRESH_MS = 2 * 60 * 1000;
+let lastQuietRefresh = 0;
 const columnCache = new Map();
+
+/**
+ * The board's columns in order, cached for a few minutes. Throws when Jira
+ * can't be read, so each caller decides whether that matters.
+ */
+async function readBoardColumns() {
+  const { boardId } = readState();
+  if (!boardId) return [];
+  const credentials = resolveJiraCredentials({});
+  const cacheKey = `${credentials.baseUrl}|${boardId}`;
+  const cached = columnCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < COLUMN_CACHE_MS) return cached.columns;
+  const response = await makeHttpRequest(`${credentials.baseUrl}/rest/agile/1.0/board/${boardId}/configuration`, {
+    method: 'GET', headers: jiraHeaders(credentials)
+  });
+  const columns = (response.data?.columnConfig?.columns || []).map(column => ({
+    name: String(column.name || ''),
+    statusIds: (column.statuses || []).map(status => String(status.id))
+  })).filter(column => column.name);
+  columnCache.set(cacheKey, { at: Date.now(), columns });
+  return columns;
+}
 
 let pointsFields = null;
 
@@ -137,11 +167,21 @@ function planned() {
 }
 
 /** Story points planned against the points available. Unestimated tickets are counted, not guessed. */
-export function summarisePlan(tickets, capacity) {
+export function summarisePlan(tickets, capacity, boardColumns = []) {
   const sum = list => list.reduce((total, ticket) => total + (ticket.points || 0), 0);
   const total = sum(tickets);
-  const done = sum(tickets.filter(ticket => ticket.statusCategory === 'done'));
-  const inProgress = sum(tickets.filter(ticket => ticket.statusCategory === 'indeterminate'));
+  // With the board's columns, a ticket is to do in the first column, done in the
+  // last and in progress in any between, so the counters agree with the columns
+  // on the page. Without them, or for a status on no column, Jira's status
+  // category decides.
+  const stageOf = ticket => {
+    const index = boardColumns.findIndex(column => ticket.statusId && column.statusIds.includes(ticket.statusId));
+    if (index >= 0 && boardColumns.length > 1) return index === 0 ? 'todo' : index === boardColumns.length - 1 ? 'done' : 'inProgress';
+    return ticket.statusCategory === 'done' ? 'done' : ticket.statusCategory === 'indeterminate' ? 'inProgress' : 'todo';
+  };
+  const inStage = stage => tickets.filter(ticket => stageOf(ticket) === stage);
+  const done = sum(inStage('done'));
+  const inProgress = sum(inStage('inProgress'));
   return {
     tickets: tickets.length,
     planned: total,
@@ -149,9 +189,9 @@ export function summarisePlan(tickets, capacity) {
     inProgress,
     todo: total - done - inProgress,
     // Tickets as well as points: a ticket with no estimate adds no points, so points alone read as zero.
-    doneCount: tickets.filter(ticket => ticket.statusCategory === 'done').length,
-    inProgressCount: tickets.filter(ticket => ticket.statusCategory === 'indeterminate').length,
-    todoCount: tickets.filter(ticket => ticket.statusCategory !== 'done' && ticket.statusCategory !== 'indeterminate').length,
+    doneCount: inStage('done').length,
+    inProgressCount: inStage('inProgress').length,
+    todoCount: inStage('todo').length,
     unestimated: tickets.filter(ticket => ticket.points == null).length,
     capacity,
     remaining: capacity == null ? null : capacity - total,
@@ -159,10 +199,13 @@ export function summarisePlan(tickets, capacity) {
   };
 }
 
-function view() {
+async function view() {
   const state = readState();
   const tickets = planned();
-  return { state, tickets, summary: summarisePlan(tickets, state.capacity) };
+  let columns = [];
+  // Only a running sprint is counted by column; a board that can't be read falls back to status categories.
+  if (state.phase === 'active') { try { columns = await readBoardColumns(); } catch { columns = []; } }
+  return { state, tickets, summary: summarisePlan(tickets, state.capacity, columns) };
 }
 
 /**
@@ -195,7 +238,7 @@ export const tools = [
     description: 'Get the sprint plan: its phase, the planned tickets and the story point totals against capacity',
     parameters: { type: 'object', properties: {}, required: [] },
     handler: async () => {
-      try { return { success: true, ...view() }; } catch (error) { return fail('read the sprint plan', error); }
+      try { return { success: true, ...(await view()) }; } catch (error) { return fail('read the sprint plan', error); }
     }
   },
   {
@@ -260,7 +303,7 @@ export const tools = [
           VALUES (?, ?, ?, ?, ?, ?)
           ON CONFLICT(ticket_id) DO NOTHING
         `).run(issue.key, issue.summary, issue.status, issue.statusId, issue.statusCategory, issue.points);
-        return { success: true, ...view() };
+        return { success: true, ...(await view()) };
       } catch (error) { return fail('add the ticket', error); }
     }
   },
@@ -271,7 +314,7 @@ export const tools = [
     handler: async (args) => {
       try {
         db.prepare('DELETE FROM sprint_plan_tickets WHERE ticket_id = ?').run(String(args.ticket_id || '').trim());
-        return { success: true, ...view() };
+        return { success: true, ...(await view()) };
       } catch (error) { return fail('remove the ticket', error); }
     }
   },
@@ -294,16 +337,21 @@ export const tools = [
           if (!Number.isFinite(points) || points < 0 || points > 1000) return { success: false, message: 'Story points must be a number from 0 to 1000' };
           db.prepare('UPDATE sprint_plan_tickets SET points = ?, points_manual = 1 WHERE ticket_id = ?').run(points, key);
         }
-        return { success: true, ...view() };
+        return { success: true, ...(await view()) };
       } catch (error) { return fail('set the points', error); }
     }
   },
   {
     name: 'sprint_plan_settings',
-    description: 'Set the story points available for the sprint and the Jira board to link to (a board number or board link)',
+    description: 'Set the story points available for the sprint, the Jira board to link to (a board number or board link), the story points a week kept for support, and the date the sprint ends',
     parameters: {
       type: 'object',
-      properties: { capacity: { type: ['number', 'null'] }, board: { type: 'string' } },
+      properties: {
+        capacity: { type: ['number', 'null'] },
+        board: { type: 'string' },
+        supportPerWeek: { type: ['number', 'null'] },
+        endsOn: { type: ['string', 'null'] }
+      },
       required: []
     },
     handler: async (args) => {
@@ -323,8 +371,22 @@ export const tools = [
           next.boardId = boardId;
           next.boardUrl = parseBoardUrl(args.board);
         }
+        if (args.supportPerWeek !== undefined) {
+          if (args.supportPerWeek === null || args.supportPerWeek === '') next.supportPerWeek = null;
+          else {
+            const perWeek = Number(args.supportPerWeek);
+            if (!Number.isFinite(perWeek) || perWeek < 0 || perWeek > 5) return { success: false, message: 'Support story points a week must be from 0 to 5, as a point is a day' };
+            next.supportPerWeek = perWeek;
+          }
+        }
+        if (args.endsOn !== undefined) {
+          if (args.endsOn === null || args.endsOn === '') next.endsOn = '';
+          else if (!/^\d{4}-\d{2}-\d{2}$/.test(String(args.endsOn))) return { success: false, message: 'Enter the end date as a date' };
+          else next.endsOn = String(args.endsOn);
+        }
         writeState(next);
-        return { success: true, ...view() };
+        clearSupportCache();
+        return { success: true, ...(await view()) };
       } catch (error) { return fail('save the settings', error); }
     }
   },
@@ -335,8 +397,8 @@ export const tools = [
     handler: async () => {
       try {
         await refreshFromJira();
-        return { success: true, ...view() };
-      } catch (error) { return { ...fail('refresh from Jira', error), ...view() }; }
+        return { success: true, ...(await view()) };
+      } catch (error) { return { ...fail('refresh from Jira', error), ...(await view()) }; }
     }
   },
   {
@@ -345,11 +407,12 @@ export const tools = [
     parameters: { type: 'object', properties: {}, required: [] },
     handler: async () => {
       try {
-        const current = view();
+        const current = await view();
         if (current.state.phase === 'active') return { success: true, ...current };
         if (current.tickets.length === 0) return { success: false, message: 'Add at least one ticket before starting the sprint' };
         writeState({ ...current.state, phase: 'active', startedAt: new Date().toISOString() });
-        return { success: true, ...view() };
+        clearSupportCache();
+        return { success: true, ...(await view()) };
       } catch (error) { return fail('start the sprint', error); }
     }
   },
@@ -364,9 +427,10 @@ export const tools = [
         const current = readState();
         db.transaction(() => {
           db.prepare("DELETE FROM sprint_plan_tickets WHERE status_category = 'done'").run();
-          writeState({ ...current, phase: 'planning', startedAt: null });
+          writeState({ ...current, phase: 'planning', startedAt: null, endsOn: '' });
+          clearSupportCache();
         })();
-        return { success: true, ...view() };
+        return { success: true, ...(await view()) };
       } catch (error) { return fail('finish the sprint', error); }
     }
   },
@@ -376,25 +440,51 @@ export const tools = [
     parameters: { type: 'object', properties: {}, required: [] },
     handler: async () => {
       try {
-        const { boardId } = readState();
-        if (!boardId) return { success: true, columns: [] };
-        const credentials = resolveJiraCredentials({});
-        const cacheKey = `${credentials.baseUrl}|${boardId}`;
-        const cached = columnCache.get(cacheKey);
-        if (cached && Date.now() - cached.at < COLUMN_CACHE_MS) return { success: true, columns: cached.columns };
-        const response = await makeHttpRequest(`${credentials.baseUrl}/rest/agile/1.0/board/${boardId}/configuration`, {
-          method: 'GET', headers: jiraHeaders(credentials)
-        });
-        const columns = (response.data?.columnConfig?.columns || []).map(column => ({
-          name: String(column.name || ''),
-          statusIds: (column.statuses || []).map(status => String(status.id))
-        })).filter(column => column.name);
-        columnCache.set(cacheKey, { at: Date.now(), columns });
+        const columns = await readBoardColumns();
         return { success: true, columns };
       } catch (error) {
         // The page falls back to grouping by status, so this is not an error for the user.
         return { success: true, columns: [], message: `Could not read the board columns: ${error.message}` };
       }
+    }
+  },
+  {
+    name: 'sprint_plan_progress',
+    description: 'How the running sprint is going: story points done against what is expected by now, and support time spent against the time kept for it',
+    parameters: { type: 'object', properties: { refresh: { type: 'boolean' } }, required: [] },
+    handler: async (args) => {
+      try {
+        const state = readState();
+        if (state.phase !== 'active') return { success: true, active: false };
+        // Keep the figures current without anyone pressing refresh, but not more than every couple of minutes.
+        if (args.refresh !== false && Date.now() - lastQuietRefresh > QUIET_REFRESH_MS) {
+          lastQuietRefresh = Date.now();
+          try { await refreshFromJira(); } catch { /* the last known statuses are used */ }
+        }
+        const current = await view();
+        const workday = workdayHours();
+        const timeline = sprintTimeline(state.startedAt, state.endsOn, new Date(), workday);
+        const summary = current.summary;
+        // Expected by now: the share of the sprint's working days gone, of what was planned.
+        const expected = Math.round(summary.planned * timeline.fraction * 10) / 10;
+        let support = { perWeek: state.supportPerWeek };
+        if (state.supportPerWeek != null) {
+          const today = localDateKey();
+          const spent = await supportSpent(timeline.startDate, today < timeline.endDate ? today : timeline.endDate);
+          const weeks = timeline.workingDays / 5;
+          // One story point is one day's work.
+          const budgetMins = Math.round(state.supportPerWeek * weeks * workday.minutes);
+          support = { perWeek: state.supportPerWeek, ...spent, budgetMins, remainingMins: budgetMins - spent.spentMins };
+        }
+        return {
+          success: true,
+          active: true,
+          timeline,
+          hoursPerDay: Math.round((workday.minutes / 60) * 100) / 100,
+          points: { done: summary.done, planned: summary.planned, expected, behind: Math.round((expected - summary.done) * 10) / 10 },
+          support
+        };
+      } catch (error) { return fail('work out the sprint progress', error); }
     }
   },
   {

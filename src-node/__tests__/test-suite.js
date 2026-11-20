@@ -28,6 +28,8 @@ githubRetry.delays = [0, 0, 0];
 import { GraphClient, hasStoredGraphToken } from '../api/graph-client.js';
 import { fetchAllTempoPages } from '../tools/jira-tempo-worklogs.js';
 import { localDateKey } from '../utils/dates.js';
+import { summarisePlan } from '../tools/sprint-plan.js';
+import { sprintTimeline, localSupportMinutes } from '../tools/sprint-progress.js';
 import { makeHttpRequest, httpClient } from '../api/http-client.js';
 import { buildPiTicketMigration } from '../tools/sprint.js';
 import { branchVersionProblem, compareVersions, isBetaVersion, isValidVersion } from '../../scripts/version-rules.mjs';
@@ -3464,6 +3466,107 @@ async function runTests() {
       const notes = await executeTool('get_notes', { topic: 'ZZPLAN-1' });
       assert.strictEqual(notes.notes[0].note, 'Needs API change');
     });
+  });
+
+  await testAsync('sprint counters follow the board columns: first is to do, last is done, the ones between are in progress', async () => {
+    const columns = [
+      { name: 'To Do', statusIds: ['10'] },
+      { name: 'In Progress', statusIds: ['11'] },
+      { name: 'Ready for PR', statusIds: ['12'] },
+      { name: 'Done', statusIds: ['30'] }
+    ];
+    const ticket = (key, points, statusId, statusCategory) => ({ key, points, statusId, statusCategory });
+    const tickets = [
+      ticket('A-1', 3, '12', 'indeterminate'),
+      ticket('A-2', 5, '30', 'done'),
+      ticket('A-3', 2, '10', 'new'),
+      ticket('A-4', 1, '99', 'indeterminate')
+    ];
+    const byColumns = summarisePlan(tickets, null, columns);
+    assert.deepStrictEqual([byColumns.todo, byColumns.inProgress, byColumns.done], [2, 4, 5], 'Ready for PR counts as in progress; a status on no column uses its category');
+    assert.deepStrictEqual([byColumns.todoCount, byColumns.inProgressCount, byColumns.doneCount], [1, 2, 1]);
+    const byCategory = summarisePlan(tickets, null, []);
+    assert.deepStrictEqual([byCategory.todo, byCategory.inProgress, byCategory.done], [2, 4, 5], 'With no columns Jira categories decide');
+    // A ticket parked in the column after the first is not "in progress" by category alone
+    const parked = summarisePlan([ticket('B-1', 3, '10', 'indeterminate')], null, columns);
+    assert.deepStrictEqual([parked.todo, parked.inProgress], [3, 0], 'A ticket in the To Do column is to do, whatever Jira calls its status');
+  });
+
+  test('the sprint timeline counts working days, ends two weeks after the start unless told otherwise, and moves through the day', () => {
+    const workday = { startMinute: 9 * 60, endMinute: 17 * 60, minutes: 450 };
+    const start = new Date('2026-11-02T10:00:00').toISOString();
+    const now = new Date('2026-11-09T13:00:00');
+    const sprint = sprintTimeline(start, '', now, workday);
+    assert.strictEqual(sprint.startDate, '2026-11-02');
+    assert.strictEqual(sprint.endDate, '2026-11-15', 'Two weeks from the start, counting the start day');
+    assert.strictEqual(sprint.endIsDefault, true);
+    assert.strictEqual(sprint.workingDays, 10);
+    assert.strictEqual(sprint.elapsedDays, 5.5, 'Five days gone plus half of today');
+    assert.strictEqual(sprint.daysLeft, 4.5);
+    const longer = sprintTimeline(start, '2026-11-20', now, workday);
+    assert.strictEqual(longer.endDate, '2026-11-20');
+    assert.strictEqual(longer.endIsDefault, false);
+    assert.strictEqual(longer.workingDays, 15);
+    assert.strictEqual(sprintTimeline(start, '2026-10-01', now, workday).endIsDefault, true, 'An end before the start is ignored');
+    assert.strictEqual(sprintTimeline(null, '', now, workday), null);
+    const over = sprintTimeline(start, '', new Date('2026-12-01T12:00:00'), workday);
+    assert.strictEqual(over.daysLeft, 0);
+    assert.strictEqual(over.fraction, 1);
+  });
+
+  test('support time counts unsent entries that read as support fixes or investigations, and nothing else', () => {
+    const day = '2001-03-05';
+    db.prepare("DELETE FROM daily_summary WHERE date = ?").run(day);
+    const add = db.prepare('INSERT INTO daily_summary (date, name, ticket_id, start_time, end_time, duration_mins, submitted, from_calendar) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    add.run(day, 'Support fix for login', 'ZZ-1', '09:00', '10:00', 60, 0, 0);
+    add.run(day, 'Investigating payment errors', 'ZZ-2', '10:00', '10:30', 30, 0, 0);
+    add.run(day, 'Building the new report', 'ZZ-3', '11:00', '12:00', 60, 0, 0);
+    add.run(day, 'Support sync meeting', 'ZZ-4', '13:00', '14:00', 60, 0, 1);
+    add.run(day, 'Support fix already sent', 'ZZ-5', '14:00', '15:00', 60, 1, 0);
+    try {
+      assert.strictEqual(localSupportMinutes(day, day), 90, 'Unsent support entries only, not dev work, meetings or ones already in Tempo');
+    } finally {
+      db.prepare("DELETE FROM daily_summary WHERE date = ?").run(day);
+    }
+  });
+
+  await testAsync('sprint progress compares points done with expected, and support time with the time kept for it', async () => {
+    const day = localDateKey();
+    const existing = db.prepare("SELECT COUNT(*) AS n FROM daily_summary WHERE date = ? AND name LIKE 'ZZPLAN support%'").get(day).n;
+    assert.strictEqual(existing, 0);
+    const add = db.prepare('INSERT INTO daily_summary (date, name, ticket_id, start_time, end_time, duration_mins, submitted, from_calendar) VALUES (?, ?, ?, ?, ?, ?, 0, 0)');
+    add.run(day, 'ZZPLAN support fix', 'ZZPLAN-1', '09:00', '10:30', 90);
+    try {
+      await withJira(jira([jiraIssue('ZZPLAN-1', 3, 'indeterminate', 'Ready for QA'), jiraIssue('ZZPLAN-2', 5, 'done', 'Done'), jiraIssue('ZZPLAN-3', 2)]), async () => {
+        assert.deepStrictEqual(await executeTool('sprint_plan_progress', {}), { success: true, active: false }, 'Nothing to report until the sprint has started');
+        for (const key of ['ZZPLAN-1', 'ZZPLAN-2', 'ZZPLAN-3']) await executeTool('sprint_plan_add', { ticket_id: key });
+        await executeTool('sprint_plan_settings', { board: '166', supportPerWeek: 1, endsOn: '2099-01-01' });
+        assert.strictEqual((await executeTool('sprint_plan_settings', { supportPerWeek: 9 })).success, false, 'A week has five days of points');
+        assert.strictEqual((await executeTool('sprint_plan_settings', { endsOn: 'soon' })).success, false);
+        const started = await executeTool('sprint_plan_start', {});
+        assert.strictEqual(started.summary.done, 5);
+        assert.strictEqual(started.summary.inProgress, 3, 'Ready for QA is in progress');
+        assert.strictEqual(started.summary.todo, 2);
+
+        const progress = await executeTool('sprint_plan_progress', {});
+        assert.strictEqual(progress.success, true);
+        assert.strictEqual(progress.active, true);
+        assert.strictEqual(progress.points.done, 5);
+        assert.strictEqual(progress.points.planned, 10);
+        assert.ok(progress.points.expected >= 0 && progress.points.expected <= 10);
+        assert.strictEqual(progress.support.perWeek, 1);
+        assert.strictEqual(progress.support.localMins, 90, 'Unsent support entries count');
+        assert.ok(progress.support.tempoError, 'Without Tempo set up only local entries are counted, and it says so');
+        const weeks = progress.timeline.workingDays / 5;
+        assert.strictEqual(progress.support.budgetMins, Math.round(weeks * progress.hoursPerDay * 60), 'One point a week is a day a week');
+        assert.strictEqual(progress.support.remainingMins, progress.support.budgetMins - 90);
+
+        const finished = await executeTool('sprint_plan_finish', {});
+        assert.strictEqual(finished.state.endsOn, '', 'The end date belongs to the sprint, so it is cleared');
+      });
+    } finally {
+      db.prepare("DELETE FROM daily_summary WHERE date = ? AND name LIKE 'ZZPLAN support%'").run(day);
+    }
   });
 
   await testAsync('starting the sprint needs tickets, tickets can still be added and removed mid-sprint, and finishing carries unfinished work over', async () => {

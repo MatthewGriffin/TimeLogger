@@ -497,10 +497,10 @@ import { asRecord, asString, asNumber, asBoolean, readList } from '@/shared/util
 const entriesStore = useEntriesStore()
 const uiStore = useUiStore()
 
-const dateRanges = ['This Week', 'Last Week', 'This Month', 'Custom'] as const
+const dateRanges = ['Today', 'This Week', 'Last Week', 'This Month', 'Custom'] as const
 type DateRange = typeof dateRanges[number]
 
-const selectedRange = ref<DateRange>('This Week')
+const selectedRange = ref<DateRange>('Today')
 const customStart = ref('')
 const customEnd = ref('')
 const rangeError = ref('')
@@ -552,6 +552,8 @@ const resolveRange = (range: DateRange): { start: string; end: string } | null =
   today.setHours(0, 0, 0, 0)
 
   const todayString = localDate(today)
+
+  if (range === 'Today') return { start: todayString, end: todayString }
 
   if (range === 'This Week') {
     const start = startOfWeek(today)
