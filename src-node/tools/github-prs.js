@@ -707,14 +707,20 @@ export async function getPullRequestsWithMajorUpdatesOnDate(date, ticketValues =
   return results;
 }
 
-export async function getPullRequestsForTickets(ticketValues = []) {
+/**
+ * PRs the account authored or reviews that name one of the tickets. With
+ * `includeOpen`, every open or draft PR the account is involved in is listed too,
+ * since a PR need not name its ticket. Merged and closed ones need that link.
+ */
+export async function getPullRequestsForTickets(ticketValues = [], { includeOpen = false } = {}) {
   const token = String(readConfig().token || '');
   if (!token) return [];
   const keys = extractTicketKeys(...ticketValues);
-  if (!keys.length) return [];
+  if (!keys.length && !includeOpen) return [];
   const prs = await listRelevantPullRequests(token, keys);
   // A mention only counts on the day it happened, which the timeline check decides.
-  return prs.filter(pr => pr.matchedTicketKeys.length > 0 && hasReviewOrAuthorLink(pr));
+  const isOpen = pr => pr.state === 'open' || pr.state === 'draft';
+  return prs.filter(pr => hasReviewOrAuthorLink(pr) && (pr.matchedTicketKeys.length > 0 || (includeOpen && isOpen(pr))));
 }
 
 export const tools = [

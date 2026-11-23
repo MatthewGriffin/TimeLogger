@@ -53,7 +53,7 @@ import ScrumBlockersPanel from '@/features/scrum/components/ScrumBlockersPanel.v
 import ScrumPlannedPanel from '@/features/scrum/components/ScrumPlannedPanel.vue'
 import ScrumTicketSearch from '@/features/scrum/components/ScrumTicketSearch.vue'
 import GitHubPullRequestsPanel from '@/features/scrum/components/GitHubPullRequestsPanel.vue'
-import { useScrum } from '@/features/scrum/composables/useScrum'
+import { useScrum, setExtraTickets } from '@/features/scrum/composables/useScrum'
 import { usePlannedWork } from '@/features/scrum/composables/usePlannedWork'
 import { executeApi } from '@/shared/utils/api'
 import type { ScrumPlanItem } from '@/features/scrum/models/scrumPlanItem'
@@ -128,6 +128,7 @@ onMounted(async () => {
   }
   await load()
   await loadInProgress()
+  await setExtraTickets(inProgress.value.map(item => item.ticketId))
 })
 </script>
 

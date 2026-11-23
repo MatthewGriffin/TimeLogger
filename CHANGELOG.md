@@ -4,6 +4,11 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.1-beta.21
+
+- Sprint Planning now has a Save settings button for the points available, support story points, sprint end date and board. It shows when there are unsaved changes and confirms when they are saved.
+- Daily Scrum now lists every open pull request you wrote, review or were asked to review, even when its title doesn't name a ticket. Merged and closed ones are still listed when they name a ticket you logged time on yesterday or today, or one that is In Progress in Jira.
+
 ## 0.9.1-beta.20
 
 - Sprint story points completed now count tickets from the pull request column onwards (Ready for PR, Ready for QA, Done and so on), because no more development is done on them unless QA sends them back. This applies to the completed against expected figures on Sprint Planning and the Dashboard. The To Do, In Progress and Done counters are unchanged.
