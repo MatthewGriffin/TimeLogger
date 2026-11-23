@@ -29,6 +29,7 @@ import { GraphClient, hasStoredGraphToken } from '../api/graph-client.js';
 import { fetchAllTempoPages } from '../tools/jira-tempo-worklogs.js';
 import { localDateKey } from '../utils/dates.js';
 import { summarisePlan } from '../tools/sprint-plan.js';
+import { ticketSupportKind, resolveActivityType } from '../tools/jira-tempo-activity.js';
 import { sprintTimeline, localSupportMinutes } from '../tools/sprint-progress.js';
 import { makeHttpRequest, httpClient } from '../api/http-client.js';
 import { buildPiTicketMigration } from '../tools/sprint.js';
@@ -155,6 +156,16 @@ async function runTests() {
     } finally {
       await new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
     }
+  });
+
+  await testAsync('a Tempo 401 that says it could not reach Atlassian is not reported as a bad token', async () => {
+    const previous = httpClient.defaults.adapter;
+    const body = '{"errors":[{"message":"We had a problem trying to communicate with Atlassian. Please try again later."}]}';
+    httpClient.defaults.adapter = async () => { throw Object.assign(new Error('Request failed'), { response: { status: 401, data: body } }); };
+    try {
+      await assert.rejects(() => makeHttpRequest('https://api.tempo.io/4/worklogs'), error => /couldn't reach Atlassian/.test(error.message) && error.status === 401);
+      await assert.rejects(() => makeHttpRequest('https://example.com/other'), /HTTP 401: .*communicate with Atlassian/);
+    } finally { httpClient.defaults.adapter = previous; }
   });
 
   await testAsync('Shared HTTP adapter rejects unsupported protocols', async () => {
@@ -3499,6 +3510,25 @@ async function runTests() {
     assert.deepStrictEqual([parked.todo, parked.inProgress], [3, 0], 'A ticket in the To Do column is to do, whatever Jira calls its status');
   });
 
+  await testAsync('a support ticket decides the activity type: a defect is a fix, anything else an investigation', async () => {
+    const values = ['Dev', 'Meeting', 'Code Review', 'Support-Fix', 'Support-Investigation'].map(name => ({ id: name, name }));
+    const defect = { issueType: 'Defect', project: 'Support', labels: [], components: [] };
+    const request = { issueType: 'Task', project: 'Discovery', labels: ['4th-line'], components: [] };
+    const normal = { issueType: 'Defect', project: 'Inpatient Service', labels: ['DIS_Internal'], components: ['Discovery'] };
+    assert.strictEqual(ticketSupportKind(defect), 'fix');
+    assert.strictEqual(ticketSupportKind(request), 'investigation');
+    assert.strictEqual(ticketSupportKind(normal), null, 'A defect outside support is ordinary work');
+    assert.strictEqual(ticketSupportKind(null), null);
+    const typeOf = async (name, ticket, extra = {}) => (await resolveActivityType(name, values, { useLlm: false, ticket, ...extra })).name;
+    assert.strictEqual(await typeOf('Working on the bug', defect), 'Support-Fix');
+    assert.strictEqual(await typeOf('Looking at it', request), 'Support-Investigation');
+    assert.strictEqual(await typeOf('Implement the change', request), 'Support-Investigation', 'A dev word does not beat a support ticket');
+    assert.strictEqual(await typeOf('Looking at it', normal), 'Dev', 'Without a support ticket the name decides');
+    assert.strictEqual(await typeOf('Code review of the fix', defect), 'Code Review', 'A review stays a review');
+    assert.strictEqual(await typeOf('Team catch-up', defect), 'Meeting', 'A meeting stays a meeting');
+    assert.strictEqual(await typeOf('Anything', defect, { fromCalendar: true }), 'Meeting');
+  });
+
   test('the sprint timeline counts working days, ends two weeks after the start unless told otherwise, and moves through the day', () => {
     const workday = { startMinute: 9 * 60, endMinute: 17 * 60, minutes: 450 };
     const start = new Date('2026-11-02T10:00:00').toISOString();
@@ -3547,8 +3577,8 @@ async function runTests() {
       await withJira(jira([jiraIssue('ZZPLAN-1', 3, 'indeterminate', 'Ready for QA'), jiraIssue('ZZPLAN-2', 5, 'done', 'Done'), jiraIssue('ZZPLAN-3', 2)]), async () => {
         assert.deepStrictEqual(await executeTool('sprint_plan_progress', {}), { success: true, active: false }, 'Nothing to report until the sprint has started');
         for (const key of ['ZZPLAN-1', 'ZZPLAN-2', 'ZZPLAN-3']) await executeTool('sprint_plan_add', { ticket_id: key });
-        await executeTool('sprint_plan_settings', { board: '166', supportPerWeek: 1, endsOn: '2099-01-01' });
-        assert.strictEqual((await executeTool('sprint_plan_settings', { supportPerWeek: 9 })).success, false, 'A week has five days of points');
+        await executeTool('sprint_plan_settings', { board: '166', supportPoints: 1, endsOn: '2099-01-01' });
+        assert.strictEqual((await executeTool('sprint_plan_settings', { supportPoints: 99 })).success, false, 'Support points are capped');
         assert.strictEqual((await executeTool('sprint_plan_settings', { endsOn: 'soon' })).success, false);
         const started = await executeTool('sprint_plan_start', {});
         assert.strictEqual(started.summary.done, 5);
@@ -3561,11 +3591,10 @@ async function runTests() {
         assert.strictEqual(progress.points.completed, 8, 'Completed is the pull request column and everything after it: Ready for QA (3) and Done (5)');
         assert.strictEqual(progress.points.planned, 10);
         assert.ok(progress.points.expected >= 0 && progress.points.expected <= 10);
-        assert.strictEqual(progress.support.perWeek, 1);
+        assert.strictEqual(progress.support.points, 1);
         assert.strictEqual(progress.support.localMins, 90, 'Unsent support entries count');
         assert.ok(progress.support.tempoError, 'Without Tempo set up only local entries are counted, and it says so');
-        const weeks = progress.timeline.workingDays / 5;
-        assert.strictEqual(progress.support.budgetMins, Math.round(weeks * progress.hoursPerDay * 60), 'One point a week is a day a week');
+        assert.strictEqual(progress.support.budgetMins, Math.round(progress.hoursPerDay * 60), 'One support point is a day');
         assert.strictEqual(progress.support.remainingMins, progress.support.budgetMins - 90);
 
         const finished = await executeTool('sprint_plan_finish', {});
