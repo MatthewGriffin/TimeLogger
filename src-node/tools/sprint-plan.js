@@ -42,8 +42,8 @@ function readState() {
     // A board link pasted by the user, opened exactly as given.
     boardUrl: typeof stored.boardUrl === 'string' ? stored.boardUrl : '',
     startedAt: stored.startedAt || null,
-    // Story points a week to keep for support, where one point is a day's work.
-    supportPerWeek: Number.isFinite(stored.supportPerWeek) && stored.supportPerWeek >= 0 ? stored.supportPerWeek : null,
+    // Story points for the whole sprint to keep for support, where one point is a day's work.
+    supportPoints: Number.isFinite(stored.supportPoints) && stored.supportPoints >= 0 ? stored.supportPoints : null,
     // Last day of the sprint; empty means two weeks from the start.
     endsOn: /^\d{4}-\d{2}-\d{2}$/.test(String(stored.endsOn || '')) ? stored.endsOn : ''
   };
@@ -358,13 +358,13 @@ export const tools = [
   },
   {
     name: 'sprint_plan_settings',
-    description: 'Set the story points available for the sprint, the Jira board to link to (a board number or board link), the story points a week kept for support, and the date the sprint ends',
+    description: 'Set the story points available for the sprint, the Jira board to link to (a board number or board link), the story points kept for support in the sprint, and the date the sprint ends',
     parameters: {
       type: 'object',
       properties: {
         capacity: { type: ['number', 'null'] },
         board: { type: 'string' },
-        supportPerWeek: { type: ['number', 'null'] },
+        supportPoints: { type: ['number', 'null'] },
         endsOn: { type: ['string', 'null'] }
       },
       required: []
@@ -386,12 +386,12 @@ export const tools = [
           next.boardId = boardId;
           next.boardUrl = parseBoardUrl(args.board);
         }
-        if (args.supportPerWeek !== undefined) {
-          if (args.supportPerWeek === null || args.supportPerWeek === '') next.supportPerWeek = null;
+        if (args.supportPoints !== undefined) {
+          if (args.supportPoints === null || args.supportPoints === '') next.supportPoints = null;
           else {
-            const perWeek = Number(args.supportPerWeek);
-            if (!Number.isFinite(perWeek) || perWeek < 0 || perWeek > 5) return { success: false, message: 'Support story points a week must be from 0 to 5, as a point is a day' };
-            next.supportPerWeek = perWeek;
+            const points = Number(args.supportPoints);
+            if (!Number.isFinite(points) || points < 0 || points > 50) return { success: false, message: 'Support story points for the sprint must be from 0 to 50' };
+            next.supportPoints = points;
           }
         }
         if (args.endsOn !== undefined) {
@@ -482,14 +482,13 @@ export const tools = [
         const summary = current.summary;
         // Expected by now: the share of the sprint's working days gone, of what was planned.
         const expected = Math.round(summary.planned * timeline.fraction * 10) / 10;
-        let support = { perWeek: state.supportPerWeek };
-        if (state.supportPerWeek != null) {
+        let support = { points: state.supportPoints };
+        if (state.supportPoints != null) {
           const today = localDateKey();
           const spent = await supportSpent(timeline.startDate, today < timeline.endDate ? today : timeline.endDate);
-          const weeks = timeline.workingDays / 5;
           // One story point is one day's work.
-          const budgetMins = Math.round(state.supportPerWeek * weeks * workday.minutes);
-          support = { perWeek: state.supportPerWeek, ...spent, budgetMins, remainingMins: budgetMins - spent.spentMins };
+          const budgetMins = Math.round(state.supportPoints * workday.minutes);
+          support = { points: state.supportPoints, ...spent, budgetMins, remainingMins: budgetMins - spent.spentMins };
         }
         return {
           success: true,

@@ -29,8 +29,16 @@ export async function makeHttpRequest(url, options = {}) {
   } catch (error) {
     if (error.response) {
       const body = error.response.data;
-      const failure = new Error(`HTTP ${error.response.status}: ${typeof body === 'string' ? body : JSON.stringify(body)}`);
-      failure.status = error.response.status;
+      const text = typeof body === 'string' ? body : JSON.stringify(body);
+      const status = error.response.status;
+      // Tempo answers 401 with this text when its own call to Atlassian fails, even
+      // though the token is fine, so say so rather than suggest a bad token.
+      const tempoCannotReachAtlassian = parsed.hostname === 'api.tempo.io' && status === 401 &&
+        /communicat\w* with Atlassian/i.test(text);
+      const failure = new Error(tempoCannotReachAtlassian
+        ? "Tempo couldn't reach Atlassian (Tempo answered HTTP 401). This is a problem on Tempo's side and your token is probably fine. Try again later."
+        : `HTTP ${status}: ${text}`);
+      failure.status = status;
       throw failure;
     }
     if (error.code === 'ECONNABORTED') throw new Error(`Request timeout after ${timeout}ms`);

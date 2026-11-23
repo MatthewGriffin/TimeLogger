@@ -4,6 +4,11 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.4-beta.1
+
+- Sprint Planning: the support setting is now story points for the whole sprint rather than per week, so 2 points means two days of support time for the sprint. If you had set the old per-week figure, enter it again.
+- When Tempo answers 401 with "problem trying to communicate with Atlassian", the app now says Tempo couldn't reach Atlassian and that your token is probably fine, instead of showing the raw error.
+
 ## 0.9.3
 
 - Sprint Planning: removed the Save settings button, since each setting already saves when you leave the field or press Enter. A note under the settings says when they are saved.

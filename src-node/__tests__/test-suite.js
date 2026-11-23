@@ -157,6 +157,16 @@ async function runTests() {
     }
   });
 
+  await testAsync('a Tempo 401 that says it could not reach Atlassian is not reported as a bad token', async () => {
+    const previous = httpClient.defaults.adapter;
+    const body = '{"errors":[{"message":"We had a problem trying to communicate with Atlassian. Please try again later."}]}';
+    httpClient.defaults.adapter = async () => { throw Object.assign(new Error('Request failed'), { response: { status: 401, data: body } }); };
+    try {
+      await assert.rejects(() => makeHttpRequest('https://api.tempo.io/4/worklogs'), error => /couldn't reach Atlassian/.test(error.message) && error.status === 401);
+      await assert.rejects(() => makeHttpRequest('https://example.com/other'), /HTTP 401: .*communicate with Atlassian/);
+    } finally { httpClient.defaults.adapter = previous; }
+  });
+
   await testAsync('Shared HTTP adapter rejects unsupported protocols', async () => {
     await assert.rejects(() => makeHttpRequest('file:///etc/passwd'), /Unsupported URL protocol/);
   });
@@ -3547,8 +3557,8 @@ async function runTests() {
       await withJira(jira([jiraIssue('ZZPLAN-1', 3, 'indeterminate', 'Ready for QA'), jiraIssue('ZZPLAN-2', 5, 'done', 'Done'), jiraIssue('ZZPLAN-3', 2)]), async () => {
         assert.deepStrictEqual(await executeTool('sprint_plan_progress', {}), { success: true, active: false }, 'Nothing to report until the sprint has started');
         for (const key of ['ZZPLAN-1', 'ZZPLAN-2', 'ZZPLAN-3']) await executeTool('sprint_plan_add', { ticket_id: key });
-        await executeTool('sprint_plan_settings', { board: '166', supportPerWeek: 1, endsOn: '2099-01-01' });
-        assert.strictEqual((await executeTool('sprint_plan_settings', { supportPerWeek: 9 })).success, false, 'A week has five days of points');
+        await executeTool('sprint_plan_settings', { board: '166', supportPoints: 1, endsOn: '2099-01-01' });
+        assert.strictEqual((await executeTool('sprint_plan_settings', { supportPoints: 99 })).success, false, 'Support points are capped');
         assert.strictEqual((await executeTool('sprint_plan_settings', { endsOn: 'soon' })).success, false);
         const started = await executeTool('sprint_plan_start', {});
         assert.strictEqual(started.summary.done, 5);
@@ -3561,11 +3571,10 @@ async function runTests() {
         assert.strictEqual(progress.points.completed, 8, 'Completed is the pull request column and everything after it: Ready for QA (3) and Done (5)');
         assert.strictEqual(progress.points.planned, 10);
         assert.ok(progress.points.expected >= 0 && progress.points.expected <= 10);
-        assert.strictEqual(progress.support.perWeek, 1);
+        assert.strictEqual(progress.support.points, 1);
         assert.strictEqual(progress.support.localMins, 90, 'Unsent support entries count');
         assert.ok(progress.support.tempoError, 'Without Tempo set up only local entries are counted, and it says so');
-        const weeks = progress.timeline.workingDays / 5;
-        assert.strictEqual(progress.support.budgetMins, Math.round(weeks * progress.hoursPerDay * 60), 'One point a week is a day a week');
+        assert.strictEqual(progress.support.budgetMins, Math.round(progress.hoursPerDay * 60), 'One support point is a day');
         assert.strictEqual(progress.support.remainingMins, progress.support.budgetMins - 90);
 
         const finished = await executeTool('sprint_plan_finish', {});
