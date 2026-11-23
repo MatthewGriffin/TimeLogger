@@ -29,6 +29,7 @@ import { GraphClient, hasStoredGraphToken } from '../api/graph-client.js';
 import { fetchAllTempoPages } from '../tools/jira-tempo-worklogs.js';
 import { localDateKey } from '../utils/dates.js';
 import { summarisePlan } from '../tools/sprint-plan.js';
+import { ticketSupportKind, resolveActivityType } from '../tools/jira-tempo-activity.js';
 import { sprintTimeline, localSupportMinutes } from '../tools/sprint-progress.js';
 import { makeHttpRequest, httpClient } from '../api/http-client.js';
 import { buildPiTicketMigration } from '../tools/sprint.js';
@@ -3507,6 +3508,25 @@ async function runTests() {
     // A ticket parked in the column after the first is not "in progress" by category alone
     const parked = summarisePlan([ticket('B-1', 3, '10', 'indeterminate')], null, columns);
     assert.deepStrictEqual([parked.todo, parked.inProgress], [3, 0], 'A ticket in the To Do column is to do, whatever Jira calls its status');
+  });
+
+  await testAsync('a support ticket decides the activity type: a defect is a fix, anything else an investigation', async () => {
+    const values = ['Dev', 'Meeting', 'Code Review', 'Support-Fix', 'Support-Investigation'].map(name => ({ id: name, name }));
+    const defect = { issueType: 'Defect', project: 'Support', labels: [], components: [] };
+    const request = { issueType: 'Task', project: 'Discovery', labels: ['4th-line'], components: [] };
+    const normal = { issueType: 'Defect', project: 'Inpatient Service', labels: ['DIS_Internal'], components: ['Discovery'] };
+    assert.strictEqual(ticketSupportKind(defect), 'fix');
+    assert.strictEqual(ticketSupportKind(request), 'investigation');
+    assert.strictEqual(ticketSupportKind(normal), null, 'A defect outside support is ordinary work');
+    assert.strictEqual(ticketSupportKind(null), null);
+    const typeOf = async (name, ticket, extra = {}) => (await resolveActivityType(name, values, { useLlm: false, ticket, ...extra })).name;
+    assert.strictEqual(await typeOf('Working on the bug', defect), 'Support-Fix');
+    assert.strictEqual(await typeOf('Looking at it', request), 'Support-Investigation');
+    assert.strictEqual(await typeOf('Implement the change', request), 'Support-Investigation', 'A dev word does not beat a support ticket');
+    assert.strictEqual(await typeOf('Looking at it', normal), 'Dev', 'Without a support ticket the name decides');
+    assert.strictEqual(await typeOf('Code review of the fix', defect), 'Code Review', 'A review stays a review');
+    assert.strictEqual(await typeOf('Team catch-up', defect), 'Meeting', 'A meeting stays a meeting');
+    assert.strictEqual(await typeOf('Anything', defect, { fromCalendar: true }), 'Meeting');
   });
 
   test('the sprint timeline counts working days, ends two weeks after the start unless told otherwise, and moves through the day', () => {

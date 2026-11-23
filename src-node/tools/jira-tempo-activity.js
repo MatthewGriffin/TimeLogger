@@ -1,5 +1,61 @@
 import { makeHttpRequest } from '../api/http-client.js';
 import { ollamaClient } from '../api/ollama-client.js';
+import { searchIssues } from './jira-tempo-auth.js';
+
+// A ticket is a support one when its type, project, labels or components say so.
+const SUPPORT_TICKET = /support|4th[\s_-]?line|fourth[\s_-]?line|\bl4\b/i;
+const DEFECT_TYPE = /defect|bug/i;
+
+/**
+ * What a ticket says about the work on it: 'fix' for a support defect that
+ * needs a code change, 'investigation' for any other support ticket, or null
+ * when it isn't a support ticket (or nothing is known about it).
+ */
+export function ticketSupportKind(ticket) {
+  if (!ticket) return null;
+  const markers = [ticket.issueType, ticket.project, ...(ticket.labels || []), ...(ticket.components || [])];
+  if (!markers.some(marker => SUPPORT_TICKET.test(String(marker || '')))) return null;
+  return DEFECT_TYPE.test(String(ticket.issueType || '')) ? 'fix' : 'investigation';
+}
+
+const TICKET_CACHE_MS = 10 * 60 * 1000;
+const ticketCache = new Map();
+
+/**
+ * Type, project, labels and components of tickets, by key. A ticket Jira can't
+ * be asked about is left out, so the entry is classified from its name instead.
+ */
+export async function fetchTicketInfo(credentials, keys) {
+  const wanted = [...new Set((keys || []).map(key => String(key || '').trim().toUpperCase()).filter(key => /^[A-Z][A-Z0-9_]*-\d+$/.test(key)))];
+  const now = Date.now();
+  const result = new Map();
+  const missing = [];
+  for (const key of wanted) {
+    const cached = ticketCache.get(key);
+    if (cached && now - cached.at < TICKET_CACHE_MS) result.set(key, cached.info);
+    else missing.push(key);
+  }
+  for (let i = 0; i < missing.length; i += 50) {
+    const batch = missing.slice(i, i + 50);
+    try {
+      const issues = await searchIssues(credentials, `key in (${batch.join(',')})`, { limit: batch.length, fields: 'issuetype,project,labels,components' });
+      for (const issue of issues) {
+        const fields = issue.fields || {};
+        const info = {
+          issueType: fields.issuetype?.name || '',
+          project: fields.project?.name || '',
+          labels: Array.isArray(fields.labels) ? fields.labels : [],
+          components: (fields.components || []).map(component => component.name)
+        };
+        ticketCache.set(String(issue.key).toUpperCase(), { at: now, info });
+        result.set(String(issue.key).toUpperCase(), info);
+      }
+    } catch { /* classified from the entry's name instead */ }
+  }
+  return result;
+}
+
+export const clearTicketCache = () => ticketCache.clear();
 
 /**
  * Fetch work attributes from Tempo
@@ -100,7 +156,7 @@ Reply with the category name only, exactly as written above. No explanation.`;
  * Resolve an activity type for a task, preferring rules and falling back to the
  * LLM, then to a safe default so a submission is never blocked.
  */
-export async function resolveActivityType(taskName, values, { useLlm = true, fromCalendar = false, isHoliday = false } = {}) {
+export async function resolveActivityType(taskName, values, { useLlm = true, fromCalendar = false, isHoliday = false, ticket = null } = {}) {
   // Time off is not billable work of any kind.
   if (isHoliday) {
     const na = values.find(v => v.name.toLowerCase() === 'n/a');
@@ -116,6 +172,15 @@ export async function resolveActivityType(taskName, values, { useLlm = true, fro
   }
 
   const ruled = ruleBasedActivityType(taskName, values);
+  // What the work itself says (a review, a meeting, QA) stands. Otherwise a support
+  // ticket decides: a defect is a fix and anything else is an investigation.
+  const keepsName = ruled && ['Code Review', 'Meeting', 'QA', 'N/A'].includes(ruled.name);
+  if (!keepsName) {
+    const kind = ticketSupportKind(ticket);
+    const wantedName = kind === 'fix' ? 'Support-Fix' : kind === 'investigation' ? 'Support-Investigation' : null;
+    const byTicket = wantedName && values.find(v => v.name.toLowerCase() === wantedName.toLowerCase());
+    if (byTicket) return { ...byTicket, source: 'ticket' };
+  }
   if (ruled) return ruled;
 
   if (useLlm) {

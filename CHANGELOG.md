@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.4-beta.2
+
+- The activity type an entry gets now takes its ticket into account. On a support ticket (its type, project, label or component says support or 4th line), a Defect is sent as Support-Fix and anything else as Support-Investigation. Reviews, meetings and QA keep their own type, and entries on other tickets are decided by their name as before. The same rule counts support time on Sprint Planning and the Dashboard.
+
 ## 0.9.4-beta.1
 
 - Sprint Planning: the support setting is now story points for the whole sprint rather than per week, so 2 points means two days of support time for the sprint. If you had set the old per-week figure, enter it again.

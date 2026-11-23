@@ -9,7 +9,7 @@ import { localDateKey, minutesOfDay, parseDateKey } from '../utils/dates.js';
 import { isWorkingDay } from '../utils/working-days.js';
 import { resolveTempoToken, resolveJiraCredentials, getCurrentAccount } from './jira-tempo-auth.js';
 import { fetchTempoWorklogs } from './jira-tempo-worklogs.js';
-import { ruleBasedActivityType } from './jira-tempo-activity.js';
+import { ruleBasedActivityType, ticketSupportKind, fetchTicketInfo } from './jira-tempo-activity.js';
 
 /** Sprints usually run two weeks from the day they start. */
 export const DEFAULT_SPRINT_DAYS = 14;
@@ -81,15 +81,24 @@ export function sprintTimeline(startedAt, endsOn, now = new Date(), workday = wo
   };
 }
 
-/** Minutes of unsent local entries that read as support work, as they would at submission. */
-export function localSupportMinutes(from, to) {
-  const values = [{ id: 'fix', name: 'Support-Fix' }, { id: 'investigation', name: 'Support-Investigation' }];
-  const rows = db.prepare(`
-    SELECT name, duration_mins FROM daily_summary
-    WHERE date >= ? AND date <= ? AND COALESCE(submitted, 0) = 0
-      AND COALESCE(from_calendar, 0) = 0 AND COALESCE(is_lunch, 0) = 0 AND COALESCE(is_holiday, 0) = 0
-  `).all(from, to);
-  return rows.reduce((total, row) => total + (ruleBasedActivityType(row.name, values) ? row.duration_mins || 0 : 0), 0);
+const UNSENT_FILTER = `date >= ? AND date <= ? AND COALESCE(submitted, 0) = 0
+  AND COALESCE(from_calendar, 0) = 0 AND COALESCE(is_lunch, 0) = 0 AND COALESCE(is_holiday, 0) = 0`;
+
+/**
+ * Minutes of unsent local entries that read as support work, as they would at
+ * submission: by the entry's name, or by its ticket when that is a support one
+ * (`ticketInfo` maps ticket keys to what Jira says about them).
+ */
+export function localSupportMinutes(from, to, ticketInfo = new Map()) {
+  const values = ['Code Review', 'Meeting', 'QA', 'N/A', 'Dev', 'Support-Fix', 'Support-Investigation'].map(name => ({ id: name, name }));
+  const rows = db.prepare(`SELECT name, ticket_id, duration_mins FROM daily_summary WHERE ${UNSENT_FILTER}`).all(from, to);
+  return rows.reduce((total, row) => {
+    const ruled = ruleBasedActivityType(row.name, values);
+    const keepsName = ruled && ['Code Review', 'Meeting', 'QA', 'N/A'].includes(ruled.name);
+    const info = ticketInfo.get(String(row.ticket_id || '').trim().toUpperCase());
+    const isSupport = keepsName ? false : (ticketSupportKind(info) !== null || /^Support/.test(ruled?.name || ''));
+    return total + (isSupport ? row.duration_mins || 0 : 0);
+  }, 0);
 }
 
 const SUPPORT_CACHE_MS = 5 * 60 * 1000;
@@ -104,7 +113,12 @@ let supportCache = null;
 export async function supportSpent(from, to) {
   const key = `${from}|${to}`;
   if (supportCache?.key === key && Date.now() - supportCache.at < SUPPORT_CACHE_MS) return supportCache.value;
-  const localMins = localSupportMinutes(from, to);
+  let ticketInfo = new Map();
+  try {
+    const keys = db.prepare(`SELECT DISTINCT ticket_id FROM daily_summary WHERE ${UNSENT_FILTER} AND ticket_id IS NOT NULL`).all(from, to).map(row => row.ticket_id);
+    if (keys.length) ticketInfo = await fetchTicketInfo(resolveJiraCredentials({}), keys);
+  } catch { /* without Jira, entries are judged by their names */ }
+  const localMins = localSupportMinutes(from, to, ticketInfo);
   let tempoMins = 0;
   let tempoError = '';
   try {
