@@ -4,6 +4,24 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.2-beta.1
+
+- Sprint Planning: fixed the points available and support points not saving, and the Save settings button staying disabled, after you typed a number in them.
+
+## 0.9.1
+
+- New Sprint Planning page, above Pull Requests. Search Jira for the tickets you plan to take on, add or remove them, and see their story points added up against the points you have available. Start sprint turns it into a progress view using your Jira board's own columns, with tickets and points per column, and it refreshes itself every five minutes. You can keep adding and removing tickets while the sprint runs, and Save settings stores the points available, support points, sprint end date and board.
+- While a sprint runs, Sprint Planning and the Dashboard show story points completed against the points expected by now (tickets in the pull request column or after count as completed), and the support time spent against the time kept for support. Support time comes from Tempo entries logged as Support-Fix or Support-Investigation, plus entries not sent yet that would get one of those types. You can set the story points a week kept for support and the date the sprint ends (two weeks after the start if you leave it empty).
+- Daily Scrum now shows today's meetings, pulled from your calendar the first time you open it each day, in a Meetings section under Planned for today. Planned for today also includes the tickets assigned to you that are In Progress in Jira.
+- Daily Scrum now lists every open pull request you wrote, review or were asked to review, even when its title doesn't name a ticket. Merged and closed ones are listed when they name a ticket you logged time on or that is In Progress in Jira.
+- Pull Requests page: it loads 3 at a time and only asks GitHub for the ones on the page, so it is much faster. Merged and closed pull requests are saved after the first load, failed GitHub requests are retried, and the page says when a search is incomplete instead of showing GitHub's error. It also shows who has approved a pull request, and approval alerts that arrive while the app is open now show as a message in the app. The search box is gone; use the filters.
+- Submit Time: entries with no ticket can get one by asking the local AI to suggest tickets (nothing is saved until you approve), or by typing it on the row. It has a Today filter, which is the default, and the "all submitted" message and status filters take less room.
+- Time tickets now show their PI and type, like "PI 44 TIME-1234 Daily Scrum", in ticket lists, suggestions and notes. Editing an entry suggests tickets in the ticket box, and the search button with an empty task name also lists your time tickets.
+- Ticket lookups include tickets you recently updated as well as the ones assigned to you, so a ticket you've passed on to QA can still be logged against.
+- Dashboard: Recent Activity no longer lists Lunch. The Settings tab that said "Current Sprint" now says "Current PI".
+- Fixed the update installer still failing with "Error opening file for writing" by no longer restarting the background service during an install. You may see the error once more, installing this version.
+- Updated the libraries TimeLogger is built on (including the database, Vue and Vuetify). If an update fails to install or the app misbehaves after this one, please let me know.
+
 ## 0.9.1-beta.21
 
 - Sprint Planning now has a Save settings button for the points available, support story points, sprint end date and board. It shows when there are unsaved changes and confirms when they are saved.

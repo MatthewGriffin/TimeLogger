@@ -211,6 +211,8 @@ watch(state, value => {
   endsOnText.value = value.endsOn
 }, { immediate: true })
 
+// A number input hands back a number once it has been edited, so it can't be trimmed directly.
+const asText = (value: unknown) => String(value ?? '').trim()
 const settingsText = (value: PlanState) => [
   value.capacity == null ? '' : String(value.capacity),
   value.supportPerWeek == null ? '' : String(value.supportPerWeek),
@@ -218,7 +220,7 @@ const settingsText = (value: PlanState) => [
   value.boardUrl || value.boardId
 ].join('|')
 const settingsDirty = computed(() =>
-  [capacityText.value.trim(), supportText.value.trim(), endsOnText.value, boardText.value.trim()].join('|') !== settingsText(state.value))
+  [asText(capacityText.value), asText(supportText.value), endsOnText.value, boardText.value.trim()].join('|') !== settingsText(state.value))
 const settingsSaved = ref(false)
 const saveSettings = async () => {
   const saved = await saveCapacity() && await saveSupport() && await saveEndsOn() && await saveBoard()
@@ -230,12 +232,12 @@ const runSearch = () => search(query.value.trim())
 const toggleNotes = (key: string) => { openNotes.value = openNotes.value === key ? null : key }
 
 const saveCapacity = () => {
-  const text = capacityText.value.trim()
+  const text = asText(capacityText.value)
   return setCapacity(text === '' ? null : Number(text))
 }
 const saveBoard = () => setBoard(boardText.value.trim())
 const saveSupport = () => {
-  const text = supportText.value.trim()
+  const text = asText(supportText.value)
   return setSupport(text === '' ? null : Number(text))
 }
 const saveEndsOn = () => setEndsOn(endsOnText.value || null)
