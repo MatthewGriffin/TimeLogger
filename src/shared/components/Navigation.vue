@@ -63,7 +63,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Bell, BookOpen, CalendarDays, CircleArrowUp, ClipboardList, GitPullRequest, LayoutDashboard, MessagesSquare, Send, Settings, Target } from 'lucide-vue-next'
+import { Bell, BookOpen, CalendarDays, CircleArrowUp, ClipboardList, GitPullRequest, LayoutDashboard, LifeBuoy, MessagesSquare, Send, Settings, Target } from 'lucide-vue-next'
 import { useUpdater } from '@/features/updates/composables/useUpdater'
 import { useUiStore } from '@/shared/stores/ui'
 
@@ -93,6 +93,7 @@ const navItems = [
   { path: '/entries', label: 'Daily Entries', icon: ClipboardList },
   { path: '/submit', label: 'Submit Time', icon: Send },
   { path: '/sprint-planning', label: 'Sprint Planning', icon: Target },
+  { path: '/support-tickets', label: 'Support Tickets', icon: LifeBuoy },
   { path: '/pull-requests', label: 'Pull Requests', icon: GitPullRequest },
   { path: '/notifications', label: 'Notifications', icon: Bell },
   { path: '/notes', label: 'Notes', icon: BookOpen },

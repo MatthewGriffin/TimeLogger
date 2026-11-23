@@ -4,6 +4,11 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.5-beta.1
+
+- New Support Tickets page, above Pull Requests. It lists the tickets in your Jira support filter (the 4th line support filter by default), with the reporter, assignee, support rank, product and module, and a coloured label for the ticket's current status, such as Under Investigation, Code Change Required or Waiting for customer. Support tickets get passed between developers, so it shows all of them, with a Show just mine switch that is on by default. Select a ticket to open it in Jira.
+- The filter can be changed on the page by pasting a filter number or link, like the board on Sprint Planning. The list refreshes itself every five minutes.
+
 ## 0.9.4
 
 - The activity type an entry gets now takes its ticket into account. On a support ticket (its type, project, label or component says support or 4th line), a Defect is sent as Support-Fix and anything else as Support-Investigation. Reviews, meetings and QA keep their own type, and entries on other tickets are decided by their name as before. The same rule counts support time on Sprint Planning and the Dashboard.
