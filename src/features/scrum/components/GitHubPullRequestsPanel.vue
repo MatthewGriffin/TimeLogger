@@ -32,5 +32,5 @@ const uniquePullRequests = computed(() => {
 .pr-panel > header { margin-bottom: 1rem; }
 .pr-panel > header h2 { margin: 0 0 .25rem; }
 .pr-panel > header p { margin: 0; color: var(--color-text-muted); }
-.pr-list { display: grid; grid-template-columns: 1fr; gap: var(--space-md); }
+.pr-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 28rem), 1fr)); gap: var(--space-md); }
 </style>

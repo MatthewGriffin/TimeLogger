@@ -85,8 +85,9 @@
    */
   --page-gutter: 3rem;
   --page-block: 2rem;
-  --page-max: 1400px;
-  --page-max-wide: 1600px;
+  /* No cap: pages fill the window, and their grids add columns as it widens. */
+  --page-max: none;
+  --page-max-wide: none;
 
   /*
    * Typography.

@@ -98,7 +98,7 @@ onUnmounted(() => clearInterval(timer))
 label { display: flex; flex-direction: column; gap: .35rem; color: var(--color-text-muted); font-size: .9rem; }
 input[type="text"] { padding: .55rem .7rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text); font: inherit; min-width: 0; box-sizing: border-box; width: 100%; }
 .empty { padding: 1.5rem; text-align: center; border: 1px dashed var(--color-border); border-radius: var(--radius-md); color: var(--color-text-muted); margin: 0; }
-.tickets { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .6rem; }
+.tickets { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr)); gap: .6rem; align-items: start; }
 .ticket { width: 100%; display: flex; flex-direction: column; gap: .4rem; text-align: left; color: var(--color-text); font: inherit; cursor: pointer; }
 .ticket:hover, .ticket:focus-visible { border-color: var(--color-accent); }
 .ticket-top { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
