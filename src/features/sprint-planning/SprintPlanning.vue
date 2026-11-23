@@ -82,10 +82,7 @@
             <input v-model="boardText" type="text" placeholder="e.g. 166 or https://your-site.atlassian.net/jira/people/…/boards/166" @change="saveBoard">
           </label>
         </div>
-        <div class="settings-row settings-save">
-          <button type="button" class="btn btn-primary" :disabled="!settingsDirty || busy" @click="saveSettings">Save settings</button>
-          <span class="muted" role="status">{{ settingsDirty ? 'Unsaved changes' : settingsSaved ? 'Saved' : '' }}</span>
-        </div>
+        <p class="muted settings-status" role="status">{{ settingsDirty ? 'Saves when you leave the field or press Enter' : settingsSaved ? 'Saved' : '' }}</p>
       </section>
 
       <!-- Running sprint: points and support time against where the sprint should be -->
@@ -222,10 +219,8 @@ const settingsText = (value: PlanState) => [
 const settingsDirty = computed(() =>
   [asText(capacityText.value), asText(supportText.value), endsOnText.value, boardText.value.trim()].join('|') !== settingsText(state.value))
 const settingsSaved = ref(false)
-const saveSettings = async () => {
-  const saved = await saveCapacity() && await saveSupport() && await saveEndsOn() && await saveBoard()
-  settingsSaved.value = Boolean(saved)
-}
+// Each field saves as soon as you leave it, so this only says whether that has happened.
+const saved = async (save: Promise<boolean>) => { settingsSaved.value = await save }
 watch(settingsDirty, dirty => { if (dirty) settingsSaved.value = false })
 
 const runSearch = () => search(query.value.trim())
@@ -233,14 +228,14 @@ const toggleNotes = (key: string) => { openNotes.value = openNotes.value === key
 
 const saveCapacity = () => {
   const text = asText(capacityText.value)
-  return setCapacity(text === '' ? null : Number(text))
+  return saved(setCapacity(text === '' ? null : Number(text)))
 }
-const saveBoard = () => setBoard(boardText.value.trim())
+const saveBoard = () => saved(setBoard(boardText.value.trim()))
 const saveSupport = () => {
   const text = asText(supportText.value)
-  return setSupport(text === '' ? null : Number(text))
+  return saved(setSupport(text === '' ? null : Number(text)))
 }
-const saveEndsOn = () => setEndsOn(endsOnText.value || null)
+const saveEndsOn = () => saved(setEndsOn(endsOnText.value || null))
 
 const columnPoints = (column: BoardColumnView) => column.tickets.reduce((total, ticket) => total + (ticket.points ?? 0), 0)
 const formatDay = (day: string) => new Date(`${day}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
@@ -324,7 +319,7 @@ h2 { font-size: 1.05rem; margin: 0 0 .75rem; }
 .seg-progress { background: var(--color-accent); }
 .seg-over { background: var(--color-danger); }
 .settings-row { margin-top: 1rem; }
-.settings-save { display: flex; align-items: center; gap: .75rem; }
+.settings-status { margin: .5rem 0 0; min-height: 1.25rem; }
 .settings-pair { display: flex; flex-wrap: wrap; gap: 1rem; }
 .settings-pair label { flex: 1 1 14rem; }
 .dates { margin: 0 0 .75rem; }
