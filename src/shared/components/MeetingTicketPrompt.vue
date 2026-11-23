@@ -7,7 +7,7 @@
       </div>
 
       <p class="prompt-intro">
-        These meetings don't match any of your Current Sprint keywords, so they
+        These meetings don't match any of your Current PI keywords, so they
         have no ticket and can't be submitted to Tempo. Pick a ticket for each,
         or skip to leave it for later.
       </p>

@@ -22,10 +22,6 @@
 
     <template v-if="connected">
       <div class="pr-toolbar">
-        <label class="search-field">
-          <span>Search</span>
-          <input v-model="searchText" type="search" placeholder="Title, repository, author, branch…" />
-        </label>
         <label>
           <span>Relationship</span>
           <select v-model="relationshipFilter">
@@ -48,24 +44,26 @@
       </div>
 
       <div class="summary-row">
-        <span aria-live="polite">{{ filteredPrs.length }} matching · showing {{ paginatedPrs.length }} on this page<template v-if="loading"> · loading from GitHub…</template></span>
+        <span aria-live="polite">Page {{ currentPage }} · showing {{ filteredPrs.length }}<template v-if="loading"> · loading from GitHub…</template></span>
         <span v-if="login">Connected as @{{ login }}</span>
       </div>
 
-      <div v-if="loading && !filteredPrs.length" class="empty-state" aria-live="polite">Loading pull requests…</div>
-      <section v-else-if="prsLoaded && filteredPrs.length" class="pr-list" aria-label="Pull requests">
-        <PullRequestCard v-for="pr in paginatedPrs" :key="pr.id" :pr="pr" />
-        <nav v-if="pageCount > 1" class="pagination" aria-label="Pull request pages">
-          <button type="button" class="btn-refresh" :disabled="currentPage === 1" @click="currentPage--">Previous</button>
-          <span>Page {{ currentPage }} of {{ pageCount }}</span>
-          <button type="button" class="btn-refresh" :disabled="currentPage === pageCount" @click="currentPage++">Next</button>
-        </nav>
+      <div v-if="!prsLoaded && loading" class="empty-state" aria-live="polite">Loading page {{ currentPage }}…</div>
+      <section v-else-if="prsLoaded && filteredPrs.length" class="pr-list" :aria-busy="loading" aria-label="Pull requests">
+        <PullRequestCard v-for="pr in filteredPrs" :key="pr.id" :pr="pr" />
       </section>
       <div v-else-if="prsLoaded" class="empty-state">
         <h2>No pull requests match these filters</h2>
-        <p>Try changing the search or filters. Pull requests are limited to those authored by you, connected to your review activity, or mentioning you.</p>
+        <p>Try changing the filters. Pull requests are limited to those authored by you, connected to your review activity, or mentioning you.</p>
       </div>
-    </template>
+
+      <!-- Previous stays available while the next page loads, and that page keeps
+           loading in the background so it is ready when you come back to it. -->
+      <nav v-if="currentPage > 1 || hasMore" class="pagination" aria-label="Pull request pages">
+        <button type="button" class="btn-refresh" :disabled="currentPage === 1" @click="currentPage--">Previous</button>
+        <span>Page {{ currentPage }}</span>
+        <button type="button" class="btn-refresh" :disabled="!hasMore" @click="currentPage++">Next</button>
+      </nav>    </template>
     </div>
   </div>
 </template>
@@ -94,154 +92,143 @@ interface PullRequest {
   updatedAt: string | null
   commentCount?: number
   pendingReview?: boolean
+  approvedBy?: string[]
+  changesRequestedBy?: string[]
 }
 
 interface PullRequestListResult {
   success?: boolean
   message?: string
   prs?: PullRequest[]
+  hasMore?: boolean
+  incomplete?: boolean
   diagnostics?: { searches?: Array<{ name: string; count: number; error?: string }>; candidateCount?: number
     detailFailures?: Array<{ repository: string; number: number; endpoint: string; message: string }> }
 }
 
-const SEARCH_DEBOUNCE_MS = 500
-const MIN_GITHUB_SEARCH_LENGTH = 2
+// Only the pull requests on the page are loaded from GitHub, so a small page keeps it quick.
+const PAGE_SIZE = 3
 
 const connected = ref(false)
 const login = ref('')
 const checkingConnection = ref(false)
 const hasError = ref(false)
 const message = ref('')
-const searchText = ref('')
 const relationshipFilter = ref('all')
 const stateFilter = ref('open')
 const currentPage = ref(1)
-const pageSize = 10
 
+// What each page returned, so going back to a page, or on to one that was loading
+// while you were elsewhere, shows it straight away. Merged and closed pull requests
+// don't change, so those pages are kept until Refresh. Open ones are reloaded after
+// a minute.
+interface PageResult { prs: PullRequest[]; hasMore: boolean; notice: string; at: number }
+const OPEN_PAGE_MS = 60 * 1000
+const pages = ref<Record<string, PageResult>>({})
+const failures = ref<Record<string, string>>({})
+const loadingPages = ref<string[]>([])
+
+const keepsPages = computed(() => stateFilter.value === 'merged' || stateFilter.value === 'closed')
+const pageKey = (page: number) => `${relationshipFilter.value}|${stateFilter.value}|${page}`
+const currentResult = computed(() => pages.value[pageKey(currentPage.value)])
+const prs = computed(() => currentResult.value?.prs ?? [])
+const hasMore = computed(() => currentResult.value?.hasMore === true)
+const prsLoaded = computed(() => Boolean(currentResult.value))
+const loading = computed(() => loadingPages.value.includes(pageKey(currentPage.value)))
+const loadNotice = computed(() => currentResult.value?.notice || failures.value[pageKey(currentPage.value)] || '')
+// The details go to the console for diagnosis; the page only says to try again.
+// The backend has already retried each failed request three times.
 const describeProblems = (result: PullRequestListResult): string => {
-  const diagnostics = result.diagnostics
-  const searches = diagnostics?.searches || []
-  const failures = diagnostics?.detailFailures || []
-  if (failures.length) {
-    const first = failures[0]
-    return `GitHub found ${diagnostics?.candidateCount || 0} candidate PR(s), but ${failures.length} detail request(s) failed. First failure: ${first.repository}#${first.number} (${first.endpoint}) — ${first.message}`
-  }
-  const failed = searches.filter(search => search.error)
-  if (failed.length) {
-    const counts = searches.map(search => `${search.name}: ${search.count}`).join(', ')
-    const reason = String(failed[0].error || '').replace(/^GitHub API request faileds*/, '').slice(0, 200)
-    return `Some GitHub searches failed (${failed.map(search => search.name).join(', ')}). ${counts}${reason ? ` First error: ${reason}` : ''}`
-  }
-  if (!result.prs?.length && diagnostics?.candidateCount) {
-    return `GitHub found ${diagnostics.candidateCount} candidate PR(s), but none could be confirmed as linked to your account.`
-  }
-  return ''
+  if (!result.incomplete) return ''
+  console.warn('GitHub pull request page incomplete:', result.diagnostics)
+  return 'Search incomplete. Press Refresh to try again.'
 }
 
-// Holds the results of one kind of request. A newer run or a reset makes any
-// response still in flight stale, so a slow reply can't replace newer results.
-const createLoader = () => {
-  const items = ref<PullRequest[]>([])
-  const loaded = ref(false)
-  const busy = ref(false)
-  const notice = ref('')
-  let latest = 0
-  const run = async (search = '') => {
-    const request = ++latest
-    busy.value = true
-    try {
-      const result = await executeApi<PullRequestListResult>('github_pr_list', {
-        relationship: relationshipFilter.value,
-        state: stateFilter.value,
-        search
-      })
-      if (request !== latest) return
-      if (result.success === false) {
-        notice.value = result.message || 'GitHub could not load pull requests.'
-        return
-      }
-      items.value = Array.isArray(result.prs) ? result.prs : []
-      loaded.value = true
-      notice.value = describeProblems(result)
-    } catch (error) {
-      if (request === latest) notice.value = error instanceof Error ? error.message : 'Could not load pull requests.'
-    } finally {
-      if (request === latest) busy.value = false
+// The page asks GitHub for its own pull requests only, so these are all it shows.
+// They are still checked against the filters, in case GitHub's search index is
+// behind and returns one with another status.
+const filteredPrs = computed(() => prs.value.filter(pr => {
+  const relationshipMatches = relationshipFilter.value === 'all'
+    || (relationshipFilter.value === 'authored' && pr.isAuthoredByAccount)
+    || (relationshipFilter.value === 'review' && !pr.isAuthoredByAccount && (pr.requestedReviewer || pr.reviewedByAccount))
+    || (relationshipFilter.value === 'mentioned' && !pr.isAuthoredByAccount && pr.mentionsAccount)
+  const stateMatches = stateFilter.value === 'all' || pr.state === stateFilter.value
+  return relationshipMatches && stateMatches
+}))
+
+// Bumped by Refresh, so a response still in flight from before it is dropped.
+let generation = 0
+
+/**
+ * Loads a page unless it's already kept or on its way. A load carries on if the
+ * user moves to another page, and is kept for when they come back.
+ */
+const loadPage = async (page: number, refresh = false) => {
+  const key = pageKey(page)
+  const kept = pages.value[key]
+  if (loadingPages.value.includes(key)) return
+  if (!refresh && kept && (keepsPages.value || Date.now() - kept.at < OPEN_PAGE_MS)) return
+
+  const started = generation
+  loadingPages.value = [...loadingPages.value, key]
+  delete failures.value[key]
+  try {
+    const result = await executeApi<PullRequestListResult>('github_pr_list', {
+      relationship: relationshipFilter.value,
+      state: stateFilter.value,
+      page,
+      pageSize: PAGE_SIZE,
+      refresh
+    })
+    if (started !== generation) return
+    if (result.success === false) {
+      failures.value[key] = result.message || 'GitHub could not load pull requests.'
+      return
     }
+    pages.value = {
+      ...pages.value,
+      [key]: {
+        prs: Array.isArray(result.prs) ? result.prs : [],
+        hasMore: result.hasMore === true,
+        notice: describeProblems(result),
+        at: Date.now()
+      }
+    }
+  } catch (error) {
+    if (started === generation) failures.value[key] = error instanceof Error ? error.message : 'Could not load pull requests.'
+  } finally {
+    if (started === generation) loadingPages.value = loadingPages.value.filter(item => item !== key)
   }
-  const reset = () => {
-    latest++
-    items.value = []
-    loaded.value = false
-    busy.value = false
-    notice.value = ''
-  }
-  return { items, loaded, busy, notice, run, reset }
 }
 
-// GitHub's search only covers titles, descriptions and comments. So the list is
-// loaded once without the search text and matched here on repository, author,
-// branch and number, and GitHub's matches for the text are added to it.
-const list = createLoader()
-const githubMatches = createLoader()
-const prsLoaded = list.loaded
-const loading = computed(() => list.busy.value || githubMatches.busy.value)
-const loadNotice = computed(() => list.notice.value || githubMatches.notice.value)
-const githubSearch = computed(() => {
-  const text = searchText.value.trim()
-  return text.length >= MIN_GITHUB_SEARCH_LENGTH ? text : ''
-})
-
-const filteredPrs = computed(() => {
-  const query = searchText.value.trim().toLowerCase()
-  const combined = new Map<string, PullRequest>()
-  for (const pr of list.items.value) {
-    const matches = !query || [pr.title, pr.repository, pr.author, pr.branch, String(pr.number)]
-      .some(value => String(value || '').toLowerCase().includes(query))
-    if (matches) combined.set(pr.id, pr)
-  }
-  if (query) for (const pr of githubMatches.items.value) combined.set(pr.id, pr)
-  // Results stay filtered here too, so the page responds as soon as a filter
-  // changes, and GitHub's search index being behind can't show the wrong status.
-  return [...combined.values()].filter(pr => {
-    const relationshipMatches = relationshipFilter.value === 'all'
-      || (relationshipFilter.value === 'authored' && pr.isAuthoredByAccount)
-      || (relationshipFilter.value === 'review' && !pr.isAuthoredByAccount && (pr.requestedReviewer || pr.reviewedByAccount))
-      || (relationshipFilter.value === 'mentioned' && !pr.isAuthoredByAccount && pr.mentionsAccount)
-    const stateMatches = stateFilter.value === 'all' || pr.state === stateFilter.value
-    return relationshipMatches && stateMatches
-  }).sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
-})
-
-const pageCount = computed(() => Math.max(1, Math.ceil(filteredPrs.value.length / pageSize)))
-const paginatedPrs = computed(() => filteredPrs.value.slice((currentPage.value - 1) * pageSize, currentPage.value * pageSize))
-
-let searchTimer: ReturnType<typeof setTimeout> | undefined
-
-const loadGithubMatches = async () => {
-  clearTimeout(searchTimer)
-  if (githubSearch.value) await githubMatches.run(githubSearch.value)
-  else githubMatches.reset()
+const resetResults = () => {
+  generation++
+  pages.value = {}
+  failures.value = {}
+  loadingPages.value = []
 }
 
-watch(searchText, () => { currentPage.value = 1 })
-watch(pageCount, count => { if (currentPage.value > count) currentPage.value = count })
+watch(currentPage, page => { if (connected.value) void loadPage(page) })
 
+// Changing a filter starts again from the first page.
 watch([relationshipFilter, stateFilter], () => {
+  if (!connected.value) return
   currentPage.value = 1
-  void list.run()
-  void loadGithubMatches()
+  void loadPage(1)
 })
 
-watch(githubSearch, text => {
-  clearTimeout(searchTimer)
-  githubMatches.reset()
-  if (!text) return
-  githubMatches.busy.value = true
-  searchTimer = setTimeout(() => { void loadGithubMatches() }, SEARCH_DEBOUNCE_MS)
-})
+// A GitHub alert means something changed on a pull request, so the page loads
+// again to show it. Open pages may be out of date now, while merged and closed
+// ones can't have changed. The page on screen stays until its new version arrives.
+const reloadAfterActivity = () => {
+  if (!connected.value) return
+  const current = pageKey(currentPage.value)
+  pages.value = Object.fromEntries(Object.entries(pages.value).filter(([key]) => key === current || /\|(merged|closed)\|/.test(key)))
+  void loadPage(currentPage.value, true)
+}
 
-onBeforeUnmount(() => clearTimeout(searchTimer))
+onMounted(() => window.addEventListener('timelogger:github-activity', reloadAfterActivity))
+onBeforeUnmount(() => window.removeEventListener('timelogger:github-activity', reloadAfterActivity))
 
 const refresh = async () => {
   checkingConnection.value = true
@@ -249,14 +236,16 @@ const refresh = async () => {
   try {
     const result = await executeApi<{ connected?: boolean; login?: string; message?: string }>('github_pr_connection_status')
     connected.value = result.connected === true
+    // A different account has different pull requests, so nothing kept applies.
+    if (login.value && login.value !== (result.login || '')) resetResults()
     login.value = result.login || ''
     if (connected.value) {
       message.value = ''
-      currentPage.value = 1
-      await Promise.all([list.run(), loadGithubMatches()])
+      // Refresh asks GitHub again for the page on screen only. The other pages
+      // stay as they were, so they are still there when you go back to them.
+      await loadPage(currentPage.value, true)
     } else {
-      list.reset()
-      githubMatches.reset()
+      resetResults()
       message.value = result.message || ''
     }
   } catch (error) {
@@ -266,7 +255,6 @@ const refresh = async () => {
     checkingConnection.value = false
   }
 }
-
 onMounted(refresh)
 </script>
 
@@ -287,8 +275,6 @@ onMounted(refresh)
 .pr-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; margin: 1.5rem 0 1rem; }
 .pr-toolbar label { display: flex; flex-direction: column; gap: .35rem; color: var(--color-text-muted); font-size: .9rem; }
 .pr-toolbar input, .pr-toolbar select { min-width: 12rem; max-width: 100%; padding: .6rem .7rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text); }
-.pr-toolbar .search-field { flex: 1 1 18rem; }
-.pr-toolbar .search-field input { width: 100%; box-sizing: border-box; }
 .summary-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem; color: var(--color-text-muted); font-size: .9rem; margin-bottom: 1rem; }
 .pr-list { display: grid; grid-template-columns: 1fr; gap: var(--space-md); }
 .empty-state { margin-top: 1.5rem; padding: 2rem; text-align: center; border: 1px dashed var(--color-border); border-radius: var(--radius-md); color: var(--color-text-muted); }

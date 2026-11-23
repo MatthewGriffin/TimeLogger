@@ -52,6 +52,8 @@ const pollGitHubActivity = async () => {
       body?: string
     }>; scrumChanged?: boolean }>('github_pr_poll_activity')
     if (result.scrumChanged) void updateScrumReportAfterPoll()
+    // Lets the Pull Requests page reload, so it shows what the alert is about.
+    if (result.events?.length) window.dispatchEvent(new CustomEvent('timelogger:github-activity'))
     for (const event of result.events || []) {
       const outcome = event.kind === 'added'
         ? 'added you to'
@@ -71,11 +73,16 @@ const pollGitHubActivity = async () => {
         : event.kind === 'merged'
           ? `“${event.title}” (${event.repository}#${event.number}) was merged.`
           : `@${event.reviewer} ${outcome} “${event.title}” (${event.repository}#${event.number}).`
-      // Keep GitHub activity in the inbox only when it arrives while the app
-      // is backgrounded or minimized. Foreground activity should not create
-      // an unread notification that the user already saw in the app.
+      // Activity that arrives while the app is backgrounded or minimized stays in
+      // the inbox. In the foreground it's shown as a short message instead, so it
+      // isn't missed but doesn't leave an unread notification for something the
+      // user has already seen. Each event is only ever returned once, so dropping
+      // it here would lose it.
       const isBackgrounded = document.visibilityState !== 'visible' || !document.hasFocus()
-      if (!isBackgrounded) continue
+      if (!isBackgrounded) {
+        uiStore.addNotification({ type: event.kind === 'approval' ? 'success' : 'info', message, url: event.url, duration: 8000 })
+        continue
+      }
       uiStore.addNotification({ type: 'info', message, url: event.url, persistent: true })
       try {
         await invoke('show_notification', {

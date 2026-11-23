@@ -89,16 +89,25 @@ async function reportPoll(prs, diagnostics) {
 // GitHub answers with a 5xx, a rate limit or a dropped connection from time to
 // time, and the four PR searches run together, so one bad moment fails them all.
 // Retrying those briefly is cheaper than showing an error the next refresh fixes.
-const TRANSIENT_GITHUB_ERROR = /HTTP (?:429|5dd)|rate limit|abuse|secondary|timed? ?out|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up/i;
-const GITHUB_RETRY_DELAYS_MS = [800, 2500];
+const TRANSIENT_GITHUB_ERROR = /HTTP (?:429|5\d\d)|rate limit|abuse|secondary|timed? ?out|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up/i;
+// Three retries, each after a longer wait. Exported so tests don't have to wait.
+export const githubRetry = { delays: [800, 2500, 6000] };
+
+function isTransientGitHubError(error, path) {
+  const message = String(error?.message || '');
+  if (TRANSIENT_GITHUB_ERROR.test(message)) return true;
+  // A 403 from the search API is GitHub limiting how fast searches may run.
+  // Other 403s are permissions, which retrying won't fix.
+  return path.startsWith('/search/') && /HTTP 403/.test(message);
+}
 
 async function githubGet(path, token) {
   for (let attempt = 0; ; attempt++) {
     try {
       return await githubGetOnce(path, token);
     } catch (error) {
-      const delay = GITHUB_RETRY_DELAYS_MS[attempt];
-      if (delay === undefined || !TRANSIENT_GITHUB_ERROR.test(error.message)) throw error;
+      const delay = githubRetry.delays[attempt];
+      if (delay === undefined || !isTransientGitHubError(error, path)) throw error;
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
@@ -163,13 +172,15 @@ function safePr(pr, ticketKeys = []) {
   };
 }
 
-async function searchPrs(token, login, query) {
+async function searchPrs(token, login, query, limit = MAX_PRS) {
+  const perPage = Math.min(PAGE_SIZE, limit);
+  const maxPages = Math.min(3, Math.ceil(limit / perPage));
   const all = [];
-  for (let page = 1; page <= 3; page++) {
-    const result = await githubGet(`/search/issues?q=${encodeURIComponent(query)}&per_page=${PAGE_SIZE}&page=${page}&sort=updated&order=desc`, token);
+  for (let page = 1; page <= maxPages; page++) {
+    const result = await githubGet(`/search/issues?q=${encodeURIComponent(query)}&per_page=${perPage}&page=${page}&sort=updated&order=desc`, token);
     const items = Array.isArray(result.items) ? result.items : [];
     all.push(...items);
-    if (items.length < PAGE_SIZE || all.length >= MAX_PRS) break;
+    if (items.length < perPage || all.length >= limit) break;
   }
   return all;
 }
@@ -219,11 +230,17 @@ export function buildPullRequestSearches(login, { relationship = 'all', state = 
   return searches;
 }
 
-async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS, diagnostics = null, filters = {}) {
-  const login = await account(token);
+/**
+ * The PRs a set of filters could list, newest first, from GitHub's searches alone.
+ * A search result has the title, author and update time but not the review state,
+ * so each candidate still has to be confirmed by `detailFetcher` before it's shown.
+ * `limit` is how many each search is asked for, which is all that's needed to
+ * know the newest `limit` PRs across them.
+ */
+async function findCandidates(token, login, diagnostics, filters, limit) {
   const searchAndRecord = async (name, query) => {
     try {
-      const results = await searchPrs(token, login, query);
+      const results = await searchPrs(token, login, query, limit);
       if (diagnostics) diagnostics.searches.push({ name, count: results.length });
       return results;
     } catch (error) {
@@ -251,34 +268,65 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS,
     if (!match || !Number.isInteger(number)) continue;
     const repository = match[1];
     const key = `${repository}#${number}`;
-    const prior = candidates.get(key) || { repository, number, fromReviewSearch: false, mentionsAccount: false, updatedAt: '' };
+    const prior = candidates.get(key) || {
+      repository, number, title: String(item.title || ''), author: String(item.user?.login || ''),
+      closed: item.state === 'closed', fromReviewSearch: false, mentionsAccount: false, updatedAt: ''
+    };
     if (reviewedByAccount.includes(item)) prior.fromReviewSearch = true;
     if (mentionsAccount.includes(item)) prior.mentionsAccount = true;
     if (String(item.updated_at || '') > prior.updatedAt) prior.updatedAt = String(item.updated_at || '');
     candidates.set(key, prior);
   }
-
   if (diagnostics) diagnostics.candidateCount = candidates.size;
-  const selected = [...candidates.values()]
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, limit);
-  const details = [];
-  const fetchDetail = async (item) => {
+  return [...candidates.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+/**
+ * Who currently approves a PR and who is asking for changes. Each reviewer counts
+ * once, by their latest approval or change request: a later comment doesn't undo
+ * either, and a dismissed review is no longer counted. Reviews come oldest first.
+ */
+export function summarizeReviews(reviews, authorLogin = '') {
+  const author = String(authorLogin).toLowerCase();
+  const latest = new Map();
+  for (const review of Array.isArray(reviews) ? reviews : []) {
+    const user = String(review.user?.login || '');
+    if (!user || user.toLowerCase() === author) continue;
+    const state = String(review.state || '').toUpperCase();
+    if (state === 'APPROVED' || state === 'CHANGES_REQUESTED') latest.set(user, state);
+    else if (state === 'DISMISSED') latest.delete(user);
+  }
+  const by = wanted => [...latest].filter(([, state]) => state === wanted).map(([user]) => user);
+  return { approvedBy: by('APPROVED'), changesRequestedBy: by('CHANGES_REQUESTED') };
+}
+
+/**
+ * Returns a function that loads and confirms one candidate, or null if it isn't
+ * linked to the account. With `withReviews`, the PR also says who approved it.
+ */
+function detailFetcher(token, login, ticketKeys, diagnostics, { withReviews = false } = {}) {
+  return async (item) => {
     try {
       const pr = await githubGet(`/repos/${item.repository}/pulls/${item.number}`, token);
       const authoredByAccount = String(pr.user?.login || '').toLowerCase() === login.toLowerCase();
       const requested = (pr.requested_reviewers || []).some(r => String(r.login || '').toLowerCase() === login.toLowerCase());
-      let reviewedByAccount = false;
-      if (!authoredByAccount && !requested && item.fromReviewSearch) {
-        const reviews = await githubGet(`/repos/${item.repository}/pulls/${item.number}/reviews?per_page=100`, token).catch(error => {
+      let reviews = null;
+      const loadReviews = async () => {
+        reviews ??= await githubGet(`/repos/${item.repository}/pulls/${item.number}/reviews?per_page=100`, token).catch(error => {
           if (diagnostics) diagnostics.detailFailures.push({
             repository: item.repository, number: item.number, endpoint: 'reviews',
             message: error instanceof Error ? error.message : String(error)
           });
           return [];
         });
-        reviewedByAccount = Array.isArray(reviews) && reviews.some(review => String(review.user?.login || '').toLowerCase() === login.toLowerCase());
+        return reviews;
+      };
+      let reviewedByAccount = false;
+      if (!authoredByAccount && !requested && item.fromReviewSearch) {
+        const list = await loadReviews();
+        reviewedByAccount = Array.isArray(list) && list.some(review => String(review.user?.login || '').toLowerCase() === login.toLowerCase());
       }
+      const approvals = withReviews ? summarizeReviews(await loadReviews(), pr.user?.login) : {};
       // Verify the account is the author, a current requested reviewer, or
       // actually reviewed the PR. Search results alone are not trusted for those.
       // A mention is the exception: confirming one would mean reading every
@@ -291,7 +339,8 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS,
         isAuthoredByAccount: authoredByAccount,
         reviewedByAccount,
         mentionsAccount: item.mentionsAccount,
-        pendingReview: requested
+        pendingReview: requested,
+        ...approvals
       };
     } catch (error) {
       if (diagnostics) diagnostics.detailFailures.push({
@@ -301,6 +350,13 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS,
       return null;
     }
   };
+}
+
+async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS, diagnostics = null, filters = {}) {
+  const login = await account(token);
+  const selected = (await findCandidates(token, login, diagnostics, filters, MAX_PRS)).slice(0, limit);
+  const fetchDetail = detailFetcher(token, login, ticketKeys, diagnostics);
+  const details = [];
 
   // Keep the number of in-flight detail/review requests bounded. Launching up
   // to 60 requests at once can trigger GitHub secondary rate limits, which
@@ -314,6 +370,124 @@ async function listRelevantPullRequests(token, ticketKeys = [], limit = MAX_PRS,
   return details.filter(Boolean).sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
 }
 
+// The Pull Requests page shows a few PRs at a time, so it only loads the ones on
+// the page. What it has loaded is kept so paging back and forth costs nothing:
+//
+//  - Open and draft PRs change all the time, so their lists and details are only
+//    kept for a minute (details are also keyed on the update time GitHub reports).
+//  - Merged and closed PRs stay that way, so each one is saved in the database the
+//    first time it is loaded and never loaded again. Only the searches for new
+//    ones are repeated, and the list of them is reused for ten minutes.
+const OPEN_CACHE_MS = 60 * 1000;
+const FINISHED_CACHE_MS = 10 * 60 * 1000;
+const MAX_CACHED_DETAILS = 200;
+const MAX_SAVED_FINISHED = 500;
+const candidateCache = new Map();
+const detailCache = new Map();
+
+function ensurePrCacheTable() {
+  db.exec(`CREATE TABLE IF NOT EXISTS github_pr_cache (
+    cache_key TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    saved_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+}
+
+const isFinishedPullRequest = pr => pr?.state === 'merged' || pr?.state === 'closed';
+
+function readFinishedPullRequest(cacheKey) {
+  try {
+    ensurePrCacheTable();
+    const row = db.prepare('SELECT data FROM github_pr_cache WHERE cache_key = ?').get(cacheKey);
+    return row ? JSON.parse(row.data) : null;
+  } catch {
+    // A damaged row just means the PR is loaded again.
+    return null;
+  }
+}
+
+function saveFinishedPullRequest(cacheKey, pr) {
+  try {
+    ensurePrCacheTable();
+    db.prepare('INSERT OR REPLACE INTO github_pr_cache (cache_key, data, saved_at) VALUES (?, ?, CURRENT_TIMESTAMP)')
+      .run(cacheKey, JSON.stringify(pr));
+    // Bounded, so the oldest are dropped and simply loaded again if they're wanted.
+    db.prepare(`DELETE FROM github_pr_cache WHERE cache_key NOT IN
+      (SELECT cache_key FROM github_pr_cache ORDER BY saved_at DESC, rowid DESC LIMIT ?)`).run(MAX_SAVED_FINISHED);
+  } catch (error) {
+    console.warn('Could not save a finished pull request:', error.message);
+  }
+}
+
+// Searches are asked for in chunks this big, so moving through the pages reuses
+// one search instead of running every search again for each page, which is what
+// made GitHub start refusing them a few pages in.
+const SEARCH_CHUNK = 30;
+
+/**
+ * One page of the pull requests the filters list, loading details for that page only.
+ * `incomplete` says a search or a pull request lookup still failed after its retries,
+ * so the page may be missing some.
+ */
+export async function listPullRequestsPage(token, { relationship, state, page = 1, pageSize = 3, refresh = false }, diagnostics = { searches: [], candidateCount: 0, detailFailures: [] }) {
+  const login = readConfig().login || await account(token);
+  const size = Math.max(1, Math.min(20, Number(pageSize) || 3));
+  const pageNumber = Math.max(1, Number(page) || 1);
+  // One more than the page needs, to know whether there is a next page.
+  const needed = pageNumber * size + 1;
+  const wanted = Math.ceil(needed / SEARCH_CHUNK) * SEARCH_CHUNK;
+  const filters = { relationship, state };
+  const onlyFinished = state === 'merged' || state === 'closed';
+
+  const key = JSON.stringify([login, relationship || 'all', state || 'all']);
+  const cached = candidateCache.get(key);
+  let candidates;
+  if (!refresh && cached && cached.expires > Date.now() && cached.limit >= needed) {
+    candidates = cached.candidates;
+    if (diagnostics) Object.assign(diagnostics, cached.diagnostics);
+  } else {
+    candidates = await findCandidates(token, login, diagnostics, filters, wanted);
+    // A list with a search missing isn't kept, so the next try asks again.
+    if (!diagnostics.searches.some(search => search.error)) {
+      candidateCache.set(key, {
+        expires: Date.now() + (onlyFinished ? FINISHED_CACHE_MS : OPEN_CACHE_MS),
+        limit: wanted,
+        candidates,
+        diagnostics: JSON.parse(JSON.stringify(diagnostics))
+      });
+    }
+  }
+
+  const slice = candidates.slice((pageNumber - 1) * size, pageNumber * size);
+  const fetchDetail = detailFetcher(token, login, [], diagnostics, { withReviews: true });
+  const prs = await Promise.all(slice.map(async candidate => {
+    const flags = `${candidate.fromReviewSearch}|${candidate.mentionsAccount}`;
+    const finishedKey = `${login}|${candidate.repository}#${candidate.number}|${flags}`;
+    // The search says whether it's closed, and merged ones are closed too.
+    if (candidate.closed) {
+      const saved = readFinishedPullRequest(finishedKey);
+      if (saved) return saved;
+    }
+    const detailKey = `${finishedKey}@${candidate.updatedAt}`;
+    if (detailCache.has(detailKey)) return detailCache.get(detailKey);
+    const pr = await fetchDetail(candidate);
+    // A failed lookup isn't kept, and neither is one missing its reviews, so the
+    // next visit tries it again.
+    const lookupFailed = diagnostics.detailFailures.some(failure => failure.repository === candidate.repository && failure.number === candidate.number);
+    if (pr && !lookupFailed) {
+      if (isFinishedPullRequest(pr)) {
+        saveFinishedPullRequest(finishedKey, pr);
+      } else {
+        detailCache.set(detailKey, pr);
+        if (detailCache.size > MAX_CACHED_DETAILS) detailCache.delete(detailCache.keys().next().value);
+      }
+    }
+    return pr;
+  }));
+
+  const incomplete = diagnostics.searches.some(search => search.error) || diagnostics.detailFailures.length > 0;
+  return { prs: prs.filter(Boolean), page: pageNumber, pageSize: size, hasMore: candidates.length > pageNumber * size, incomplete };
+}
 function ensureEventTable() {
   db.exec(`CREATE TABLE IF NOT EXISTS github_pr_seen_events (
     event_id TEXT PRIMARY KEY,
@@ -533,14 +707,20 @@ export async function getPullRequestsWithMajorUpdatesOnDate(date, ticketValues =
   return results;
 }
 
-export async function getPullRequestsForTickets(ticketValues = []) {
+/**
+ * PRs the account authored or reviews that name one of the tickets. With
+ * `includeOpen`, every open or draft PR the account is involved in is listed too,
+ * since a PR need not name its ticket. Merged and closed ones need that link.
+ */
+export async function getPullRequestsForTickets(ticketValues = [], { includeOpen = false } = {}) {
   const token = String(readConfig().token || '');
   if (!token) return [];
   const keys = extractTicketKeys(...ticketValues);
-  if (!keys.length) return [];
+  if (!keys.length && !includeOpen) return [];
   const prs = await listRelevantPullRequests(token, keys);
   // A mention only counts on the day it happened, which the timeline check decides.
-  return prs.filter(pr => pr.matchedTicketKeys.length > 0 && hasReviewOrAuthorLink(pr));
+  const isOpen = pr => pr.state === 'open' || pr.state === 'draft';
+  return prs.filter(pr => hasReviewOrAuthorLink(pr) && (pr.matchedTicketKeys.length > 0 || (includeOpen && isOpen(pr))));
 }
 
 export const tools = [
@@ -580,6 +760,7 @@ export const tools = [
       db.prepare("DELETE FROM settings WHERE key = 'github_pr_poll_initialized'").run();
       db.prepare("DELETE FROM settings WHERE key = 'github_pr_lifecycle_initialized'").run();
       try { db.prepare('DELETE FROM github_pr_lifecycle').run(); } catch { /* table is created on first poll */ }
+      try { db.prepare('DELETE FROM github_pr_cache').run(); } catch { /* table is created on first use */ }
       return { success: true, connected: false, login: '', message: 'GitHub disconnected.' };
     }
   },
@@ -592,13 +773,20 @@ export const tools = [
         ticketKeys: { type: 'array', items: { type: 'string' } },
         relationship: { type: 'string', enum: ['all', 'authored', 'review', 'mentioned'] },
         state: { type: 'string', enum: ['all', 'open', 'draft', 'merged', 'closed'] },
-        search: { type: 'string', description: 'Words GitHub must find in the title, description or comments' }
+        search: { type: 'string', description: 'Words GitHub must find in the title, description or comments (not used when paging)' },
+        page: { type: 'number', description: 'Return only this page (from 1), loading details for its pull requests alone' },
+        pageSize: { type: 'number', description: 'Pull requests per page when paging (default 3)' },
+        refresh: { type: 'boolean', description: 'Ignore the short-lived cache of earlier results when paging' }
       },
       required: []
     },
-    handler: async ({ ticketKeys = [], relationship, state, search }) => {
+    handler: async ({ ticketKeys = [], relationship, state, search, page, pageSize, refresh }) => {
       try {
         const diagnostics = { searches: [], candidateCount: 0, detailFailures: [] };
+        if (page !== undefined) {
+          const result = await listPullRequestsPage(requireToken(), { relationship, state, page, pageSize, refresh }, diagnostics);
+          return { success: true, ...result, diagnostics };
+        }
         const prs = await listRelevantPullRequests(requireToken(), extractTicketKeys(...ticketKeys), MAX_PRS, diagnostics, { relationship, state, search });
         return { success: true, prs, diagnostics };
       } catch (error) {

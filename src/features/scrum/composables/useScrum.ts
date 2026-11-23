@@ -18,7 +18,8 @@ function toEntry(raw: unknown): ScrumEntry {
     name: String(row.name ?? ''),
     startTime: asString(row.start_time),
     endTime: asString(row.end_time),
-    durationMins: Number(row.duration_mins) || 0
+    durationMins: Number(row.duration_mins) || 0,
+    fromCalendar: Number(row.from_calendar) === 1 || row.from_calendar === true
   }
 }
 
@@ -99,6 +100,18 @@ function toReport(result: Record<string, unknown>): ScrumReport {
   }
 }
 
+// Tickets in play today that the backend can't know about (In Progress in Jira),
+// so their pull requests are listed too.
+const extraTickets = ref<string[]>([])
+
+/** Set the tickets in play today; the report is rebuilt only if they changed. */
+export async function setExtraTickets(keys: string[]): Promise<void> {
+  const next = [...new Set(keys)].sort()
+  if (JSON.stringify(next) === JSON.stringify(extraTickets.value)) return
+  extraTickets.value = next
+  if (report.value) await updateReport()
+}
+
 /**
  * Fetch the report and apply it if it's still the newest request and has changed.
  *
@@ -109,7 +122,7 @@ function toReport(result: Record<string, unknown>): ScrumReport {
 async function updateReport(): Promise<void> {
   const request = ++latestRequest
   try {
-    const result = await executeApi<Record<string, unknown>>('generate_scrum_summary', {})
+    const result = await executeApi<Record<string, unknown>>('generate_scrum_summary', { extraTickets: extraTickets.value })
     if (request !== latestRequest) return
     if (result?.success === false) {
       throw new Error(String(result.message || 'Failed to build the stand-up report'))

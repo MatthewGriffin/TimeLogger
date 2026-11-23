@@ -1,5 +1,5 @@
 /**
- * Current Sprint / PI configuration.
+ * Current PI configuration.
  *
  * Recurring ceremonies (daily scrum, retro, planning...) are booked in Tempo
  * against per-PI placeholder issues named `PI<n>-<Type> <Team>`. Those keys are
@@ -211,16 +211,16 @@ export function explainNoTicketMatch(subject, config = readSprintConfig()) {
       code: 'no-ticket',
       ceremony: blank.mapping.label,
       keyword: blank.alias,
-      message: `Matched the "${blank.alias}" keyword for ${blank.mapping.label}, but ${blank.mapping.label} has no ticket set${config.piNumber ? '' : ' and no PI number is configured'}. Add its ticket in Settings > Current Sprint.`
+      message: `Matched the "${blank.alias}" keyword for ${blank.mapping.label}, but ${blank.mapping.label} has no ticket set${config.piNumber ? '' : ' and no PI number is configured'}. Add its ticket in Settings > Current PI.`
     };
   }
   if (!mappings.some(m => m.ticketKey)) {
-    return { code: 'no-tickets-configured', message: 'No ceremony has a ticket yet, so nothing can match. Look up the PI tickets in Settings > Current Sprint.' };
+    return { code: 'no-tickets-configured', message: 'No ceremony has a ticket yet, so nothing can match. Look up the PI tickets in Settings > Current PI.' };
   }
   const keywordCount = mappings.reduce((n, m) => n + (m.aliases || []).length, 0);
   return {
     code: 'no-keyword',
-    message: `None of the ${keywordCount} keywords appear in "${text}" as whole words. Pick a ticket and tick Remember to add a keyword, or edit keywords in Settings > Current Sprint.`
+    message: `None of the ${keywordCount} keywords appear in "${text}" as whole words. Pick a ticket and tick Remember to add a keyword, or edit keywords in Settings > Current PI.`
   };
 }
 
@@ -434,7 +434,7 @@ export const tools = [
         `).all(startDate, endDate);
 
         // Calendar sync leaves meetings ticketless on purpose; this is the step
-        // where the current PI mapping applies. Anything a Current Sprint
+        // where the current PI mapping applies. Anything a Current PI
         // keyword resolves is assigned here, so only genuine misses are asked.
         const config = readSprintConfig();
         const assign = db.prepare('UPDATE daily_summary SET ticket_id = ? WHERE id = ? AND submitted = 0');

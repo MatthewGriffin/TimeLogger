@@ -21,10 +21,15 @@ import { previousWorkingDay, isWorkingDay } from '../utils/working-days.js';
 import { safeJiraBaseUrl, safeOllamaHost, safeTenantId, microsoftAuthorityUrl, escapeHtml } from '../utils/safe-url.js';
 import { singleLine } from '../utils/log-text.js';
 import { redactSecrets } from '../api/setup-routes.js';
-import { extractTicketKeys, classifyPullRequest, isOpenUnmergedPullRequest, buildPullRequestSearches } from '../tools/github-prs.js';
+import { extractTicketKeys, classifyPullRequest, isOpenUnmergedPullRequest, buildPullRequestSearches, summarizeReviews, githubRetry } from '../tools/github-prs.js';
+
+// Retries are real in the app; here they only need to happen, not wait.
+githubRetry.delays = [0, 0, 0];
 import { GraphClient, hasStoredGraphToken } from '../api/graph-client.js';
 import { fetchAllTempoPages } from '../tools/jira-tempo-worklogs.js';
 import { localDateKey } from '../utils/dates.js';
+import { summarisePlan } from '../tools/sprint-plan.js';
+import { sprintTimeline, localSupportMinutes } from '../tools/sprint-progress.js';
 import { makeHttpRequest, httpClient } from '../api/http-client.js';
 import { buildPiTicketMigration } from '../tools/sprint.js';
 import { branchVersionProblem, compareVersions, isBetaVersion, isValidVersion } from '../../scripts/version-rules.mjs';
@@ -390,6 +395,160 @@ async function runTests() {
     }
   });
 
+  await testAsync('github_pr_list with a page only loads the pull requests on that page', async () => {
+    const saved = db.prepare("SELECT value FROM settings WHERE key = 'github_config'").get();
+    const setConfig = db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('github_config', ?, CURRENT_TIMESTAMP)");
+    let searches = 0;
+    const details = [];
+    const perPages = [];
+    const github = url => {
+      if (url.pathname === '/user') return { login: 'me' };
+      if (url.pathname === '/search/issues') {
+        searches++;
+        perPages.push(url.searchParams.get('per_page'));
+        // Seven PRs, newest first.
+        const items = [7, 6, 5, 4, 3, 2, 1].map(number => ({
+          number, state: 'closed', title: `PR ${number}`, user: { login: 'me' },
+          repository_url: 'https://api.github.com/repos/org/app', updated_at: `2026-11-0${number}T00:00:00Z`
+        }));
+        return { items: items.slice(0, Number(url.searchParams.get('per_page'))) };
+      }
+      const pr = url.pathname.match(/^\/repos\/org\/app\/pulls\/(\d+)$/);
+      if (pr) {
+        details.push(Number(pr[1]));
+        return { id: Number(pr[1]), number: Number(pr[1]), title: `PR ${pr[1]}`, state: 'closed', merged_at: '2026-11-01T00:00:00Z', user: { login: 'me' }, base: { repo: { full_name: 'org/app' } }, requested_reviewers: [] };
+      }
+      if (/^\/repos\/org\/app\/pulls\/\d+\/reviews$/.test(url.pathname)) return [];
+      throw new Error(`Unexpected request: ${url.pathname}`);
+    };
+    const ask = page => withGitHubStub(github, () => executeTool('github_pr_list', { relationship: 'authored', state: 'merged', page, pageSize: 3 }));
+    try {
+      setConfig.run(JSON.stringify({ token: 'github-token', login: 'me' }));
+      const first = await ask(1);
+      assert.deepStrictEqual(first.prs.map(pr => pr.number), [7, 6, 5]);
+      assert.strictEqual(first.hasMore, true);
+      assert.deepStrictEqual(details.sort(), [5, 6, 7], 'Only the first page should be loaded');
+      assert.deepStrictEqual(perPages, ['30'], 'Searches are asked for in chunks so later pages reuse them');
+
+      details.length = 0;
+      const searchesAfterFirst = searches;
+      const second = await ask(2);
+      assert.strictEqual(searches, searchesAfterFirst, 'The next page reuses the search rather than running it again');
+      assert.deepStrictEqual(second.prs.map(pr => pr.number), [4, 3, 2]);
+      assert.strictEqual(second.hasMore, true);
+      assert.deepStrictEqual(details.sort(), [2, 3, 4], 'Only the second page should be loaded');
+
+      const third = await ask(3);
+      assert.deepStrictEqual(third.prs.map(pr => pr.number), [1]);
+      assert.strictEqual(third.hasMore, false, 'The last page has no next page');
+
+      const before = { searches, details: details.length };
+      const back = await ask(1);
+      assert.deepStrictEqual(back.prs.map(pr => pr.number), [7, 6, 5]);
+      assert.deepStrictEqual({ searches, details: details.length }, before, 'Going back should not ask GitHub again');
+
+      const refreshed = await withGitHubStub(github, () => executeTool('github_pr_list', { relationship: 'authored', state: 'merged', page: 1, pageSize: 3, refresh: true }));
+      assert.strictEqual(refreshed.prs.length, 3);
+      assert(searches > before.searches, 'Refresh should search again');
+    } finally {
+      if (saved) setConfig.run(saved.value);
+      else db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
+    }
+  });
+  await testAsync('GitHub searches are retried three times, and a page that still fails is marked incomplete and not kept', async () => {
+    const saved = db.prepare("SELECT value FROM settings WHERE key = 'github_config'").get();
+    const setConfig = db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('github_config', ?, CURRENT_TIMESTAMP)");
+    const attempts = { authored: 0, mentions: 0 };
+    let mentionsWork = false;
+    const refuse = () => Object.assign(new Error('refused'), { response: { status: 403, data: '{"message":"You have exceeded a secondary rate limit."}' } });
+    const github = url => {
+      if (url.pathname === '/user') return { login: 'retry-user' };
+      if (url.pathname === '/search/issues') {
+        const query = url.searchParams.get('q');
+        if (query.includes('mentions:')) {
+          attempts.mentions++;
+          if (!mentionsWork) throw refuse();
+          return { items: [] };
+        }
+        if (!query.includes(' author:')) return { items: [] };
+        attempts.authored++;
+        // Refused three times, then answered: the third retry is the one that works.
+        if (attempts.authored <= 3) throw refuse();
+        return { items: [{ number: 5, state: 'open', title: 'Mine', user: { login: 'retry-user' }, repository_url: 'https://api.github.com/repos/org/retry', updated_at: '2026-11-01T00:00:00Z' }] };
+      }
+      if (url.pathname === '/repos/org/retry/pulls/5') {
+        return { id: 5, number: 5, title: 'Mine', state: 'open', user: { login: 'retry-user' }, base: { repo: { full_name: 'org/retry' } }, requested_reviewers: [] };
+      }
+      if (url.pathname === '/repos/org/retry/pulls/5/reviews') return [];
+      throw new Error(`Unexpected request: ${url.pathname}`);
+    };
+    const ask = () => withGitHubStub(github, () => executeTool('github_pr_list', { relationship: 'all', state: 'open', pageSize: 3, page: 1 }));
+    try {
+      setConfig.run(JSON.stringify({ token: 'github-token', login: 'retry-user' }));
+      const first = await ask();
+      assert.strictEqual(attempts.authored, 4, 'The search is tried once and retried three times');
+      assert.strictEqual(attempts.mentions, 4, 'A search that keeps failing is also given three retries, and no more');
+      assert.deepStrictEqual(first.prs.map(pr => pr.number), [5], 'What the other searches found is still shown');
+      assert.strictEqual(first.incomplete, true, 'The page says it is incomplete');
+
+      mentionsWork = true;
+      const again = await ask();
+      assert.strictEqual(again.incomplete, false, 'The failed list was not kept, so it is searched again and is now complete');
+      assert.deepStrictEqual(again.prs.map(pr => pr.number), [5]);
+    } finally {
+      if (saved) setConfig.run(saved.value);
+      else db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
+    }
+  });
+
+  await testAsync('merged and closed pull requests are saved once, while open ones are not', async () => {
+    const saved = db.prepare("SELECT value FROM settings WHERE key = 'github_config'").get();
+    const setConfig = db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('github_config', ?, CURRENT_TIMESTAMP)");
+    const details = [];
+    const github = url => {
+      if (url.pathname === '/user') return { login: 'me' };
+      if (url.pathname === '/search/issues') {
+        return { items: [
+          { number: 91, state: 'closed', title: 'Merged work', user: { login: 'me' }, repository_url: 'https://api.github.com/repos/org/saved', updated_at: '2026-11-03T00:00:00Z' },
+          { number: 92, state: 'open', title: 'Open work', user: { login: 'me' }, repository_url: 'https://api.github.com/repos/org/saved', updated_at: '2026-11-02T00:00:00Z' }
+        ] };
+      }
+      const pr = url.pathname.match(/^\/repos\/org\/saved\/pulls\/(\d+)$/);
+      if (pr) {
+        details.push(Number(pr[1]));
+        const merged = Number(pr[1]) === 91;
+        return { id: Number(pr[1]), number: Number(pr[1]), title: `PR ${pr[1]}`, state: merged ? 'closed' : 'open', merged_at: merged ? '2026-11-03T00:00:00Z' : null, user: { login: 'me' }, base: { repo: { full_name: 'org/saved' } }, requested_reviewers: [] };
+      }
+      if (/^\/repos\/org\/saved\/pulls\/\d+\/reviews$/.test(url.pathname)) return [];
+      throw new Error(`Unexpected request: ${url.pathname}`);
+    };
+    const ask = args => withGitHubStub(github, () => executeTool('github_pr_list', { relationship: 'authored', pageSize: 3, page: 1, ...args }));
+    try {
+      setConfig.run(JSON.stringify({ token: 'github-token', login: 'me' }));
+      db.prepare('DROP TABLE IF EXISTS github_pr_cache').run();
+
+      const first = await ask({ state: 'all' });
+      assert.deepStrictEqual(first.prs.map(pr => pr.state), ['merged', 'open']);
+      assert.deepStrictEqual(details.sort(), [91, 92], 'The first load asks for both');
+      assert.strictEqual(db.prepare('SELECT COUNT(*) AS n FROM github_pr_cache').get().n, 1, 'Only the merged one is saved');
+
+      // A different filter and a refresh both search again, but the merged PR is already known.
+      details.length = 0;
+      await ask({ state: 'merged' });
+      await ask({ state: 'all', refresh: true });
+      assert(!details.includes(91), 'A saved merged pull request is never loaded again, even after a refresh');
+
+      db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
+      setConfig.run(JSON.stringify({ token: 'github-token', login: 'me' }));
+      const cleared = await executeTool('github_pr_save_token', { token: '' });
+      assert.strictEqual(cleared.connected, false);
+      assert.strictEqual(db.prepare('SELECT COUNT(*) AS n FROM github_pr_cache').get().n, 0, 'Disconnecting clears what was saved');
+    } finally {
+      db.prepare('DROP TABLE IF EXISTS github_pr_cache').run();
+      if (saved) setConfig.run(saved.value);
+      else db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
+    }
+  });
   await testAsync('a requested PR that left the GitHub searches is still announced when it merges', async () => {
     const settingKeys = ['github_config', 'github_pr_poll_initialized', 'github_pr_lifecycle_initialized'];
     const savedSettings = settingKeys.map(key => [key, db.prepare('SELECT value FROM settings WHERE key = ?').get(key)]);
@@ -449,6 +608,61 @@ async function runTests() {
     }
   });
 
+  test('summarizeReviews counts each reviewer once by their latest approval or change request', () => {
+    const review = (user, state) => ({ user: { login: user }, state });
+    assert.deepStrictEqual(
+      summarizeReviews([review('ann', 'CHANGES_REQUESTED'), review('ann', 'APPROVED'), review('bob', 'APPROVED'), review('bob', 'COMMENTED'), review('me', 'APPROVED')], 'me'),
+      { approvedBy: ['ann', 'bob'], changesRequestedBy: [] },
+      'A later approval replaces a change request, a comment changes nothing, and the author is not counted'
+    );
+    assert.deepStrictEqual(
+      summarizeReviews([review('ann', 'APPROVED'), review('ann', 'DISMISSED'), review('cat', 'CHANGES_REQUESTED')]),
+      { approvedBy: [], changesRequestedBy: ['cat'] },
+      'A dismissed review no longer counts'
+    );
+    assert.deepStrictEqual(summarizeReviews(null), { approvedBy: [], changesRequestedBy: [] });
+  });
+
+  await testAsync('an approval of the account\'s PR is reported once, and the page lists who approved it', async () => {
+    const settingKeys = ['github_config', 'github_pr_poll_initialized', 'github_pr_lifecycle_initialized'];
+    const savedSettings = settingKeys.map(key => [key, db.prepare('SELECT value FROM settings WHERE key = ?').get(key)]);
+    const setSetting = db.prepare('INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)');
+    let reviews = [];
+    const github = url => {
+      if (url.pathname === '/user') return { login: 'me' };
+      if (url.pathname === '/search/issues') {
+        return { items: url.searchParams.get('q').includes('author:me') ? [{ number: 31, state: 'open', title: 'My change', user: { login: 'me' }, repository_url: 'https://api.github.com/repos/org/approved', updated_at: '2026-11-05T00:00:00Z' }] : [] };
+      }
+      if (url.pathname === '/repos/org/approved/pulls/31') {
+        return { id: 310, number: 31, title: 'My change', state: 'open', user: { login: 'me' }, base: { repo: { full_name: 'org/approved' } }, html_url: 'https://github.com/org/approved/pull/31', requested_reviewers: [] };
+      }
+      if (url.pathname === '/repos/org/approved/pulls/31/reviews') return reviews;
+      if (url.pathname.endsWith('/comments')) return [];
+      throw new Error(`Unexpected request: ${url.pathname}`);
+    };
+    const poll = () => withGitHubStub(github, () => executeTool('github_pr_poll_activity', {}));
+    try {
+      setSetting.run('github_config', JSON.stringify({ token: 'github-token', login: 'me' }));
+      db.prepare("DELETE FROM settings WHERE key IN ('github_pr_poll_initialized', 'github_pr_lifecycle_initialized')").run();
+      assert.deepStrictEqual((await poll()).events, [], 'The first poll only records what is already there');
+
+      reviews = [{ id: 3100, state: 'APPROVED', user: { login: 'ann' }, body: 'Looks good' }];
+      const approved = (await poll()).events;
+      assert.deepStrictEqual(approved.map(event => [event.kind, event.reviewer, event.number]), [['approval', 'ann', 31]]);
+      assert.deepStrictEqual((await poll()).events, [], 'The same approval is not reported twice');
+
+      const page = await withGitHubStub(github, () => executeTool('github_pr_list', { relationship: 'authored', state: 'open', page: 1, pageSize: 3, refresh: true }));
+      assert.deepStrictEqual(page.prs[0].approvedBy, ['ann'], 'The page shows who approved it');
+      assert.deepStrictEqual(page.prs[0].changesRequestedBy, []);
+    } finally {
+      db.prepare("DELETE FROM github_pr_seen_events WHERE event_id LIKE 'review:org/approved:%'").run();
+      db.prepare("DELETE FROM github_pr_lifecycle WHERE pr_key LIKE 'org/approved#%'").run();
+      for (const [name, saved] of savedSettings) {
+        if (saved) setSetting.run(name, saved.value);
+        else db.prepare('DELETE FROM settings WHERE key = ?').run(name);
+      }
+    }
+  });
   await testAsync('a PR that only mentions the account causes no alerts', async () => {
     const settingKeys = ['github_config', 'github_pr_poll_initialized', 'github_pr_lifecycle_initialized'];
     const savedSettings = settingKeys.map(key => [key, db.prepare('SELECT value FROM settings WHERE key = ?').get(key)]);
@@ -530,13 +744,15 @@ async function runTests() {
       setConfig.run(JSON.stringify({ token: 'github-token', login: 'me' }));
 
       const noTickets = await withGitHubStub(github, () => executeTool('generate_scrum_summary', { date }));
-      assert.deepStrictEqual(noTickets.pullRequests, []);
-      assert.deepStrictEqual(queries, [], 'With no worked tickets, GitHub should not be asked');
+      assert.deepStrictEqual(noTickets.pullRequests.map(pr => pr.number).sort(), [36, 38, 39], 'Open PRs the account is involved in are listed without a ticket');
 
+      // A ticket in play today (such as In Progress in Jira) lists its pull requests too.
+      const inPlay = await withGitHubStub(github, () => executeTool('generate_scrum_summary', { date, extraTickets: ['TEST-300'] }));
+      assert.deepStrictEqual(inPlay.pullRequests.map(pr => pr.number).sort(), [31, 32, 33, 36, 38, 39]);
       addEntry.run(reportedDay, 'TEST-300', 'Worked ticket', 30);
       const result = await withGitHubStub(github, () => executeTool('generate_scrum_summary', { date }));
       const byNumber = new Map(result.pullRequests.map(pr => [pr.number, pr]));
-      assert.deepStrictEqual([...byNumber.keys()].sort(), [31, 32, 33, 36]);
+      assert.deepStrictEqual([...byNumber.keys()].sort(), [31, 32, 33, 36, 38, 39]);
       assert(queries.includes(`is:pr mentions:me updated:>=${reportedDay}`), 'A PR updated again since should still be found');
       assert.strictEqual(byNumber.get(31).mentionsAccount, true);
       assert.deepStrictEqual(byNumber.get(31).majorUpdateTypes, ['mentioned you']);
@@ -2922,6 +3138,7 @@ async function runTests() {
     });
     const reported = makePr(77, 1, 'TEST-900 Cached PR', `${yesterday}T10:00:00Z`);
     const unrelated = makePr(78, 2, 'Unrelated PR', '2001-01-01T00:00:00Z');
+    unrelated.user = { login: 'someone-else' };
     const forTicket = makePr(79, 3, 'TEST-911 fix', '2001-01-01T00:00:00Z');
     let listed = [reported];
     let requests = 0;
@@ -3094,6 +3311,315 @@ async function runTests() {
       else db.prepare("DELETE FROM settings WHERE key = 'sprint_config'").run();
       db.prepare("DELETE FROM daily_summary WHERE date = ? AND (name LIKE 'ZZ %' OR (name = 'Daily Scrum' AND ticket_id IS NULL))").run(day);
     }
+  });
+
+  // ============================================================
+  // SECTION 21: Sprint Planning and ticket lookups
+  // ============================================================
+  log(colors.yellow, '\n🧭 SECTION 21: Sprint Planning\n');
+
+  const withJira = async (route, run) => {
+    const saved = db.prepare("SELECT value FROM settings WHERE key = 'jira_config'").get();
+    const savedPlan = db.prepare("SELECT value FROM settings WHERE key = 'sprint_plan_state'").get();
+    const urls = [];
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('jira_config', ?)")
+      .run(JSON.stringify({ baseUrl: 'https://example.atlassian.net', email: 'me@example.com', apiToken: 'token' }));
+    db.prepare("DELETE FROM settings WHERE key = 'sprint_plan_state'").run();
+    db.prepare('DELETE FROM sprint_plan_tickets').run();
+    const previous = httpClient.defaults.adapter;
+    httpClient.defaults.adapter = async config => {
+      const url = new URL(config.url);
+      urls.push(decodeURIComponent(url.pathname + url.search));
+      return { data: JSON.stringify(route(url)), status: 200, statusText: 'OK', headers: {}, config };
+    };
+    try { return await run(urls); } finally {
+      httpClient.defaults.adapter = previous;
+      if (saved) db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('jira_config', ?)").run(saved.value);
+      else db.prepare("DELETE FROM settings WHERE key = 'jira_config'").run();
+      if (savedPlan) db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('sprint_plan_state', ?)").run(savedPlan.value);
+      else db.prepare("DELETE FROM settings WHERE key = 'sprint_plan_state'").run();
+      db.prepare('DELETE FROM sprint_plan_tickets').run();
+      db.prepare("DELETE FROM notes WHERE ticket_id LIKE 'ZZPLAN-%'").run();
+    }
+  };
+  const jiraIssue = (key, points, category = 'new', status = 'To Do') => ({
+    key, fields: { summary: `${key} summary`, status: { id: status === 'Done' ? '30' : status === 'Ready for QA' ? '20' : '10', name: status, statusCategory: { key: category } }, customfield_10016: points }
+  });
+  // A site whose story points live in a differently named field.
+  const jiraIssueAlt = (key, points) => ({
+    key, fields: { summary: `${key} summary`, status: { name: 'To Do', statusCategory: { key: 'new' } }, customfield_10026: points }
+  });
+  const jira = tickets => url => {
+    if (url.pathname.endsWith('/myself')) return { accountId: 'acct-1', displayName: 'Me' };
+    if (url.pathname.endsWith('/configuration')) {
+      return { columnConfig: { columns: [
+        { name: 'To Do', statuses: [{ id: '10' }] },
+        { name: 'Ready for PR', statuses: [] },
+        { name: 'Ready for QA', statuses: [{ id: '20' }] },
+        { name: 'Done', statuses: [{ id: '30' }] }
+      ] } };
+    }
+    if (url.pathname.endsWith('/field')) return [{ id: 'customfield_10016', name: 'Story point estimate' }, { id: 'customfield_10026', name: 'Story Points' }, { id: 'customfield_1', name: 'Other' }];
+    if (url.pathname.endsWith('/search/jql')) {
+      const jql = url.searchParams.get('jql') || '';
+      const wanted = [...jql.matchAll(/"([A-Z]+-\d+)"/g)].map(match => match[1]);
+      return { issues: wanted.length ? tickets.filter(t => wanted.includes(t.key)) : tickets };
+    }
+    return {};
+  };
+
+  await testAsync('ticket lookups include tickets updated by me, not only assigned ones', async () => {
+    await withJira(jira([jiraIssue('ZZPLAN-1', 2)]), async urls => {
+      await executeTool('tempo_get_recent_issues', {});
+      await executeTool('tempo_get_issues', { query: '{mine} AND statusCategory = "In Progress" ORDER BY updated DESC' });
+      const searches = urls.filter(url => url.includes('/search/jql'));
+      assert.strictEqual(searches.length, 2);
+      for (const search of searches) {
+        assert.ok(search.includes('assignee = "acct-1" OR issue in updatedBy("acct-1", "-30d")'), search);
+        assert.ok(!search.includes('{mine}'), 'The placeholder must be replaced');
+      }
+    });
+  });
+
+  await testAsync('sprint plan adds tickets with Jira points and totals them against capacity', async () => {
+    await withJira(jira([jiraIssue('ZZPLAN-1', 3), jiraIssue('ZZPLAN-2', 5), jiraIssue('ZZPLAN-3', null)]), async () => {
+      for (const key of ['zzplan-1', 'ZZPLAN-2', 'ZZPLAN-3']) assert.strictEqual((await executeTool('sprint_plan_add', { ticket_id: key })).success, true);
+      const duplicate = await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-1' });
+      assert.strictEqual(duplicate.tickets.length, 3, 'Adding twice must not duplicate');
+      assert.strictEqual((await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-9' })).success, false, 'A ticket Jira does not know is rejected');
+
+      let plan = await executeTool('sprint_plan_settings', { capacity: 6 });
+      assert.strictEqual(plan.summary.planned, 8);
+      assert.strictEqual(plan.summary.unestimated, 1);
+      assert.strictEqual(plan.summary.remaining, -2);
+      assert.strictEqual(plan.summary.overCapacity, true);
+
+      plan = await executeTool('sprint_plan_set_points', { ticket_id: 'ZZPLAN-3', points: 1 });
+      assert.strictEqual(plan.summary.planned, 9);
+      assert.strictEqual(plan.summary.unestimated, 0);
+
+      plan = await executeTool('sprint_plan_remove', { ticket_id: 'ZZPLAN-2' });
+      assert.strictEqual(plan.summary.planned, 4);
+      assert.strictEqual(plan.summary.overCapacity, false);
+    });
+  });
+
+  await testAsync('sprint plan reads points from whichever story point field the ticket uses and refresh picks up changes', async () => {
+    const live = [jiraIssue('ZZPLAN-1', null), jiraIssueAlt('ZZPLAN-2', 8)];
+    await withJira(jira(live), async () => {
+      await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-1' });
+      const added = await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-2' });
+      assert.strictEqual(added.tickets.find(t => t.key === 'ZZPLAN-2').points, 8, 'The second field is used when the first is empty');
+
+      await executeTool('sprint_plan_set_points', { ticket_id: 'ZZPLAN-1', points: 2 });
+      live[0] = jiraIssue('ZZPLAN-1', 5);
+      live[1] = jiraIssueAlt('ZZPLAN-2', 13);
+      const refreshed = await executeTool('sprint_plan_refresh', {});
+      const points = Object.fromEntries(refreshed.tickets.map(t => [t.key, t.points]));
+      assert.deepStrictEqual(points, { 'ZZPLAN-1': 5, 'ZZPLAN-2': 13 }, 'Jira estimates replace old and hand-entered ones');
+
+      live[0] = jiraIssue('ZZPLAN-1', null);
+      await executeTool('sprint_plan_set_points', { ticket_id: 'ZZPLAN-1', points: 3 });
+      const kept = await executeTool('sprint_plan_refresh', {});
+      assert.strictEqual(kept.tickets.find(t => t.key === 'ZZPLAN-1').points, 3, 'A hand-entered value stays while Jira has none');
+    });
+  });
+
+  await testAsync('sprint plan search works like the other ticket lookups', async () => {
+    const issues = [jiraIssue('ZZPLAN-1', 2), jiraIssue('ZZPLAN-2', 3, 'done', 'Done')];
+    await withJira(url => {
+      const jql = url.searchParams.get('jql') || '';
+      // Only a looser, any-word search finds anything, as with partly remembered names.
+      if (url.pathname.endsWith('/search/jql') && /OR summary ~/.test(jql)) return { issues: [issues[0]] };
+      if (url.pathname.endsWith('/search/jql') && /key = "ZZPLAN-2"/.test(jql)) return { issues: [issues[1]] };
+      return jira([])(url);
+    }, async urls => {
+      const loose = await executeTool('sprint_plan_search', { query: 'remembered nothing exact' });
+      assert.deepStrictEqual(loose.issues.map(i => i.key), ['ZZPLAN-1']);
+      const queries = urls.filter(u => u.includes('/search/jql')).map(u => u.split('jql=')[1].split('&')[0]);
+      assert.ok(queries[0].includes('summary ~ "remembered nothing exact"') && queries[1].includes('text ~'), 'Summary, then anywhere, then any word');
+
+      const byKey = await executeTool('sprint_plan_search', { query: 'see zzplan-2 please' });
+      assert.deepStrictEqual(byKey.issues.map(i => i.key), ['ZZPLAN-2'], 'A key inside the text is fetched directly, even when it is done');
+    });
+  });
+
+  await testAsync('sprint board columns come from the Jira board, with the status ids each holds', async () => {
+    await withJira(jira([jiraIssue('ZZPLAN-1', 3, 'indeterminate', 'Ready for QA')]), async urls => {
+      assert.deepStrictEqual((await executeTool('sprint_plan_board_columns', {})).columns, [], 'No board set yet');
+      await executeTool('sprint_plan_settings', { board: '166' });
+      const result = await executeTool('sprint_plan_board_columns', {});
+      assert.deepStrictEqual(result.columns.map(c => c.name), ['To Do', 'Ready for PR', 'Ready for QA', 'Done']);
+      assert.deepStrictEqual(result.columns[2].statusIds, ['20']);
+      assert.strictEqual(result.columns[1].statusIds.length, 0, 'An empty column is still a column');
+      await executeTool('sprint_plan_board_columns', {});
+      assert.strictEqual(urls.filter(u => u.includes('/configuration')).length, 1, 'Columns are cached');
+
+      const added = await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-1' });
+      assert.strictEqual(added.tickets[0].statusId, '20', 'The ticket keeps its status id so it can be placed in a column');
+    });
+  });
+
+  await testAsync('sprint plan notes are ordinary notes against the ticket', async () => {
+    await withJira(jira([jiraIssue('ZZPLAN-1', 3)]), async () => {
+      await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-1' });
+      await executeTool('create_note', { date: '2026-01-05', note: 'Needs API change', ticket_id: 'ZZPLAN-1' });
+      const plan = await executeTool('sprint_plan_get', {});
+      assert.strictEqual(plan.tickets[0].noteCount, 1);
+      const notes = await executeTool('get_notes', { topic: 'ZZPLAN-1' });
+      assert.strictEqual(notes.notes[0].note, 'Needs API change');
+    });
+  });
+
+  await testAsync('sprint counters follow the board columns: first is to do, last is done, the ones between are in progress', async () => {
+    const columns = [
+      { name: 'To Do', statusIds: ['10'] },
+      { name: 'In Progress', statusIds: ['11'] },
+      { name: 'Ready for PR', statusIds: ['12'] },
+      { name: 'Done', statusIds: ['30'] }
+    ];
+    const ticket = (key, points, statusId, statusCategory) => ({ key, points, statusId, statusCategory });
+    const tickets = [
+      ticket('A-1', 3, '12', 'indeterminate'),
+      ticket('A-2', 5, '30', 'done'),
+      ticket('A-3', 2, '10', 'new'),
+      ticket('A-4', 1, '99', 'indeterminate')
+    ];
+    const byColumns = summarisePlan(tickets, null, columns);
+    assert.deepStrictEqual([byColumns.todo, byColumns.inProgress, byColumns.done], [2, 4, 5], 'Ready for PR counts as in progress; a status on no column uses its category');
+    assert.deepStrictEqual([byColumns.todoCount, byColumns.inProgressCount, byColumns.doneCount], [1, 2, 1]);
+    const byCategory = summarisePlan(tickets, null, []);
+    assert.deepStrictEqual([byCategory.todo, byCategory.inProgress, byCategory.done], [2, 4, 5], 'With no columns Jira categories decide');
+    assert.deepStrictEqual([byColumns.completed, byColumns.completedCount], [8, 2], 'Ready for PR and the Done column after it are completed');
+    assert.strictEqual(summarisePlan(tickets, null, []).completed, 5, 'With no columns only done tickets are completed');
+    const withPr = summarisePlan(tickets, null, [{ name: 'To Do', statusIds: ['10'] }, { name: 'In Progress', statusIds: ['11'] }, { name: 'Ready for PR', statusIds: ['12'] }, { name: 'Ready for QA', statusIds: ['13'] }, { name: 'Done', statusIds: ['30'] }]);
+    assert.deepStrictEqual([withPr.completed, withPr.completedCount], [8, 2], 'Ready for PR and anything after it is completed');
+    // A ticket parked in the column after the first is not "in progress" by category alone
+    const parked = summarisePlan([ticket('B-1', 3, '10', 'indeterminate')], null, columns);
+    assert.deepStrictEqual([parked.todo, parked.inProgress], [3, 0], 'A ticket in the To Do column is to do, whatever Jira calls its status');
+  });
+
+  test('the sprint timeline counts working days, ends two weeks after the start unless told otherwise, and moves through the day', () => {
+    const workday = { startMinute: 9 * 60, endMinute: 17 * 60, minutes: 450 };
+    const start = new Date('2026-11-02T10:00:00').toISOString();
+    const now = new Date('2026-11-09T13:00:00');
+    const sprint = sprintTimeline(start, '', now, workday);
+    assert.strictEqual(sprint.startDate, '2026-11-02');
+    assert.strictEqual(sprint.endDate, '2026-11-15', 'Two weeks from the start, counting the start day');
+    assert.strictEqual(sprint.endIsDefault, true);
+    assert.strictEqual(sprint.workingDays, 10);
+    assert.strictEqual(sprint.elapsedDays, 5.5, 'Five days gone plus half of today');
+    assert.strictEqual(sprint.daysLeft, 4.5);
+    const longer = sprintTimeline(start, '2026-11-20', now, workday);
+    assert.strictEqual(longer.endDate, '2026-11-20');
+    assert.strictEqual(longer.endIsDefault, false);
+    assert.strictEqual(longer.workingDays, 15);
+    assert.strictEqual(sprintTimeline(start, '2026-10-01', now, workday).endIsDefault, true, 'An end before the start is ignored');
+    assert.strictEqual(sprintTimeline(null, '', now, workday), null);
+    const over = sprintTimeline(start, '', new Date('2026-12-01T12:00:00'), workday);
+    assert.strictEqual(over.daysLeft, 0);
+    assert.strictEqual(over.fraction, 1);
+  });
+
+  test('support time counts unsent entries that read as support fixes or investigations, and nothing else', () => {
+    const day = '2001-03-05';
+    db.prepare("DELETE FROM daily_summary WHERE date = ?").run(day);
+    const add = db.prepare('INSERT INTO daily_summary (date, name, ticket_id, start_time, end_time, duration_mins, submitted, from_calendar) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    add.run(day, 'Support fix for login', 'ZZ-1', '09:00', '10:00', 60, 0, 0);
+    add.run(day, 'Investigating payment errors', 'ZZ-2', '10:00', '10:30', 30, 0, 0);
+    add.run(day, 'Building the new report', 'ZZ-3', '11:00', '12:00', 60, 0, 0);
+    add.run(day, 'Support sync meeting', 'ZZ-4', '13:00', '14:00', 60, 0, 1);
+    add.run(day, 'Support fix already sent', 'ZZ-5', '14:00', '15:00', 60, 1, 0);
+    try {
+      assert.strictEqual(localSupportMinutes(day, day), 90, 'Unsent support entries only, not dev work, meetings or ones already in Tempo');
+    } finally {
+      db.prepare("DELETE FROM daily_summary WHERE date = ?").run(day);
+    }
+  });
+
+  await testAsync('sprint progress compares points done with expected, and support time with the time kept for it', async () => {
+    const day = localDateKey();
+    const existing = db.prepare("SELECT COUNT(*) AS n FROM daily_summary WHERE date = ? AND name LIKE 'ZZPLAN support%'").get(day).n;
+    assert.strictEqual(existing, 0);
+    const add = db.prepare('INSERT INTO daily_summary (date, name, ticket_id, start_time, end_time, duration_mins, submitted, from_calendar) VALUES (?, ?, ?, ?, ?, ?, 0, 0)');
+    add.run(day, 'ZZPLAN support fix', 'ZZPLAN-1', '09:00', '10:30', 90);
+    try {
+      await withJira(jira([jiraIssue('ZZPLAN-1', 3, 'indeterminate', 'Ready for QA'), jiraIssue('ZZPLAN-2', 5, 'done', 'Done'), jiraIssue('ZZPLAN-3', 2)]), async () => {
+        assert.deepStrictEqual(await executeTool('sprint_plan_progress', {}), { success: true, active: false }, 'Nothing to report until the sprint has started');
+        for (const key of ['ZZPLAN-1', 'ZZPLAN-2', 'ZZPLAN-3']) await executeTool('sprint_plan_add', { ticket_id: key });
+        await executeTool('sprint_plan_settings', { board: '166', supportPerWeek: 1, endsOn: '2099-01-01' });
+        assert.strictEqual((await executeTool('sprint_plan_settings', { supportPerWeek: 9 })).success, false, 'A week has five days of points');
+        assert.strictEqual((await executeTool('sprint_plan_settings', { endsOn: 'soon' })).success, false);
+        const started = await executeTool('sprint_plan_start', {});
+        assert.strictEqual(started.summary.done, 5);
+        assert.strictEqual(started.summary.inProgress, 3, 'Ready for QA is in progress');
+        assert.strictEqual(started.summary.todo, 2);
+
+        const progress = await executeTool('sprint_plan_progress', {});
+        assert.strictEqual(progress.success, true);
+        assert.strictEqual(progress.active, true);
+        assert.strictEqual(progress.points.completed, 8, 'Completed is the pull request column and everything after it: Ready for QA (3) and Done (5)');
+        assert.strictEqual(progress.points.planned, 10);
+        assert.ok(progress.points.expected >= 0 && progress.points.expected <= 10);
+        assert.strictEqual(progress.support.perWeek, 1);
+        assert.strictEqual(progress.support.localMins, 90, 'Unsent support entries count');
+        assert.ok(progress.support.tempoError, 'Without Tempo set up only local entries are counted, and it says so');
+        const weeks = progress.timeline.workingDays / 5;
+        assert.strictEqual(progress.support.budgetMins, Math.round(weeks * progress.hoursPerDay * 60), 'One point a week is a day a week');
+        assert.strictEqual(progress.support.remainingMins, progress.support.budgetMins - 90);
+
+        const finished = await executeTool('sprint_plan_finish', {});
+        assert.strictEqual(finished.state.endsOn, '', 'The end date belongs to the sprint, so it is cleared');
+      });
+    } finally {
+      db.prepare("DELETE FROM daily_summary WHERE date = ? AND name LIKE 'ZZPLAN support%'").run(day);
+    }
+  });
+
+  await testAsync('starting the sprint needs tickets, tickets can still be added and removed mid-sprint, and finishing carries unfinished work over', async () => {
+    const live = [jiraIssue('ZZPLAN-1', 3), jiraIssue('ZZPLAN-2', 5)];
+    await withJira(jira(live), async () => {
+      assert.strictEqual((await executeTool('sprint_plan_start', {})).success, false, 'An empty plan cannot start');
+      await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-1' });
+      await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-2' });
+      assert.strictEqual((await executeTool('sprint_plan_start', {})).state.phase, 'active');
+
+      live.push(jiraIssue('ZZPLAN-3', 2));
+      const midSprint = await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-3' });
+      assert.strictEqual(midSprint.success, true, 'A ticket can be added after the sprint starts');
+      assert.strictEqual(midSprint.state.phase, 'active');
+      const removed = await executeTool('sprint_plan_remove', { ticket_id: 'ZZPLAN-3' });
+      assert.strictEqual(removed.success, true, 'and removed again');
+      assert.deepStrictEqual(removed.tickets.map(ticket => ticket.key), ['ZZPLAN-1', 'ZZPLAN-2']);
+
+      live[0] = jiraIssue('ZZPLAN-1', 3, 'done', 'Done');
+      const refreshed = await executeTool('sprint_plan_refresh', {});
+      assert.strictEqual(refreshed.summary.done, 3);
+      assert.strictEqual(refreshed.summary.todo, 5);
+      assert.deepStrictEqual([refreshed.summary.doneCount, refreshed.summary.todoCount], [1, 1], 'Tickets are counted as well as points');
+
+      const finished = await executeTool('sprint_plan_finish', {});
+      assert.strictEqual(finished.state.phase, 'planning');
+      assert.deepStrictEqual(finished.tickets.map(ticket => ticket.key), ['ZZPLAN-2']);
+    });
+  });
+
+  await testAsync('sprint board link points at the user\'s own view and accepts a pasted board link', async () => {
+    await withJira(jira([]), async () => {
+      assert.strictEqual((await executeTool('sprint_plan_board_link', {})).success, false, 'No board set yet');
+      assert.strictEqual((await executeTool('sprint_plan_settings', { board: 'not a board' })).success, false);
+      await executeTool('sprint_plan_settings', { board: 'https://example.atlassian.net/jira/people/abc/boards/166' });
+      const link = await executeTool('sprint_plan_board_link', {});
+      assert.strictEqual(link.url, 'https://example.atlassian.net/jira/people/abc/boards/166', 'A pasted link is opened exactly as given');
+
+      await executeTool('sprint_plan_settings', { board: '166' });
+      const built = await executeTool('sprint_plan_board_link', {});
+      assert.strictEqual(built.url, 'https://example.atlassian.net/jira/people/acct-1/boards/166');
+
+      await executeTool('sprint_plan_settings', { board: 'https://other.example.com/jira/people/abc/boards/166' });
+      const foreign = await executeTool('sprint_plan_board_link', {});
+      assert.ok(foreign.url.startsWith('https://example.atlassian.net/'), 'A link on another site is never opened');
+    });
   });
 
   // ============================================================

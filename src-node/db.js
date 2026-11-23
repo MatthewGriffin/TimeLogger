@@ -97,6 +97,18 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (date, ticket_id)
   );
+  -- The tickets chosen for the next sprint. Local only: nothing here is ever
+  -- written back to Jira. points_manual marks a value typed in by the user so a
+  -- refresh from Jira does not overwrite it.
+  CREATE TABLE IF NOT EXISTS sprint_plan_tickets (
+    ticket_id TEXT PRIMARY KEY COLLATE NOCASE,
+    summary TEXT,
+    status TEXT,
+    status_category TEXT,
+    points REAL,
+    points_manual INTEGER NOT NULL DEFAULT 0,
+    added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 const columns = (table) => db.prepare(`PRAGMA table_info(${table})`).all().map(column => column.name);
@@ -139,6 +151,9 @@ db.exec(`
 const submissionHistoryColumns = columns('submission_history');
 if (!submissionHistoryColumns.includes('status')) db.exec("ALTER TABLE submission_history ADD COLUMN status TEXT DEFAULT 'success'");
 if (!submissionHistoryColumns.includes('failed_count')) db.exec('ALTER TABLE submission_history ADD COLUMN failed_count INTEGER DEFAULT 0');
+
+// The status id maps a ticket onto the Jira board column that holds its status.
+if (!columns('sprint_plan_tickets').includes('status_id')) db.exec('ALTER TABLE sprint_plan_tickets ADD COLUMN status_id TEXT');
 
 const calendarConflictColumns = columns('calendar_conflict_choices');
 // Overrides let a resolution say "left this one early" instead of only an

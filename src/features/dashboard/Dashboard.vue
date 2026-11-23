@@ -114,6 +114,36 @@
           <p class="panel-message">{{ todayHours }}h logged · {{ workdayRemaining }}h remaining</p>
         </section>
 
+        <section v-if="sprint" class="dashboard-panel">
+          <div class="panel-heading">
+            <div>
+              <h2 class="section-title">Sprint story points</h2>
+              <p class="panel-subtitle">{{ sprint.daysLeft }} working day{{ sprint.daysLeft === 1 ? '' : 's' }} left · ends {{ sprintEnd }}</p>
+            </div>
+            <router-link to="/sprint-planning" class="panel-link">Sprint →</router-link>
+          </div>
+          <div class="progress-track"><span :style="{ width: `${sprintDonePercent}%` }"></span></div>
+          <p class="panel-message" :class="{ warning: sprint.points.behind > 0.5 }">
+            {{ sprint.points.completed }} completed · {{ sprint.points.expected }} expected by now · {{ sprint.points.planned }} planned
+          </p>
+        </section>
+
+        <section v-if="sprint?.support" class="dashboard-panel">
+          <div class="panel-heading">
+            <div>
+              <h2 class="section-title">Support time</h2>
+              <p class="panel-subtitle">{{ formatSprintMinutes(sprint.support.spentMins) }} of {{ formatSprintMinutes(sprint.support.budgetMins) }} kept for support</p>
+            </div>
+            <router-link to="/sprint-planning" class="panel-link">Sprint →</router-link>
+          </div>
+          <div class="progress-track"><span :style="{ width: `${supportPercent}%` }"></span></div>
+          <p class="panel-message" :class="{ warning: sprint.support.remainingMins < 0 }">
+            {{ sprint.support.remainingMins < 0
+              ? `${formatSprintMinutes(-sprint.support.remainingMins)} over the time kept for support`
+              : `${formatSprintMinutes(sprint.support.remainingMins)} left for support this sprint` }}
+          </p>
+        </section>
+
         <section class="dashboard-panel">
           <div class="panel-heading">
             <div>
@@ -204,6 +234,8 @@ import { localDate, startOfWeek, parseDateKey } from '@/shared/utils/dates'
 import { executeApi } from '@/shared/utils/api'
 import { asBoolean, asRecord, readList } from '@/shared/utils/schema'
 import ConfigurationStatus from '@/features/dashboard/components/ConfigurationStatus.vue'
+import { loadSprintProgress, formatMinutes as formatSprintMinutes } from '@/features/sprint-planning/composables/useSprintPlan'
+import type { SprintProgress } from '@/features/sprint-planning/composables/useSprintPlan'
 
 const router = useRouter()
 const entriesStore = useEntriesStore()
@@ -338,6 +370,8 @@ const loadTempoSummary = async () => {
 
 const recentActivity = computed(() => {
   return entriesStore.entries
+    // Lunch is a break, not an activity.
+    .filter(entry => !entry.isLunch)
     // An entry's date is only a calendar day, so the time of day has to come
     // from startTime or every item collapses to midnight and the relative
     // times below become meaningless.
@@ -418,6 +452,19 @@ let timeInterval: ReturnType<typeof setInterval> | undefined
 // it there silently failed and leaked the interval on every visit.
 onUnmounted(() => {
   clearInterval(timeInterval)
+  clearInterval(sprintTimer)
+})
+
+// The running sprint, if any. Nothing is shown when there is none or Jira is out of reach.
+const sprint = ref<SprintProgress | null>(null)
+let sprintTimer: ReturnType<typeof setInterval> | undefined
+const refreshSprint = async () => { sprint.value = await loadSprintProgress() }
+const percentOf = (part: number, whole: number) => (whole > 0 ? Math.min(100, Math.max(0, (part / whole) * 100)) : 0)
+const sprintDonePercent = computed(() => percentOf(sprint.value?.points.completed ?? 0, sprint.value?.points.planned ?? 0))
+const supportPercent = computed(() => percentOf(sprint.value?.support?.spentMins ?? 0, sprint.value?.support?.budgetMins ?? 0))
+const sprintEnd = computed(() => {
+  const day = sprint.value?.endDate
+  return day ? new Date(`${day}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : ''
 })
 
 onMounted(async () => {
@@ -441,6 +488,8 @@ onMounted(async () => {
   entriesStore.loadMissedDays()
   entriesStore.loadSubmissionHistory(5)
   loadTempoSummary()
+  void refreshSprint()
+  sprintTimer = setInterval(refreshSprint, 5 * 60 * 1000)
 })
 </script>
 
