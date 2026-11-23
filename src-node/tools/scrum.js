@@ -312,7 +312,8 @@ export const tools = [
     parameters: {
       type: 'object',
       properties: {
-        date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'The "today" date; defaults to the current local date' }
+        date: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'The "today" date; defaults to the current local date' },
+        extraTickets: { type: 'array', items: { type: 'string' }, description: 'More ticket keys in play today (such as In Progress in Jira) whose pull requests should be listed' }
       },
       required: []
     },
@@ -347,7 +348,14 @@ export const tools = [
         const blockers = openBlockers();
 
         const summary = fallbackSummary(previous, current, blockers);
-        const workedTicketValues = previous.entries.map(entry => entry.ticket_id).filter(Boolean);
+        // Pull requests are looked up for yesterday's tickets and for the ones in
+        // play today: logged today, or In Progress in Jira (sent by the page).
+        const inPlayToday = Array.isArray(args.extraTickets) ? args.extraTickets.map(String) : [];
+        const workedTicketValues = [
+          ...previous.entries.map(entry => entry.ticket_id),
+          ...current.entries.map(entry => entry.ticket_id),
+          ...inPlayToday
+        ].filter(Boolean);
         const { pullRequests } = await pullRequestsForReport(yesterday, workedTicketValues, blockers);
 
         return {

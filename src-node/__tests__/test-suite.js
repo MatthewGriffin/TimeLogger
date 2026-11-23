@@ -747,6 +747,9 @@ async function runTests() {
       assert.deepStrictEqual(noTickets.pullRequests, []);
       assert.deepStrictEqual(queries, [], 'With no worked tickets, GitHub should not be asked');
 
+      // A ticket in play today (such as In Progress in Jira) lists its pull requests too.
+      const inPlay = await withGitHubStub(github, () => executeTool('generate_scrum_summary', { date, extraTickets: ['TEST-300'] }));
+      assert.deepStrictEqual(inPlay.pullRequests.map(pr => pr.number).sort(), [31, 32, 33, 36]);
       addEntry.run(reportedDay, 'TEST-300', 'Worked ticket', 30);
       const result = await withGitHubStub(github, () => executeTool('generate_scrum_summary', { date }));
       const byNumber = new Map(result.pullRequests.map(pr => [pr.number, pr]));
