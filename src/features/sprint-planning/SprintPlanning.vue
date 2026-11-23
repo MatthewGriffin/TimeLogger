@@ -68,8 +68,8 @@
         </div>
         <div class="settings-row settings-pair">
           <label>
-            <span>Support story points a week (1 point = 1 day)</span>
-            <input v-model="supportText" type="number" min="0" max="5" step="0.5" inputmode="decimal" @change="saveSupport">
+            <span>Support story points for the sprint (1 point = 1 day)</span>
+            <input v-model="supportText" type="number" min="0" max="50" step="0.5" inputmode="decimal" @change="saveSupport">
           </label>
           <label>
             <span>Sprint ends{{ isActive ? '' : ' (once started; two weeks from the start if empty)' }}</span>
@@ -204,7 +204,7 @@ const pct = (points: number) => `${barMax.value ? Math.min(100, (points / barMax
 watch(state, value => {
   capacityText.value = value.capacity == null ? '' : String(value.capacity)
   boardText.value = value.boardUrl || value.boardId
-  supportText.value = value.supportPerWeek == null ? '' : String(value.supportPerWeek)
+  supportText.value = value.supportPoints == null ? '' : String(value.supportPoints)
   endsOnText.value = value.endsOn
 }, { immediate: true })
 
@@ -212,7 +212,7 @@ watch(state, value => {
 const asText = (value: unknown) => String(value ?? '').trim()
 const settingsText = (value: PlanState) => [
   value.capacity == null ? '' : String(value.capacity),
-  value.supportPerWeek == null ? '' : String(value.supportPerWeek),
+  value.supportPoints == null ? '' : String(value.supportPoints),
   value.endsOn,
   value.boardUrl || value.boardId
 ].join('|')

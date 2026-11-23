@@ -37,8 +37,8 @@ export interface PlanState {
   boardId: string
   boardUrl: string
   startedAt: string | null
-  /** Story points a week kept for support, where a point is a day's work. */
-  supportPerWeek: number | null
+  /** Story points kept for support over the whole sprint, where a point is a day's work. */
+  supportPoints: number | null
   /** Last day of the sprint, or empty for two weeks from the start. */
   endsOn: string
 }
@@ -53,7 +53,7 @@ export interface SprintProgress {
   hoursPerDay: number
   points: { completed: number; planned: number; expected: number; behind: number }
   support: {
-    perWeek: number | null
+    points: number | null
     spentMins: number
     tempoMins: number
     localMins: number
@@ -74,7 +74,7 @@ export async function loadSprintProgress(): Promise<SprintProgress | null> {
     const timeline = asRecord(data.timeline)
     const points = asRecord(data.points)
     const support = asRecord(data.support)
-    const hasSupport = support.perWeek != null && support.budgetMins != null
+    const hasSupport = support.points != null && support.budgetMins != null
     return {
       startDate: asString(timeline.startDate),
       endDate: asString(timeline.endDate),
@@ -90,7 +90,7 @@ export async function loadSprintProgress(): Promise<SprintProgress | null> {
         behind: Number(points.behind) || 0
       },
       support: hasSupport ? {
-        perWeek: Number(support.perWeek),
+        points: Number(support.points),
         spentMins: Number(support.spentMins) || 0,
         tempoMins: Number(support.tempoMins) || 0,
         localMins: Number(support.localMins) || 0,
@@ -194,7 +194,7 @@ const localDate = () => new Date().toLocaleDateString('en-CA')
  * to patch its own copy and cannot drift from what is saved.
  */
 export function useSprintPlan() {
-  const state = ref<PlanState>({ phase: 'planning', capacity: null, boardId: '', boardUrl: '', startedAt: null, supportPerWeek: null, endsOn: '' })
+  const state = ref<PlanState>({ phase: 'planning', capacity: null, boardId: '', boardUrl: '', startedAt: null, supportPoints: null, endsOn: '' })
   const progress = ref<SprintProgress | null>(null)
   const tickets = ref<PlanTicket[]>([])
   const summary = ref<PlanSummary>(emptySummary())
@@ -217,7 +217,7 @@ export function useSprintPlan() {
       boardId: asString(raw.boardId),
       boardUrl: asString(raw.boardUrl),
       startedAt: raw.startedAt ? asString(raw.startedAt) : null,
-      supportPerWeek: toNumber(raw.supportPerWeek),
+      supportPoints: toNumber(raw.supportPoints),
       endsOn: asString(raw.endsOn)
     }
     tickets.value = asList(data.tickets).map(toTicket)
@@ -273,7 +273,7 @@ export function useSprintPlan() {
   const setPoints = (key: string, points: number | null) => run('sprint_plan_set_points', { ticket_id: key, points })
   const setCapacity = (capacity: number | null) => run('sprint_plan_settings', { capacity })
   const setBoard = (board: string) => run('sprint_plan_settings', { board })
-  const setSupport = (supportPerWeek: number | null) => run('sprint_plan_settings', { supportPerWeek })
+  const setSupport = (supportPoints: number | null) => run('sprint_plan_settings', { supportPoints })
   const setEndsOn = (endsOn: string | null) => run('sprint_plan_settings', { endsOn })
   const loadProgress = async () => { progress.value = state.value.phase === 'active' ? await loadSprintProgress() : null }
   /**
