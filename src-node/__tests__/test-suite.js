@@ -157,6 +157,16 @@ async function runTests() {
     }
   });
 
+  await testAsync('a Tempo 401 that says it could not reach Atlassian is not reported as a bad token', async () => {
+    const previous = httpClient.defaults.adapter;
+    const body = '{"errors":[{"message":"We had a problem trying to communicate with Atlassian. Please try again later."}]}';
+    httpClient.defaults.adapter = async () => { throw Object.assign(new Error('Request failed'), { response: { status: 401, data: body } }); };
+    try {
+      await assert.rejects(() => makeHttpRequest('https://api.tempo.io/4/worklogs'), error => /couldn't reach Atlassian/.test(error.message) && error.status === 401);
+      await assert.rejects(() => makeHttpRequest('https://example.com/other'), /HTTP 401: .*communicate with Atlassian/);
+    } finally { httpClient.defaults.adapter = previous; }
+  });
+
   await testAsync('Shared HTTP adapter rejects unsupported protocols', async () => {
     await assert.rejects(() => makeHttpRequest('file:///etc/passwd'), /Unsupported URL protocol/);
   });
