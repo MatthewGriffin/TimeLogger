@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.3-beta.1
+
+- Sprint Planning: removed the Save settings button, since each setting already saves when you leave the field or press Enter. A note under the settings says when they are saved.
+
 ## 0.9.2
 
 - Sprint Planning: fixed the points available and support points not saving, and the Save settings button staying disabled, after you typed a number in them.
