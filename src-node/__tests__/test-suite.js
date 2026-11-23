@@ -744,16 +744,15 @@ async function runTests() {
       setConfig.run(JSON.stringify({ token: 'github-token', login: 'me' }));
 
       const noTickets = await withGitHubStub(github, () => executeTool('generate_scrum_summary', { date }));
-      assert.deepStrictEqual(noTickets.pullRequests, []);
-      assert.deepStrictEqual(queries, [], 'With no worked tickets, GitHub should not be asked');
+      assert.deepStrictEqual(noTickets.pullRequests.map(pr => pr.number).sort(), [36, 38, 39], 'Open PRs the account is involved in are listed without a ticket');
 
       // A ticket in play today (such as In Progress in Jira) lists its pull requests too.
       const inPlay = await withGitHubStub(github, () => executeTool('generate_scrum_summary', { date, extraTickets: ['TEST-300'] }));
-      assert.deepStrictEqual(inPlay.pullRequests.map(pr => pr.number).sort(), [31, 32, 33, 36]);
+      assert.deepStrictEqual(inPlay.pullRequests.map(pr => pr.number).sort(), [31, 32, 33, 36, 38, 39]);
       addEntry.run(reportedDay, 'TEST-300', 'Worked ticket', 30);
       const result = await withGitHubStub(github, () => executeTool('generate_scrum_summary', { date }));
       const byNumber = new Map(result.pullRequests.map(pr => [pr.number, pr]));
-      assert.deepStrictEqual([...byNumber.keys()].sort(), [31, 32, 33, 36]);
+      assert.deepStrictEqual([...byNumber.keys()].sort(), [31, 32, 33, 36, 38, 39]);
       assert(queries.includes(`is:pr mentions:me updated:>=${reportedDay}`), 'A PR updated again since should still be found');
       assert.strictEqual(byNumber.get(31).mentionsAccount, true);
       assert.deepStrictEqual(byNumber.get(31).majorUpdateTypes, ['mentioned you']);
@@ -3139,6 +3138,7 @@ async function runTests() {
     });
     const reported = makePr(77, 1, 'TEST-900 Cached PR', `${yesterday}T10:00:00Z`);
     const unrelated = makePr(78, 2, 'Unrelated PR', '2001-01-01T00:00:00Z');
+    unrelated.user = { login: 'someone-else' };
     const forTicket = makePr(79, 3, 'TEST-911 fix', '2001-01-01T00:00:00Z');
     let listed = [reported];
     let requests = 0;

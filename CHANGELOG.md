@@ -7,7 +7,7 @@ language. A version with nothing to notice can say "No visible changes."
 ## 0.9.1-beta.21
 
 - Sprint Planning now has a Save settings button for the points available, support story points, sprint end date and board. It shows when there are unsaved changes and confirms when they are saved.
-- Daily Scrum now lists the pull requests for tickets you logged time on today and tickets that are In Progress in Jira, as well as yesterday's. Merged and closed ones are included.
+- Daily Scrum now lists every open pull request you wrote, review or were asked to review, even when its title doesn't name a ticket. Merged and closed ones are still listed when they name a ticket you logged time on yesterday or today, or one that is In Progress in Jira.
 
 ## 0.9.1-beta.20
 

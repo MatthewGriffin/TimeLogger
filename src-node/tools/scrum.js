@@ -189,8 +189,9 @@ function fallbackSummary(yesterday, today, blockers) {
 }
 
 /**
- * Daily Scrum PRs must name a ticket worked on yesterday in their title,
- * description or branch. Of those, it lists PRs the account authored or reviews,
+ * Daily Scrum PRs are every open one the account authored or reviews, plus merged
+ * and closed ones that name a ticket in play in their title, description or branch,
+ * where the account authored or reviewed them,
  * plus any with a major lifecycle change or a mention of the account yesterday.
  * Page visits can overlap, so requests for the same PRs share one fetch.
  */
@@ -198,7 +199,7 @@ function fetchPullRequests(scope) {
   if (pullRequestFetch?.key === scope.key) return pullRequestFetch.promise;
   const promise = (async () => {
     const [ticketPullRequests, majorUpdatePullRequests, blockerPullRequests] = await Promise.all([
-      getPullRequestsForTickets(scope.tickets),
+      getPullRequestsForTickets(scope.tickets, { includeOpen: true }),
       getPullRequestsWithMajorUpdatesOnDate(scope.yesterday, scope.tickets),
       getPullRequestsForTickets(scope.blockerTickets)
     ]);
@@ -285,7 +286,8 @@ function pollAffectsReport(cached, { prs, changed, removed }) {
   if (removed.some(key => reportKeys.has(key))) return true;
 
   const workedTickets = new Set(extractTicketKeys(...cached.tickets, ...cached.blockerTickets));
-  return changed.some(pr => !inReport.has(pr.id) && pr.ticketKeys.some(key => workedTickets.has(key)));
+  const isOpen = pr => pr.state === 'open' || pr.state === 'draft';
+  return changed.some(pr => !inReport.has(pr.id) && (pr.ticketKeys.some(key => workedTickets.has(key)) || (isOpen(pr) && (pr.isAuthoredByAccount || pr.requestedReviewer || pr.reviewedByAccount))));
 }
 
 onPullRequestsPolled(async poll => {
