@@ -36,7 +36,8 @@ import {
 import {
   fetchWorkAttributes,
   getActivityTypeValues,
-  resolveActivityType
+  resolveActivityType,
+  fetchTicketInfo
 } from './jira-tempo-activity.js';
 import {
   daysAhead,
@@ -946,6 +947,11 @@ export const tools = [
           catch { activityValues = []; }
         }
 
+        // A support ticket decides its entries' type, so the tickets are looked up once.
+        const ticketInfo = activityValues.length && args.autoActivityType !== false
+          ? await fetchTicketInfo(credentials, entries.map(entry => entry.ticket_id))
+          : new Map();
+
         const resolvedFor = async (entry) => {
           const explicit = activityMap[entry.id] ?? activityMap[String(entry.id)];
           if (explicit) return { id: explicit, name: null, source: 'explicit' };
@@ -954,7 +960,8 @@ export const tools = [
           return resolveActivityType(entry.name, activityValues, {
             useLlm: true,
             fromCalendar: Boolean(entry.from_calendar),
-            isHoliday: Boolean(entry.is_holiday)
+            isHoliday: Boolean(entry.is_holiday),
+            ticket: ticketInfo.get(String(entry.ticket_id || '').trim().toUpperCase()) || null
           });
         };
 
