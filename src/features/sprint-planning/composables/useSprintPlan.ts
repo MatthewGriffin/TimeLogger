@@ -14,6 +14,13 @@ export interface PlanTicket {
   noteCount: number
 }
 
+export interface PlanPullRequest {
+  url: string
+  number: number
+  state: string
+  title: string
+}
+
 export interface PlanSummary {
   tickets: number
   planned: number
@@ -275,6 +282,25 @@ export function useSprintPlan() {
   const setBoard = (board: string) => run('sprint_plan_settings', { board })
   const setSupport = (supportPoints: number | null) => run('sprint_plan_settings', { supportPoints })
   const setEndsOn = (endsOn: string | null) => run('sprint_plan_settings', { endsOn })
+  // The pull request behind each ticket, where GitHub is connected and one names it.
+  const pullRequests = ref<Record<string, PlanPullRequest>>({})
+  const loadPullRequests = async () => {
+    if (state.value.phase !== 'active') { pullRequests.value = {}; return }
+    try {
+      const found = asRecord(asRecord(await executeApi('sprint_plan_pull_requests')).pullRequests)
+      const next: Record<string, PlanPullRequest> = {}
+      for (const [key, raw] of Object.entries(found)) {
+        const pr = asRecord(raw)
+        if (asString(pr.url)) next[key] = { url: asString(pr.url), number: Number(pr.number) || 0, state: asString(pr.state), title: asString(pr.title) }
+      }
+      pullRequests.value = next
+    } catch {
+      pullRequests.value = {}
+    }
+  }
+  const openPullRequest = async (url: string) => {
+    try { await invoke('open_external_url', { url }) } catch (err) { error.value = err instanceof Error ? err.message : String(err) }
+  }
   const loadProgress = async () => { progress.value = state.value.phase === 'active' ? await loadSprintProgress() : null }
   /**
    * Re-read every planned ticket from Jira, since status, points and titles
@@ -343,7 +369,7 @@ export function useSprintPlan() {
   const columns = computed(() => groupIntoColumns(tickets.value, boardColumns.value))
 
   return {
-    state, progress, tickets, summary, loading, busy, error, results, searching, searched, columns, refreshing, refreshedAt,
-    load, loadBoardColumns, loadProgress, search, add, remove, setPoints, setCapacity, setBoard, setSupport, setEndsOn, refresh, start, finish, openBoard, loadNotes, addNote
+    state, progress, pullRequests, tickets, summary, loading, busy, error, results, searching, searched, columns, refreshing, refreshedAt,
+    load, loadBoardColumns, loadProgress, loadPullRequests, openPullRequest, search, add, remove, setPoints, setCapacity, setBoard, setSupport, setEndsOn, refresh, start, finish, openBoard, loadNotes, addNote
   }
 }

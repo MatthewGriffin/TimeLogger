@@ -4,6 +4,11 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.5-beta.3
+
+- Sprint Planning: a ticket in the pull request column (such as Ready for PR) now has an Open PR button when GitHub is connected and a pull request names the ticket in its title, description or branch. It opens an open pull request if there is one, otherwise the most recent. A ticket with no match shows no button.
+- Sprint Planning: removed the status text beside Notes on each ticket, since the column already says it.
+
 ## 0.9.5-beta.2
 
 - Pages now use the full width of the window instead of stopping at a fixed width in the middle. On Sprint Planning the board columns, such as Done, now sit side by side as the window gets wider instead of wrapping onto another row. Daily Entries and the Calendar widen the same way, and the pull request cards (on Pull Requests and Daily Scrum) and the Support Tickets cards flow into several columns on a wide window.
