@@ -82,6 +82,10 @@
             <input v-model="boardText" type="text" placeholder="e.g. 166 or https://your-site.atlassian.net/jira/people/…/boards/166" @change="saveBoard">
           </label>
         </div>
+        <div class="settings-row settings-save">
+          <button type="button" class="btn btn-primary" :disabled="!settingsDirty || busy" @click="saveSettings">Save settings</button>
+          <span class="muted" role="status">{{ settingsDirty ? 'Unsaved changes' : settingsSaved ? 'Saved' : '' }}</span>
+        </div>
       </section>
 
       <!-- Running sprint: points and support time against where the sprint should be -->
@@ -178,7 +182,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import SprintTicketNotes from './components/SprintTicketNotes.vue'
 import { useSprintPlan, formatMinutes } from './composables/useSprintPlan'
-import type { BoardColumnView } from './composables/useSprintPlan'
+import type { BoardColumnView, PlanState } from './composables/useSprintPlan'
 
 const {
   state, progress, tickets, summary, loading, busy, error, results, searching, searched, columns, refreshing, refreshedAt,
@@ -206,6 +210,21 @@ watch(state, value => {
   supportText.value = value.supportPerWeek == null ? '' : String(value.supportPerWeek)
   endsOnText.value = value.endsOn
 }, { immediate: true })
+
+const settingsText = (value: PlanState) => [
+  value.capacity == null ? '' : String(value.capacity),
+  value.supportPerWeek == null ? '' : String(value.supportPerWeek),
+  value.endsOn,
+  value.boardUrl || value.boardId
+].join('|')
+const settingsDirty = computed(() =>
+  [capacityText.value.trim(), supportText.value.trim(), endsOnText.value, boardText.value.trim()].join('|') !== settingsText(state.value))
+const settingsSaved = ref(false)
+const saveSettings = async () => {
+  const saved = await saveCapacity() && await saveSupport() && await saveEndsOn() && await saveBoard()
+  settingsSaved.value = Boolean(saved)
+}
+watch(settingsDirty, dirty => { if (dirty) settingsSaved.value = false })
 
 const runSearch = () => search(query.value.trim())
 const toggleNotes = (key: string) => { openNotes.value = openNotes.value === key ? null : key }
@@ -303,6 +322,7 @@ h2 { font-size: 1.05rem; margin: 0 0 .75rem; }
 .seg-progress { background: var(--color-accent); }
 .seg-over { background: var(--color-danger); }
 .settings-row { margin-top: 1rem; }
+.settings-save { display: flex; align-items: center; gap: .75rem; }
 .settings-pair { display: flex; flex-wrap: wrap; gap: 1rem; }
 .settings-pair label { flex: 1 1 14rem; }
 .dates { margin: 0 0 .75rem; }

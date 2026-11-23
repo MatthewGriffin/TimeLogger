@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.1-beta.21
+
+- Sprint Planning now has a Save settings button for the points available, support story points, sprint end date and board. It shows when there are unsaved changes and confirms when they are saved.
+
 ## 0.9.1-beta.20
 
 - Sprint story points completed now count tickets from the pull request column onwards (Ready for PR, Ready for QA, Done and so on), because no more development is done on them unless QA sends them back. This applies to the completed against expected figures on Sprint Planning and the Dashboard. The To Do, In Progress and Done counters are unchanged.
