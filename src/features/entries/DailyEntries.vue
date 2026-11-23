@@ -840,7 +840,7 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
 /* Content */
 .entries-content {
   padding: 3rem;
-  max-width: 1400px;
+  max-width: var(--page-max);
   margin: 0 auto;
 }
 

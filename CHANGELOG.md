@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.5-beta.2
+
+- Pages now use the full width of the window instead of stopping at a fixed width in the middle. On Sprint Planning the board columns, such as Done, now sit side by side as the window gets wider instead of wrapping onto another row. Daily Entries and the Calendar widen the same way, and the pull request cards (on Pull Requests and Daily Scrum) and the Support Tickets cards flow into several columns on a wide window.
+
 ## 0.9.5-beta.1
 
 - New Support Tickets page, above Pull Requests. It lists the tickets in your Jira support filter (the 4th line support filter by default), with the reporter, assignee, support rank, product and module, and a coloured label for the ticket's current status, such as Under Investigation, Code Change Required or Waiting for customer. Support tickets get passed between developers, so it shows all of them, with a Show just mine switch that is on by default. Select a ticket to open it in Jira.
