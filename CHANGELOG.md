@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.2-beta.1
+
+- Sprint Planning: fixed the points available and support points not saving, and the Save settings button staying disabled, after you typed a number in them.
+
 ## 0.9.1
 
 - New Sprint Planning page, above Pull Requests. Search Jira for the tickets you plan to take on, add or remove them, and see their story points added up against the points you have available. Start sprint turns it into a progress view using your Jira board's own columns, with tickets and points per column, and it refreshes itself every five minutes. You can keep adding and removing tickets while the sprint runs, and Save settings stores the points available, support points, sprint end date and board.
