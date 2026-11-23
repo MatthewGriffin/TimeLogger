@@ -3580,6 +3580,22 @@ async function runTests() {
     }
   });
 
+  await testAsync('sprint tickets link to their pull request only where GitHub can name one', async () => {
+    const savedGitHub = db.prepare("SELECT value FROM settings WHERE key = 'github_config'").get();
+    try {
+      db.prepare("DELETE FROM settings WHERE key = 'github_config'").run();
+      await withJira(jira([jiraIssue('ZZPLAN-1', 2)]), async () => {
+        assert.deepStrictEqual((await executeTool('sprint_plan_pull_requests', {})).pullRequests, {}, 'No tickets, nothing to link');
+        await executeTool('sprint_plan_add', { ticket_id: 'ZZPLAN-1' });
+        const result = await executeTool('sprint_plan_pull_requests', {});
+        assert.strictEqual(result.success, true, 'GitHub being unavailable is not an error');
+        assert.deepStrictEqual(result.pullRequests, {});
+      });
+    } finally {
+      if (savedGitHub) db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('github_config', ?)").run(savedGitHub.value);
+    }
+  });
+
   test('the sprint timeline counts working days, ends two weeks after the start unless told otherwise, and moves through the day', () => {
     const workday = { startMinute: 9 * 60, endMinute: 17 * 60, minutes: 450 };
     const start = new Date('2026-11-02T10:00:00').toISOString();

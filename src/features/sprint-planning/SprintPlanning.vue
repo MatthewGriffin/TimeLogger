@@ -159,8 +159,14 @@
             <div><strong>{{ ticket.key }}</strong> <span class="muted">{{ ticket.points ?? '–' }} pts</span></div>
             <p>{{ ticket.summary }}</p>
             <div class="ticket-foot">
-              <span class="muted">{{ ticket.status }}</span>
               <span class="foot-actions">
+                <button
+                  v-if="isPullRequestColumn(column.name) && pullRequests[ticket.key]"
+                  class="link"
+                  type="button"
+                  :title="`${pullRequests[ticket.key].title} (#${pullRequests[ticket.key].number}, ${pullRequests[ticket.key].state})`"
+                  @click="openPullRequest(pullRequests[ticket.key].url)"
+                >Open PR ↗</button>
                 <button class="link" type="button" :aria-expanded="openNotes === ticket.key" @click="toggleNotes(ticket.key)">
                   Notes<template v-if="ticket.noteCount"> ({{ ticket.noteCount }})</template>
                 </button>
@@ -182,8 +188,8 @@ import { useSprintPlan, formatMinutes } from './composables/useSprintPlan'
 import type { BoardColumnView, PlanState } from './composables/useSprintPlan'
 
 const {
-  state, progress, tickets, summary, loading, busy, error, results, searching, searched, columns, refreshing, refreshedAt,
-  load, loadBoardColumns, loadProgress, setSupport, setEndsOn, search, add, remove, setPoints, setCapacity, setBoard, refresh, start, finish, openBoard, loadNotes, addNote
+  state, progress, pullRequests, tickets, summary, loading, busy, error, results, searching, searched, columns, refreshing, refreshedAt,
+  load, loadBoardColumns, loadProgress, loadPullRequests, openPullRequest, setSupport, setEndsOn, search, add, remove, setPoints, setCapacity, setBoard, refresh, start, finish, openBoard, loadNotes, addNote
 } = useSprintPlan()
 
 const query = ref('')
@@ -237,6 +243,8 @@ const saveSupport = () => {
 }
 const saveEndsOn = () => saved(setEndsOn(endsOnText.value || null))
 
+// A ticket waiting in the pull request column usually has a pull request open for review.
+const isPullRequestColumn = (name: string) => /\bPR\b|pull request|code review|in review/i.test(name)
 const columnPoints = (column: BoardColumnView) => column.tickets.reduce((total, ticket) => total + (ticket.points ?? 0), 0)
 const formatDay = (day: string) => new Date(`${day}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
 
@@ -277,11 +285,13 @@ onMounted(async () => {
   if (tickets.value.length) await refresh(true)
   if (isActive.value) await loadBoardColumns()
   await loadProgress()
+  void loadPullRequests()
   refreshTimer = setInterval(async () => {
     if (typing() || !tickets.value.length) return
     await refresh(true)
     if (isActive.value) await loadBoardColumns()
     await loadProgress()
+    void loadPullRequests()
   }, REFRESH_EVERY_MS)
 })
 
@@ -342,7 +352,7 @@ label.wide input, .search-row .grow input { width: 100%; }
 .column { display: flex; flex-direction: column; gap: .75rem; padding: .75rem; border-radius: var(--radius-md); background: var(--color-surface); }
 .ticket-card p { margin: .4rem 0; overflow-wrap: anywhere; }
 .ticket-card { padding-bottom: 0; }
-.ticket-foot { display: flex; justify-content: space-between; align-items: center; padding-bottom: .75rem; font-size: .85rem; }
+.ticket-foot { display: flex; justify-content: flex-end; align-items: center; padding-bottom: .75rem; font-size: .85rem; }
 .foot-actions { display: flex; gap: 1rem; }
 .link { background: none; border: 0; color: var(--color-accent); cursor: pointer; padding: 0; font: inherit; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

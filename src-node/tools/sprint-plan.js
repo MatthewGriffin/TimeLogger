@@ -14,6 +14,7 @@ import { db } from '../index.js';
 import { localDateKey } from '../utils/dates.js';
 import { sprintTimeline, workdayHours, supportSpent, clearSupportCache } from './sprint-progress.js';
 import { makeHttpRequest } from '../api/http-client.js';
+import { getPullRequestsForTickets } from './github-prs.js';
 import {
   resolveJiraCredentials,
   jiraHeaders,
@@ -499,6 +500,30 @@ export const tools = [
           support
         };
       } catch (error) { return fail('work out the sprint progress', error); }
+    }
+  },
+  {
+    name: 'sprint_plan_pull_requests',
+    description: 'The pull request behind each ticket in the sprint, where GitHub is connected and one names the ticket: an open one if there is one, otherwise the most recently updated',
+    parameters: { type: 'object', properties: {}, required: [] },
+    handler: async () => {
+      try {
+        const keys = db.prepare('SELECT ticket_id FROM sprint_plan_tickets').all().map(row => row.ticket_id);
+        if (!keys.length) return { success: true, pullRequests: {} };
+        const found = await getPullRequestsForTickets(keys);
+        const isOpen = pr => pr.state === 'open' || pr.state === 'draft';
+        const pullRequests = {};
+        for (const key of keys) {
+          const matching = found.filter(pr => pr.ticketKeys.some(candidate => candidate.toUpperCase() === key.toUpperCase()) && pr.url);
+          matching.sort((a, b) => (Number(isOpen(b)) - Number(isOpen(a))) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+          const best = matching[0];
+          if (best) pullRequests[key] = { url: best.url, number: best.number, repository: best.repository, state: best.state, title: best.title };
+        }
+        return { success: true, pullRequests };
+      } catch {
+        // GitHub is optional: without it there is simply no link to offer.
+        return { success: true, pullRequests: {} };
+      }
     }
   },
   {
