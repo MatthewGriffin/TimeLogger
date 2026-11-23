@@ -21,6 +21,7 @@ import * as EntryTickets from './tools/entry-tickets.js';
 import * as Scrum from './tools/scrum.js';
 import * as ScrumPlan from './tools/scrum-plan.js';
 import * as SprintPlan from './tools/sprint-plan.js';
+import * as SupportTickets from './tools/support-tickets.js';
 import * as Setup from './tools/setup.js';
 import * as AiModel from './tools/ai-model.js';
 import * as Reminders from './tools/reminders.js';
@@ -49,6 +50,7 @@ export const tools = [
   ...Scrum.tools,
   ...ScrumPlan.tools,
   ...SprintPlan.tools,
+  ...SupportTickets.tools,
   
   // OneNote
   ...OneNote.tools,

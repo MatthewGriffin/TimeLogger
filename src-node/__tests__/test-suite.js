@@ -29,6 +29,7 @@ import { GraphClient, hasStoredGraphToken } from '../api/graph-client.js';
 import { fetchAllTempoPages } from '../tools/jira-tempo-worklogs.js';
 import { localDateKey } from '../utils/dates.js';
 import { summarisePlan } from '../tools/sprint-plan.js';
+import { parseFilterId, statusGroup } from '../tools/support-tickets.js';
 import { ticketSupportKind, resolveActivityType } from '../tools/jira-tempo-activity.js';
 import { sprintTimeline, localSupportMinutes } from '../tools/sprint-progress.js';
 import { makeHttpRequest, httpClient } from '../api/http-client.js';
@@ -3527,6 +3528,56 @@ async function runTests() {
     assert.strictEqual(await typeOf('Code review of the fix', defect), 'Code Review', 'A review stays a review');
     assert.strictEqual(await typeOf('Team catch-up', defect), 'Meeting', 'A meeting stays a meeting');
     assert.strictEqual(await typeOf('Anything', defect, { fromCalendar: true }), 'Meeting');
+  });
+
+  await testAsync('support tickets list the filter with rank, product, module and status, and can show just mine', async () => {
+    const saved = db.prepare("SELECT value FROM settings WHERE key = 'support_tickets_settings'").get();
+    const issue = (key, status, assignee, rank, module) => ({ key, fields: {
+      summary: `${key} summary`, status: { name: status }, reporter: { displayName: 'Reporter One' },
+      assignee: assignee ? { displayName: assignee, accountId: assignee === 'Me' ? 'acct-1' : 'acct-2' } : null,
+      customfield_13287: rank, customfield_10241: { value: 'EPR', child: { value: module } }, priority: { name: 'Urgent' }, updated: '2026-11-20T10:00:00.000+0000'
+    } });
+    const issues = [issue('ZZSUP-1', 'Under Investigation', 'Me', 33000, 'Waiting List'), issue('ZZSUP-2', 'Code Change Required', 'Other Dev', 20000, 'Inpatients'), issue('ZZSUP-3', 'Waiting for customer', null, null, 'DocMan')];
+    const route = url => {
+      if (url.pathname.endsWith('/myself')) return { accountId: 'acct-1', displayName: 'Me' };
+      if (url.pathname.endsWith('/field')) return [{ id: 'customfield_13287', name: 'Support Rank' }, { id: 'customfield_10241', name: 'Product and Module' }];
+      if (url.pathname.endsWith('/search/jql')) return { issues, isLast: true };
+      return {};
+    };
+    try {
+      await withJira(route, async urls => {
+        assert.strictEqual(parseFilterId('https://systemc.atlassian.net/issues/?filter=80556'), '80556');
+        assert.strictEqual(parseFilterId(' 123 '), '123');
+        assert.strictEqual(parseFilterId('https://example.com/nothing'), '');
+        assert.strictEqual(statusGroup('Waiting for customer'), 'customer');
+        assert.strictEqual(statusGroup('Code Change Required'), 'dev');
+        assert.strictEqual(statusGroup('On Hold'), 'blocked');
+        assert.strictEqual(statusGroup('Under Investigation'), 'investigating');
+        assert.strictEqual(statusGroup('Something else'), 'other');
+
+        await executeTool('support_tickets_settings', { filter: 'https://example.atlassian.net/issues/?filter=555' });
+        const result = await executeTool('support_tickets_list', { refresh: true });
+        assert.strictEqual(result.success, true);
+        assert.ok(urls.some(url => url.includes('filter = 555')), 'The saved filter is the one searched');
+        assert.deepStrictEqual(result.tickets.map(ticket => ticket.key), ['ZZSUP-1', 'ZZSUP-2', 'ZZSUP-3']);
+        const [mine, other, unassigned] = result.tickets;
+        assert.strictEqual(mine.isMine, true);
+        assert.strictEqual(other.isMine, false);
+        assert.strictEqual(unassigned.assignee, '');
+        assert.deepStrictEqual([mine.supportRank, mine.product, mine.module, mine.reporter], [33000, 'EPR', 'Waiting List', 'Reporter One']);
+        assert.strictEqual(unassigned.supportRank, null);
+        assert.strictEqual(other.statusGroup, 'dev');
+        assert.strictEqual(mine.url, 'https://example.atlassian.net/browse/ZZSUP-1');
+        assert.strictEqual(result.settings.filterLink, 'https://example.atlassian.net/issues/?filter=555');
+
+        assert.strictEqual((await executeTool('support_tickets_settings', { filter: 'not a filter' })).success, false);
+        const reset = await executeTool('support_tickets_settings', { filter: '' });
+        assert.strictEqual(reset.settings.filterId, '80556', 'Clearing it returns to the default filter');
+      });
+    } finally {
+      if (saved) db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('support_tickets_settings', ?)").run(saved.value);
+      else db.prepare("DELETE FROM settings WHERE key = 'support_tickets_settings'").run();
+    }
   });
 
   test('the sprint timeline counts working days, ends two weeks after the start unless told otherwise, and moves through the day', () => {
