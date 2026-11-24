@@ -264,6 +264,23 @@
       </div>
     </div>
 
+    <!-- An entry in the way of an edit -->
+    <div v-if="moveConflict" class="modal-overlay" @click.self="declineMoveConflict">
+      <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="move-conflict-title">
+        <div class="modal-header">
+          <h2 id="move-conflict-title">Entry in the way</h2>
+        </div>
+        <p>
+          <strong>{{ moveConflict.conflict.name }}</strong> ({{ moveConflict.conflict.startTime }}–{{ moveConflict.conflict.endTime }})
+          conflicts with this change. Move it to start at {{ moveConflict.edit.endTime }}?
+        </p>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" @click="declineMoveConflict">No, keep it as it is</button>
+          <button type="button" class="btn-primary" @click="moveConflictingEntry">Move it</button>
+        </div>
+      </div>
+    </div>
+
     <MeetingTicketPrompt :meetings="unmappedMeetings" @close="onPromptClose" />
     <MeetingConflictPrompt />
     <LunchConflictPrompt />
@@ -590,38 +607,51 @@ const submitEditEntry = async () => {
       : undefined
     const conflicts = response?.conflict?.entries || []
     if (conflicts.length === 1) {
-      const conflict = conflicts[0]
-      const move = window.confirm(
-        `${conflict.name} (${conflict.startTime}-${conflict.endTime}) conflicts with this change. ` +
-        `Move it to start at ${edit.endTime}?`
-      )
-      if (move) {
-        try {
-          const [startHour, startMin] = edit.endTime.split(':').map(Number)
-          const [endHour, endMin] = conflict.endTime.split(':').map(Number)
-          await entriesStore.updateEntry(String(conflict.id), {
-            startTime: edit.endTime,
-            endTime: conflict.endTime,
-            duration: (endHour * 60 + endMin) - (startHour * 60 + startMin)
-          })
-          await entriesStore.updateEntry(edit.id, {
-            taskName: edit.taskName,
-            ticketId: edit.ticketId,
-            startTime: edit.startTime,
-            endTime: edit.endTime,
-            duration
-          })
-          editingEntry.value = null
-          uiStore.showSuccess(`${conflict.name} moved and entry updated successfully`)
-          return
-        } catch {
-          uiStore.showError(entriesStore.error || 'Could not move the conflicting entry')
-          return
-        }
-      }
+      // Offered in a dialog; accepting runs moveConflictingEntry below.
+      moveConflict.value = { conflict: conflicts[0], edit: { ...edit }, duration }
+      return
     }
     uiStore.showError(entriesStore.error || 'Failed to update entry')
   }
+}
+
+// One entry in the way of an edit can be moved to start where the edit ends.
+const moveConflict = ref<{
+  conflict: { id: number; name: string; startTime: string; endTime: string }
+  edit: TimeEntry
+  duration: number
+} | null>(null)
+
+const moveConflictingEntry = async () => {
+  const pending = moveConflict.value
+  if (!pending) return
+  const { conflict, edit, duration } = pending
+  moveConflict.value = null
+  try {
+    const [startHour, startMin] = edit.endTime.split(':').map(Number)
+    const [endHour, endMin] = conflict.endTime.split(':').map(Number)
+    await entriesStore.updateEntry(String(conflict.id), {
+      startTime: edit.endTime,
+      endTime: conflict.endTime,
+      duration: (endHour * 60 + endMin) - (startHour * 60 + startMin)
+    })
+    await entriesStore.updateEntry(edit.id, {
+      taskName: edit.taskName,
+      ticketId: edit.ticketId,
+      startTime: edit.startTime,
+      endTime: edit.endTime,
+      duration
+    })
+    editingEntry.value = null
+    uiStore.showSuccess(`${conflict.name} moved and entry updated successfully`)
+  } catch {
+    uiStore.showError(entriesStore.error || 'Could not move the conflicting entry')
+  }
+}
+
+const declineMoveConflict = () => {
+  moveConflict.value = null
+  uiStore.showError(entriesStore.error || 'Failed to update entry')
 }
 
 const cancelEdit = () => {

@@ -32,7 +32,7 @@
         </div>
 
         <div class="topics-list">
-          <button class="btn-add-topic" type="button" @click="createCategory">+ Category</button>
+          <button class="btn-add-topic" type="button" @click="openNewCategory">+ Category</button>
           <button
             v-for="topic in notesStore.topics"
             :key="topic"
@@ -187,6 +187,59 @@
           >{{ viewingNote.blockerResolvedAt ? 'Reopen blocker' : 'Mark resolved' }}</button>
           <button type="button" class="btn-primary" @click="editViewedNote">Edit</button>
         </div>
+      </div>
+    </div>
+
+    <!-- New category -->
+    <div v-if="newCategory" class="modal-overlay" @click.self="closeNewCategory">
+      <div class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="new-category-title">
+        <div class="modal-header">
+          <h2 id="new-category-title">New category</h2>
+          <button type="button" class="modal-close" aria-label="Close" @click="closeNewCategory">✕</button>
+        </div>
+        <form class="note-form" @submit.prevent="submitNewCategory">
+          <div class="form-group">
+            <label for="new-category-name">Category name</label>
+            <input id="new-category-name" ref="newCategoryInput" v-model="newCategory.name" type="text" maxlength="30" autocomplete="off" placeholder="e.g. Architecture">
+          </div>
+          <p v-if="newCategory.error" class="field-hint category-error" role="alert">{{ newCategory.error }}</p>
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" @click="closeNewCategory">Cancel</button>
+            <button type="submit" class="btn-primary" :disabled="newCategory.saving || !newCategory.name.trim()">{{ newCategory.saving ? 'Creating…' : 'Create category' }}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Delete a category -->
+    <div v-if="categoryToDelete" class="modal-overlay" @click.self="closeDeleteCategory">
+      <div class="modal modal-small" role="dialog" aria-modal="true" aria-labelledby="delete-category-title">
+        <div class="modal-header">
+          <h2 id="delete-category-title">Delete “{{ categoryToDelete.topic }}”</h2>
+          <button type="button" class="modal-close" aria-label="Close" @click="closeDeleteCategory">✕</button>
+        </div>
+        <form class="note-form" @submit.prevent="submitDeleteCategory">
+          <p v-if="!categoryToDelete.count" class="new-topic-copy">This category is empty. Delete it?</p>
+          <template v-else>
+            <p class="new-topic-copy">This category has {{ categoryToDelete.count }} note{{ categoryToDelete.count === 1 ? '' : 's' }}. What should happen to {{ categoryToDelete.count === 1 ? 'it' : 'them' }}?</p>
+            <label class="choice"><input v-model="categoryToDelete.choice" type="radio" value="move"> Move {{ categoryToDelete.count === 1 ? 'it' : 'them' }} to another category</label>
+            <div v-if="categoryToDelete.choice === 'move'" class="form-group">
+              <label for="move-category-name">Move to</label>
+              <input id="move-category-name" v-model="categoryToDelete.moveTo" type="text" maxlength="30" list="move-category-options" autocomplete="off" placeholder="An existing or new category">
+              <datalist id="move-category-options">
+                <option v-for="topic in notesStore.topics.filter(name => name.toLowerCase() !== categoryToDelete!.topic.toLowerCase())" :key="topic" :value="topic" />
+              </datalist>
+            </div>
+            <label class="choice"><input v-model="categoryToDelete.choice" type="radio" value="delete"> Delete {{ categoryToDelete.count === 1 ? 'it' : 'them' }} too. This cannot be undone</label>
+          </template>
+          <p v-if="categoryToDelete.error" class="field-hint category-error" role="alert">{{ categoryToDelete.error }}</p>
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" @click="closeDeleteCategory">Cancel</button>
+            <button type="submit" class="btn-primary" :class="{ danger: categoryToDelete.count > 0 && categoryToDelete.choice === 'delete' }" :disabled="categoryToDelete.saving">
+              {{ categoryToDelete.saving ? 'Working…' : deleteButtonLabel }}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -479,44 +532,76 @@ const editViewedNote = () => {
   if (note) editNote(note)
 }
 
-const createCategory = async () => {
-  const name = window.prompt('Name for the new note category')
-  if (name == null) return
-  const trimmed = name.trim()
-  if (!trimmed) {
-    uiStore.showError('Enter a category name')
-    return
-  }
+// New category: a dialog in place of the browser's prompt box.
+const newCategory = ref<{ name: string; error: string; saving: boolean } | null>(null)
+const newCategoryInput = ref<HTMLInputElement | null>(null)
+
+const openNewCategory = async () => {
+  newCategory.value = { name: '', error: '', saving: false }
+  await nextTick()
+  newCategoryInput.value?.focus()
+}
+const closeNewCategory = () => { newCategory.value = null }
+
+const submitNewCategory = async () => {
+  const dialog = newCategory.value
+  if (!dialog) return
+  const name = dialog.name.trim().replace(/\s+/g, ' ')
+  if (!name) { dialog.error = 'Enter a category name'; return }
+  dialog.saving = true
+  dialog.error = ''
   try {
-    const topic = await notesStore.createNoteTopic(trimmed)
+    const topic = await notesStore.createNoteTopic(name)
+    newCategory.value = null
     uiStore.showSuccess(`Category "${topic}" created`)
   } catch (error) {
-    uiStore.showError(error instanceof Error ? error.message : 'Failed to create category')
+    dialog.error = error instanceof Error ? error.message : 'Failed to create category'
+    dialog.saving = false
   }
 }
 
-const deleteCategory = async (topic: string) => {
-  const count = notesStore.notesCount[topic] || 0
-  let moveTo: string | undefined
-  if (count > 0) {
-    const moveInstead = window.confirm(`Category "${topic}" contains ${count} note${count === 1 ? '' : 's'}. Press OK to move these notes to another category, or Cancel to choose whether to delete them.`)
-    if (moveInstead) {
-      const destination = window.prompt(`Move ${count} note${count === 1 ? '' : 's'} from "${topic}" to which category? Enter an existing category name or a new name.`, DEFAULT_TOPIC)
-      if (destination == null) return
-      moveTo = destination.trim().replace(/\s+/g, ' ')
-      if (!moveTo) { uiStore.showError('Enter a destination category'); return }
-      if (moveTo.toLowerCase() === topic.toLowerCase()) { uiStore.showError('Choose a different destination category'); return }
-    } else if (!window.confirm(`Permanently delete category "${topic}" and all ${count} note${count === 1 ? '' : 's'} in it? This cannot be undone.`)) {
-      return
-    }
-  } else if (!window.confirm(`Delete the empty category "${topic}"?`)) {
-    return
+// Delete category: one dialog covers an empty category, moving its notes, or deleting them too.
+const categoryToDelete = ref<{ topic: string; count: number; choice: 'move' | 'delete'; moveTo: string; error: string; saving: boolean } | null>(null)
+
+const deleteCategory = (topic: string) => {
+  categoryToDelete.value = {
+    topic,
+    count: notesStore.notesCount[topic] || 0,
+    choice: 'move',
+    moveTo: DEFAULT_TOPIC,
+    error: '',
+    saving: false
   }
+}
+const closeDeleteCategory = () => { categoryToDelete.value = null }
+
+const deleteButtonLabel = computed(() => {
+  const dialog = categoryToDelete.value
+  if (!dialog) return ''
+  if (!dialog.count) return 'Delete category'
+  return dialog.choice === 'move' ? 'Move notes and delete category' : `Delete category and ${dialog.count} note${dialog.count === 1 ? '' : 's'}`
+})
+
+const submitDeleteCategory = async () => {
+  const dialog = categoryToDelete.value
+  if (!dialog) return
+  let moveTo: string | undefined
+  if (dialog.count > 0 && dialog.choice === 'move') {
+    moveTo = dialog.moveTo.trim().replace(/\s+/g, ' ')
+    if (!moveTo) { dialog.error = 'Enter a destination category'; return }
+    if (moveTo.toLowerCase() === dialog.topic.toLowerCase()) { dialog.error = 'Choose a different destination category'; return }
+  }
+  dialog.saving = true
+  dialog.error = ''
   try {
-    const affected = await notesStore.deleteNoteTopic(topic, moveTo)
-    uiStore.showSuccess(moveTo ? `Moved ${affected} note${affected === 1 ? '' : 's'} to "${moveTo}" and deleted "${topic}"` : `Deleted category "${topic}" and ${affected} note${affected === 1 ? '' : 's'}`)
+    const affected = await notesStore.deleteNoteTopic(dialog.topic, moveTo)
+    categoryToDelete.value = null
+    uiStore.showSuccess(moveTo
+      ? `Moved ${affected} note${affected === 1 ? '' : 's'} to "${moveTo}" and deleted "${dialog.topic}"`
+      : `Deleted category "${dialog.topic}"${dialog.count ? ` and ${affected} note${affected === 1 ? '' : 's'}` : ''}`)
   } catch {
-    uiStore.showError(notesStore.error || 'Failed to delete category')
+    dialog.error = notesStore.error || 'Failed to delete category'
+    dialog.saving = false
   }
 }
 
@@ -1214,6 +1299,10 @@ onUnmounted(() => {
 .modal-small {
   max-width: 420px;
 }
+
+.choice { display: flex; align-items: center; gap: .5rem; color: var(--color-text); cursor: pointer; }
+.category-error { color: var(--color-danger); margin: 0; }
+.btn-primary.danger { background: var(--color-danger); border-color: var(--color-danger); }
 
 .new-topic-copy {
   color: var(--color-text-muted);
