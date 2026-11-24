@@ -155,7 +155,7 @@
 
       <!-- Active: progress, limited to the user's own tickets -->
       <section v-else class="board" aria-label="Sprint progress">
-        <div v-for="column in columns" :key="column.name" class="column">
+        <div v-for="(column, columnIndex) in columns" :key="column.name" class="column">
           <h2>{{ column.name }} <span class="muted">({{ column.tickets.length }} · {{ columnPoints(column) }} pts)</span></h2>
           <p v-if="!column.tickets.length" class="muted">Nothing here.</p>
           <article v-for="ticket in column.tickets" :key="ticket.key" class="card ticket-card">
@@ -164,7 +164,7 @@
             <div class="ticket-foot">
               <span class="foot-actions">
                 <button
-                  v-if="isPullRequestColumn(column.name) && pullRequests[ticket.key]"
+                  v-if="pullRequests[ticket.key] && mayHavePullRequest(column.name, columnIndex, ticket.statusCategory)"
                   class="link"
                   type="button"
                   :title="`${pullRequests[ticket.key].title} (#${pullRequests[ticket.key].number}, ${pullRequests[ticket.key].state})`"
@@ -248,6 +248,10 @@ const saveEndsOn = () => saved(setEndsOn(endsOnText.value || null))
 
 // A ticket waiting in the pull request column usually has a pull request open for review.
 const isPullRequestColumn = (name: string) => /\bPR\b|pull request|code review|in review/i.test(name)
+// Some ticket types can't be moved to the pull request column yet still have a pull request, so
+// anything in progress is checked too: in a column between the first and the last, or In Progress in Jira.
+const mayHavePullRequest = (name: string, index: number, category: string) =>
+  isPullRequestColumn(name) || category === 'indeterminate' || (index > 0 && index < columns.value.length - 1)
 const columnPoints = (column: BoardColumnView) => column.tickets.reduce((total, ticket) => total + (ticket.points ?? 0), 0)
 const formatDay = (day: string) => new Date(`${day}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
 
