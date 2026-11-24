@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.5-beta.15
+
+- Scroll bars across the app are now slim, rounded and dark to match the rest of it, instead of the default Windows bar. They brighten when you hover over them and turn the accent colour while you drag.
+
 ## 0.9.5-beta.14
 
 - Calendar: event names in the month view are no longer cut off after twelve characters. The whole name shows, wrapping onto a second line, and only a longer one is shortened (hover for the full name).

@@ -957,28 +957,6 @@ onMounted(async () => {
   max-width: 700px;
 }
 
-/* Scrollbar */
-.settings-tabs::-webkit-scrollbar,
-.tab-content::-webkit-scrollbar {
-  width: 6px;
-}
-
-.settings-tabs::-webkit-scrollbar-track,
-.tab-content::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.settings-tabs::-webkit-scrollbar-thumb,
-.tab-content::-webkit-scrollbar-thumb {
-  background: var(--color-border-strong);
-  border-radius: 3px;
-}
-
-.settings-tabs::-webkit-scrollbar-thumb:hover,
-.tab-content::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.4);
-}
-
 /* Responsive */
 @media (max-width: 1024px) {
   .tab-content {
@@ -1012,7 +990,6 @@ onMounted(async () => {
     border-bottom: 1px solid var(--color-border);
     overflow-x: auto;
     overflow-y: hidden;
-    scrollbar-width: thin;
   }
 
   .tab-button {

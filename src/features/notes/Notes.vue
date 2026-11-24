@@ -1405,32 +1405,6 @@ onUnmounted(() => {
   background: var(--color-control-hover);
 }
 
-/* Scrollbar */
-.notes-sidebar::-webkit-scrollbar,
-.notes-main::-webkit-scrollbar,
-.modal::-webkit-scrollbar {
-  width: 6px;
-}
-
-.notes-sidebar::-webkit-scrollbar-track,
-.notes-main::-webkit-scrollbar-track,
-.modal::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.notes-sidebar::-webkit-scrollbar-thumb,
-.notes-main::-webkit-scrollbar-thumb,
-.modal::-webkit-scrollbar-thumb {
-  background: var(--color-border-strong);
-  border-radius: 3px;
-}
-
-.notes-sidebar::-webkit-scrollbar-thumb:hover,
-.notes-main::-webkit-scrollbar-thumb:hover,
-.modal::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.4);
-}
-
 /* Responsive */
 @media (max-width: 1024px) {
   .notes-main {

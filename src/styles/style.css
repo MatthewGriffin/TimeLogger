@@ -35,6 +35,39 @@ select {
 }
 
 /**
+ * Scrollbars for the whole app: slim, rounded and quiet until you reach for them,
+ * instead of the default light bar. They are set with the ::-webkit- parts only,
+ * because setting scrollbar-color or scrollbar-width as well would make Chromium
+ * ignore these. A pointer over the bar, or dragging it, brings in the accent.
+ */
+*::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar-thumb, rgba(148, 163, 184, 0.28));
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-scrollbar-thumb-hover, rgba(148, 163, 184, 0.5));
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background: var(--color-accent);
+  background-clip: content-box;
+}
+
+/**
  * One reset for the whole app.
  *
  * This previously lived, identically, inside nine components' `<style scoped>`

@@ -2150,21 +2150,6 @@ const reconcileDuration = async (row: ReconciledRow) => {
   max-height: min(28rem, 60vh);
   overflow-y: auto;
   padding-right: 0.5rem;
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-border-strong) transparent;
-}
-
-.history-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.history-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.history-list::-webkit-scrollbar-thumb {
-  background: var(--color-border-strong);
-  border-radius: 3px;
 }
 
 .history-item {
@@ -2274,24 +2259,6 @@ const reconcileDuration = async (row: ReconciledRow) => {
   font-weight: 700;
   color: var(--color-accent);
   font-family: 'Space Mono', monospace;
-}
-
-/* Scrollbar */
-.table-body::-webkit-scrollbar {
-  width: 6px;
-}
-
-.table-body::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.table-body::-webkit-scrollbar-thumb {
-  background: var(--color-border-strong);
-  border-radius: 3px;
-}
-
-.table-body::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.4);
 }
 
 /* Responsive */
