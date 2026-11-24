@@ -96,7 +96,7 @@
         <div class="points-figures">
           <div>
             <strong :class="{ over: progress.points.behind > 0.5 }">{{ progress.points.completed }} / {{ progress.points.expected }}</strong>
-            <span>pts completed / expected by now · {{ progress.points.planned }} planned. Completed means in the pull request column or any after it</span>
+            <span>pts completed / expected by now · {{ progress.points.planned }} planned. Completed means in the pull request column or any after it. Expected allows for the time kept for support</span>
           </div>
           <div v-if="progress.support">
             <strong :class="{ over: progress.support.remainingMins < 0 }">{{ formatMinutes(progress.support.spentMins) }} / {{ formatMinutes(progress.support.budgetMins) }}</strong>
