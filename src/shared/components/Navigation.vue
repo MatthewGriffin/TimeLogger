@@ -320,23 +320,6 @@ const isActive = (path: string) => {
 }
 
 /* Scrollbar styling */
-.nav-links::-webkit-scrollbar {
-  width: 6px;
-}
-
-.nav-links::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.nav-links::-webkit-scrollbar-thumb {
-  background: var(--color-border-strong);
-  border-radius: 3px;
-}
-
-.nav-links::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.4);
-}
-
 /* Responsive */
 @media (max-width: 768px) {
   .navigation {

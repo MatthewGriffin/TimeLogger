@@ -852,24 +852,6 @@ onMounted(async () => {
   margin-top: 1rem;
 }
 
-/* Scrollbar */
-.calendar-sidebar::-webkit-scrollbar {
-  width: 6px;
-}
-
-.calendar-sidebar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.calendar-sidebar::-webkit-scrollbar-thumb {
-  background: var(--color-border-strong);
-  border-radius: 3px;
-}
-
-.calendar-sidebar::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.4);
-}
-
 /* Responsive */
 @media (max-width: 1024px) {
   .calendar-content {
