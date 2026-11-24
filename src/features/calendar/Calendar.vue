@@ -49,7 +49,7 @@
                 :class="['event-badge', `priority-${event.priority || 'normal'}`]"
                 :title="event.title"
               >
-                {{ event.title.substring(0, 12) }}
+                {{ event.title }}
               </div>
               <div v-if="day.events.length > 2" class="event-more">
                 +{{ day.events.length - 2 }}
@@ -671,9 +671,12 @@ onMounted(async () => {
   border-radius: 0.25rem;
   font-size: 0.75rem;
   color: var(--color-accent);
-  white-space: nowrap;
+  /* The whole name, wrapping onto a second line; only a longer one is cut (the full name is in the tooltip). */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
   cursor: pointer;
   transition: all 0.3s ease;
 }
