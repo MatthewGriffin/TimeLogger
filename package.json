@@ -19,22 +19,22 @@
     "test:e2e:report": "playwright show-report"
   },
   "dependencies": {
-    "@tanstack/vue-query": "^5.107.1",
+    "@tanstack/vue-query": "^5.108.2",
     "@tauri-apps/plugin-dialog": "^2.8.4",
     "@tauri-apps/plugin-http": "^2.9.0",
     "@tauri-apps/plugin-process": "^2.4.0",
     "axios": "^1.21.1",
     "lucide-vue-next": "^1.0.0",
     "pinia": "^4.1.0",
-    "vue": "^3.5.45",
+    "vue": "^3.5.46",
     "vue-router": "^5.5.1",
-    "vuetify": "^4.3.3",
+    "vuetify": "^4.3.4",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.1",
-    "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/cli": "^2.12.4",
+    "@tauri-apps/api": "^2.12.5",
+    "@tauri-apps/cli": "^2.12.6",
     "@types/node": "^26.6.6",
     "@vitejs/plugin-vue": "^6.0.11",
     "@vue/tsconfig": "^0.9.1",
