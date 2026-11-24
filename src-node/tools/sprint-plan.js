@@ -12,7 +12,7 @@
  */
 import { db } from '../index.js';
 import { localDateKey } from '../utils/dates.js';
-import { sprintTimeline, workdayHours, supportSpent, clearSupportCache } from './sprint-progress.js';
+import { sprintTimeline, workdayHours, supportSpent, clearSupportCache, expectedPoints } from './sprint-progress.js';
 import { makeHttpRequest } from '../api/http-client.js';
 import { getPullRequestsForTickets } from './github-prs.js';
 import {
@@ -481,8 +481,6 @@ export const tools = [
         const workday = workdayHours();
         const timeline = sprintTimeline(state.startedAt, state.endsOn, new Date(), workday);
         const summary = current.summary;
-        // Expected by now: the share of the sprint's working days gone, of what was planned.
-        const expected = Math.round(summary.planned * timeline.fraction * 10) / 10;
         let support = { points: state.supportPoints };
         if (state.supportPoints != null) {
           const today = localDateKey();
@@ -491,6 +489,14 @@ export const tools = [
           const budgetMins = Math.round(state.supportPoints * workday.minutes);
           support = { points: state.supportPoints, ...spent, budgetMins, remainingMins: budgetMins - spent.spentMins };
         }
+        // Expected by now: what was planned, less the time support has taken or still has to take.
+        const expected = Math.round(expectedPoints({
+          planned: summary.planned,
+          timeline,
+          supportPoints: state.supportPoints,
+          supportSpentMins: support.spentMins || 0,
+          workdayMinutes: workday.minutes
+        }) * 10) / 10;
         return {
           success: true,
           active: true,

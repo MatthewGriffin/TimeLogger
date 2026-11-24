@@ -31,7 +31,7 @@ import { localDateKey } from '../utils/dates.js';
 import { summarisePlan } from '../tools/sprint-plan.js';
 import { parseFilterId, statusGroup } from '../tools/support-tickets.js';
 import { ticketSupportKind, resolveActivityType } from '../tools/jira-tempo-activity.js';
-import { sprintTimeline, localSupportMinutes } from '../tools/sprint-progress.js';
+import { sprintTimeline, localSupportMinutes, expectedPoints } from '../tools/sprint-progress.js';
 import { makeHttpRequest, httpClient } from '../api/http-client.js';
 import { buildPiTicketMigration } from '../tools/sprint.js';
 import { branchVersionProblem, compareVersions, isBetaVersion, isValidVersion } from '../../scripts/version-rules.mjs';
@@ -3594,6 +3594,19 @@ async function runTests() {
     } finally {
       if (savedGitHub) db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('github_config', ?)").run(savedGitHub.value);
     }
+  });
+
+  test('expected points allow for the time support takes', () => {
+    const timeline = { workingDays: 10, elapsedDays: 5, fraction: 0.5 };
+    const day = 450;
+    const expected = options => Math.round(expectedPoints({ planned: 8, timeline, workdayMinutes: day, ...options }) * 100) / 100;
+    assert.strictEqual(expected({}), 4, 'With no support points it follows the days gone');
+    assert.strictEqual(expected({ supportPoints: 2, supportSpentMins: 0 }), 5, 'With no support yet, every day gone was development, out of the eight left for it');
+    assert.strictEqual(expected({ supportPoints: 2, supportSpentMins: day }), 4, 'A day of support gone is a day less of development');
+    assert.strictEqual(expected({ supportPoints: 2, supportSpentMins: 3 * day }), 2.29, 'Support over the points kept takes more of the days, and the rest is spread over fewer');
+    assert.strictEqual(expected({ supportPoints: 10, supportSpentMins: 0 }), 8, 'No days left for development means all of it is due');
+    assert.strictEqual(expected({ supportPoints: 2, supportSpentMins: 9 * day }) >= 0, true, 'Never below nothing');
+    assert.strictEqual(expectedPoints({ planned: 0, timeline, supportPoints: 2 }), 0);
   });
 
   test('the sprint timeline counts working days, ends two weeks after the start unless told otherwise, and moves through the day', () => {

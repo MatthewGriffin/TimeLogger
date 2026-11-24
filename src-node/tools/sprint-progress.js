@@ -38,6 +38,26 @@ export function workdayHours(config = readAppConfig()) {
   return { startMinute: start, endMinute: end, minutes: minutes > 0 ? minutes : 7.5 * 60 };
 }
 
+/**
+ * The story points that should be done by now.
+ *
+ * Time given to support can't also go into the planned points, so the sprint's
+ * working days are split: support takes the days kept for it (one point is one
+ * day), or the days it has actually taken if that is more, and the planned
+ * points are spread over the rest. Of that, the time gone so far counts only
+ * what was not spent on support. With no support points set, the planned points
+ * simply follow the working days that have gone.
+ */
+export function expectedPoints({ planned, timeline, supportPoints = null, supportSpentMins = 0, workdayMinutes = 450 }) {
+  if (!timeline || !(planned > 0)) return 0;
+  if (supportPoints === null || supportPoints === undefined) return planned * timeline.fraction;
+  const spentDays = Math.max(0, supportSpentMins) / Math.max(1, workdayMinutes);
+  const devDays = Math.max(0, timeline.workingDays - Math.max(supportPoints, spentDays));
+  if (devDays <= 0) return planned;
+  const devDaysGone = Math.min(devDays, Math.max(0, timeline.elapsedDays - spentDays));
+  return planned * (devDaysGone / devDays);
+}
+
 function addDays(key, days) {
   const date = parseDateKey(key);
   date.setDate(date.getDate() + days);
