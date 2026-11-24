@@ -97,7 +97,7 @@ test.describe('Settings tabs', () => {
     { tab: 'Ollama', heading: 'Ollama AI Settings' },
     { tab: 'App Settings', heading: 'Application Settings' },
     { tab: 'Database & Data', heading: 'Database & Data Management' },
-    { tab: 'About', heading: 'About TimeLogger' },
+    { tab: 'About', heading: 'About Workbench' },
   ];
 
   for (const { tab, heading } of TABS) {

@@ -208,7 +208,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit 1 }
           # The changelog goes first, above GitHub's generated list of pull requests.
           gh release create "${{ steps.version.outputs.tag }}" $installer "$installer.sig" latest.json `
-            --title "TimeLogger ${{ steps.version.outputs.tag }}" `
+            --title "Workbench ${{ steps.version.outputs.tag }}" `
             --notes-file release-notes.md `
             --generate-notes `
             @channelArgs

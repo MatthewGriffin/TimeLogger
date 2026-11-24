@@ -23,7 +23,7 @@ const startupReady = ref(false)
 const startupFailure = ref('')
 const startupPromise = appStore.initializeApp()
 void startupPromise.catch(error => {
-  startupFailure.value = error instanceof Error ? error.message : 'Failed to start the TimeLogger backend.'
+  startupFailure.value = error instanceof Error ? error.message : 'Failed to start the Workbench backend.'
   uiStore.reportError(error, 'Failed to initialize application')
 }).finally(() => {
   startupReady.value = true
@@ -214,10 +214,10 @@ declare global {
       <main class="app-content">
         <div v-if="!startupReady" class="startup-state" role="status" aria-live="polite">
           <span class="startup-spinner" aria-hidden="true"></span>
-          Starting TimeLogger…
+          Starting Workbench…
         </div>
         <div v-else-if="startupFailure" class="startup-state startup-failed" role="alert">
-          <h1>TimeLogger couldn't start</h1>
+          <h1>Workbench couldn't start</h1>
           <p>{{ startupFailure }}</p>
           <p>Check the backend log, then restart the app.</p>
         </div>

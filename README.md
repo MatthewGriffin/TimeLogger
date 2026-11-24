@@ -1,6 +1,6 @@
-# TimeLogger
+# Workbench
 
-A Windows desktop app for tracking daily work and submitting it to Jira Tempo.
+A Windows desktop app for your working day: tracking time and submitting it to Jira Tempo, the daily scrum, sprint planning, pull requests and support tickets. It was called TimeLogger, and the repository, installer and data folder still use that name.
 
 ## Features
 

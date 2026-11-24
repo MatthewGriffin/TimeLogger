@@ -6,7 +6,7 @@
         <!-- Branding, not a page heading: the view supplies the page's <h1>,
              and a second one here made every page report two top-level
              headings to assistive tech. -->
-        <span v-if="sidebarOpen" class="nav-title">TimeLogger</span>
+        <span v-if="sidebarOpen" class="nav-title">Workbench</span>
       </div>
       <button
         class="nav-toggle"
@@ -40,8 +40,8 @@
         v-if="offer"
         type="button"
         class="nav-link nav-update"
-        :title="`TimeLogger ${offer.version} is available`"
-        :aria-label="`${offerLabel}: TimeLogger ${offer.version}`"
+        :title="`Workbench ${offer.version} is available`"
+        :aria-label="`${offerLabel}: Workbench ${offer.version}`"
         @click="openDialog"
       >
         <CircleArrowUp class="nav-icon-svg" aria-hidden="true" />

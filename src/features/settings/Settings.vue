@@ -382,7 +382,7 @@ const sendTestNotification = async () => {
   isSendingTestNotification.value = true
   try {
     await invoke('show_notification', {
-      title: '🔔 TimeLogger',
+      title: '🔔 Workbench',
       message: 'Test notification - Windows notifications are working.'
     })
     uiStore.showSuccess('Test notification sent')
@@ -558,7 +558,7 @@ const checkForUpdates = async () => {
   const found = await updater.checkForUpdate()
   // Only the "nothing to do" case needs a toast. Asking here opens the update
   // dialog for anything else.
-  if (!found && updater.stage.value === 'idle') uiStore.showSuccess('TimeLogger is up to date.')
+  if (!found && updater.stage.value === 'idle') uiStore.showSuccess('Workbench is up to date.')
 }
 
 /**

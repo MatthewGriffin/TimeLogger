@@ -32,7 +32,7 @@ function buildNotesBodyHtml(notes) {
 
   return [
     '<div>',
-    `<p>Backed up from TimeLogger on ${escapeHtml(new Date().toLocaleString())}. ${notes.length} note(s).</p>`,
+    `<p>Backed up from Workbench on ${escapeHtml(new Date().toLocaleString())}. ${notes.length} note(s).</p>`,
     '<table border="1">',
     '<tr><th>Date</th><th>Title</th><th>Note</th></tr>',
     rows,

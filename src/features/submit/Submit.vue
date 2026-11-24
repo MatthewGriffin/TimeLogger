@@ -1740,7 +1740,8 @@ const reconcileDuration = async (row: ReconciledRow) => {
   grid-template-columns: minmax(0, 1fr);
   gap: 2rem;
   padding: var(--page-block) var(--page-gutter);
-  max-width: var(--page-max-wide);
+  /* One column of forms and tables, which read badly stretched across a wide window. */
+  max-width: 1600px;
   margin: 0 auto;
   width: 100%;
 }

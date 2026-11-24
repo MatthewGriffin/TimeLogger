@@ -162,7 +162,7 @@
           <div class="panel-heading">
             <div>
               <h2 class="section-title">Recent submissions</h2>
-              <p class="panel-subtitle">The last uploads recorded by TimeLogger</p>
+              <p class="panel-subtitle">The last uploads recorded by Workbench</p>
             </div>
             <router-link to="/submit" class="panel-link">View submit page →</router-link>
           </div>

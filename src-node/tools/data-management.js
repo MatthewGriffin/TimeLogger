@@ -181,14 +181,14 @@ export const tools = [
         try {
           payload = JSON.parse(args.content);
         } catch {
-          return { success: false, message: 'That file is not valid JSON. Choose a backup exported by TimeLogger.' };
+          return { success: false, message: 'That file is not valid JSON. Choose a backup exported by Workbench.' };
         }
 
         if (payload?.format !== EXPORT_FORMAT) {
-          return { success: false, message: 'That file is not a TimeLogger backup.' };
+          return { success: false, message: 'That file is not a Workbench backup.' };
         }
         if (Number(payload.version) > EXPORT_VERSION) {
-          return { success: false, message: 'That backup was made by a newer version of TimeLogger. Update the app and try again.' };
+          return { success: false, message: 'That backup was made by a newer version of Workbench. Update the app and try again.' };
         }
 
         const imported = {};

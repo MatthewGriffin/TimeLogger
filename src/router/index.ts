@@ -94,7 +94,7 @@ const router = createRouter({
 })
 
 router.beforeEach((to, _from, next) => {
-  document.title = `TimeLogger - ${String(to.meta.title) || 'App'}`
+  document.title = `Workbench - ${String(to.meta.title) || 'App'}`
   next()
 })
 
