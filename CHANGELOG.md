@@ -4,6 +4,13 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.5-beta.9
+
+- Jira ticket lookups (the search button on Daily Entries, the ticket search on Notes and the meeting ticket prompt) now share one list. It scrolls when it is long, so the window no longer runs off the screen when you search with nothing typed.
+- Time tickets are now behind a Show time tickets tick box instead of filling the list.
+- Tickets that are past development no longer show in these lookups: Ready for Agile QA, All Dev Done, ready for integration testing, QA Onsite testing, Agile Test Only, Done and the like. Ready for QA Demo is the latest that still shows, and Resolved still shows because that work needs logging. A ticket you search for by its key always shows.
+- On Daily Entries, tickets that already have an entry today are left out of the lookup, with a note saying how many.
+
 ## 0.9.5-beta.8
 
 - Sprint Planning: the Open PR button now also shows on tickets that are in progress, not only in the pull request column, because some ticket types can't be moved to Ready for PR but still have a pull request.

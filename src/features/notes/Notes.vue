@@ -245,18 +245,7 @@
               <option v-for="ticket in ticketOptions" :key="ticket.key" :value="ticket.key" :label="ticket.description" />
             </datalist>
             <TicketHint :ticket-id="notesStore.editingNote!.ticketId" />
-            <div v-if="jiraStore.matches.length > 0" class="ticket-suggestions">
-              <button
-                v-for="match in jiraStore.matches"
-                :key="match.key"
-                type="button"
-                class="ticket-match"
-                @click="applyJiraMatch(match)"
-              >
-                <span class="ticket-match-key">{{ match.key }}</span>
-                <span class="ticket-match-summary">{{ match.summary }}</span>
-              </button>
-            </div>
+            <TicketPicker v-if="jiraStore.matches.length > 0" :matches="jiraStore.matches" @select="applyJiraMatch" />
           </div>
 
           <div class="form-group checkbox blocker-toggle">
@@ -299,6 +288,7 @@ import type { JiraMatch } from '@/shared/stores/jira'
 import { useEntriesStore } from '@/shared/stores/entries'
 import { useTicketOptions } from '@/shared/composables/useTicketOptions'
 import TicketHint from '@/shared/components/TicketHint.vue'
+import TicketPicker from '@/shared/components/TicketPicker.vue'
 import TicketLabel from '@/shared/components/TicketLabel.vue'
 
 const notesStore = useNotesStore()
@@ -1278,52 +1268,6 @@ onUnmounted(() => {
 .btn-ai:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-
-.ticket-suggestions {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  max-height: 160px;
-  overflow-y: auto;
-}
-
-.ticket-match {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border: 0;
-  border-radius: 0.375rem;
-  background: var(--color-control);
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.2s ease;
-}
-
-.ticket-match:hover {
-  background: var(--color-control-hover);
-}
-
-.ticket-match:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-.ticket-match-key {
-  font-weight: 600;
-  color: var(--color-accent);
-}
-
-.ticket-match-summary {
-  color: var(--color-text-muted);
-  font-size: 0.85rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .btn-primary:hover {
