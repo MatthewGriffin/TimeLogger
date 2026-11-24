@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.5-beta.6
+
+- Notes: the notes now flow into several columns on a wide window instead of each stretching across the whole width.
+
 ## 0.9.5-beta.5
 
 - Sprint Planning: the points and settings box, the progress box and the ticket search now sit side by side on a wide window instead of each stretching across the whole width.
