@@ -927,10 +927,11 @@ onUnmounted(() => {
   color: var(--color-text-subtle);
 }
 
-/* Notes List */
+/* Notes List: as many columns as fit, so a note doesn't stretch across a wide window. */
 .notes-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 32rem), 1fr));
+  align-items: start;
   gap: 1rem;
 }
 
