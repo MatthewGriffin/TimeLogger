@@ -126,6 +126,15 @@
             <div class="note-footer">
               <span class="note-time">{{ formatDate(note.updatedAt) }}</span>
               <div class="note-actions">
+                <button
+                  v-if="!note.ticketId"
+                  type="button"
+                  class="btn-icon"
+                  :disabled="notesStore.isCategorizing(note.id)"
+                  :aria-label="`Ask AI to re-categorize note: ${noteHeading(note)}`"
+                  title="Ask AI to re-categorize this note"
+                  @click.stop="recategorize(note)"
+                >🏷️</button>
                 <button type="button" class="btn-icon" @click.stop="editNote(note)" :aria-label="`Edit note: ${noteHeading(note)}`" title="Edit">✏️</button>
                 <button
                   class="btn-icon delete"
@@ -595,6 +604,35 @@ const categorizeInBackground = async (note: Note) => {
     pendingCategoryChoices.value = { ...pendingCategoryChoices.value, [note.id]: suggestion.topic }
   } catch {
     // Categorisation is best-effort: the note keeps its current category.
+  } finally {
+    notesStore.setCategorizing(note.id, false)
+  }
+}
+
+/**
+ * Ask the AI to look at a note again without changing its text, for when the
+ * category it was given is wrong. A different answer is offered for approval like
+ * any other suggestion; the same answer is reported, so it doesn't look like
+ * nothing happened.
+ */
+const recategorize = async (note: Note) => {
+  if (note.ticketId || notesStore.isCategorizing(note.id)) return
+  notesStore.setCategorizing(note.id, true)
+  try {
+    const suggestion = await notesStore.suggestTopic(note.content, note.ticketId, note.title)
+    const current = notesStore.notes.find(existing => existing.id === note.id)
+    if (!current) return
+    if (suggestion.unavailable) {
+      uiStore.showError("The local AI isn't available right now, so the category couldn't be re-checked.")
+      return
+    }
+    if (suggestion.topic.toLowerCase() === current.topic.toLowerCase()) {
+      notesStore.clearPendingTopicSuggestion(note.id)
+      uiStore.showInfo(`The AI would still file this note under "${current.topic}".`)
+      return
+    }
+    notesStore.setPendingTopicSuggestion(note.id, suggestion)
+    pendingCategoryChoices.value = { ...pendingCategoryChoices.value, [note.id]: suggestion.topic }
   } finally {
     notesStore.setCategorizing(note.id, false)
   }

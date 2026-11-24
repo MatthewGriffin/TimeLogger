@@ -133,14 +133,14 @@ export const useNotesStore = defineStore('notes', () => {
     if (ticket) return { topic: ticket, isNew: false }
     isSuggestingTopic.value = true
     try {
-      const result = await executeApi<{ success?: boolean; topic?: string; isNew?: boolean; knownTopics?: string[] }>(
+      const result = await executeApi<{ success?: boolean; topic?: string; isNew?: boolean; knownTopics?: string[]; message?: string }>(
         'suggest_note_topic',
         { note, title: title || undefined }
       )
       const topic = result?.topic || 'General'
-      return { topic, isNew: Boolean(result?.isNew) }
+      return { topic, isNew: Boolean(result?.isNew), unavailable: result?.success === false || /not available/i.test(result?.message || '') }
     } catch {
-      return { topic: 'General', isNew: false }
+      return { topic: 'General', isNew: false, unavailable: true }
     } finally {
       isSuggestingTopic.value = false
     }
