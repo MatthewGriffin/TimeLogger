@@ -2696,7 +2696,7 @@ async function runTests() {
     db.prepare('DELETE FROM daily_summary WHERE date = ?').run(TEST_DATE);
   });
 
-  await testAsync('import rejects anything that is not a TimeLogger backup', async () => {
+  await testAsync('import rejects anything that is not a Workbench backup', async () => {
     assert.strictEqual((await executeTool('import_data', { content: 'not json' })).success, false);
     assert.strictEqual((await executeTool('import_data', { content: '{"format":"other"}' })).success, false);
     assert.strictEqual((await executeTool('import_data', { content: '' })).success, false);

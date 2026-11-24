@@ -4,6 +4,11 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.5-beta.4
+
+- TimeLogger is now called Workbench in the app: the window title, sidebar, About page, update messages and notifications. The installer, Start menu entry, data folder and update feed keep the old name for now, so updating and your saved data are not affected.
+- Submit Time no longer stretches across a wide window; it keeps a readable width in the middle again. The other pages still fill the window.
+
 ## 0.9.5-beta.3
 
 - Sprint Planning: a ticket in the pull request column (such as Ready for PR) now has an Open PR button when GitHub is connected and a pull request names the ticket in its title, description or branch. It opens an open pull request if there is one, otherwise the most recent. A ticket with no match shows no button.

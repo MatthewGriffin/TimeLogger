@@ -23,7 +23,7 @@ const waitForBackend = async () => {
     }
     await new Promise(resolve => setTimeout(resolve, 250))
   }
-  throw new Error('The TimeLogger backend did not start. Check that Node.js is installed and see backend_output.log.')
+  throw new Error('The Workbench backend did not start. Check that Node.js is installed and see backend_output.log.')
 }
 
   const initializeApp = async () => {

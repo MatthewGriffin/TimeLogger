@@ -32,11 +32,11 @@
             go away until stable catches up.
           </p>
           <p v-else-if="info.kind === 'rollback'" class="update-text">
-            TimeLogger <strong>{{ info.version }}</strong> will replace {{ info.currentVersion }}.
+            Workbench <strong>{{ info.version }}</strong> will replace {{ info.currentVersion }}.
             Features added since then go away until you update again.
           </p>
           <p v-else class="update-text">
-            TimeLogger <strong>{{ info.version }}</strong> is ready to install.
+            Workbench <strong>{{ info.version }}</strong> is ready to install.
             You are currently on {{ info.currentVersion }}.
           </p>
           <div v-if="info.changes.length" class="update-changes">
@@ -67,13 +67,13 @@
           </div>
           <p class="update-text">
             <template v-if="stage === 'downloading'">{{ progressPercent }}% — {{ downloadedLabel }}</template>
-            <template v-else>Almost done. TimeLogger will restart when this finishes.</template>
+            <template v-else>Almost done. Workbench will restart when this finishes.</template>
           </p>
         </template>
 
         <template v-else-if="stage === 'ready'">
           <p class="update-text">
-            TimeLogger {{ info?.version }} has been installed. Restart to start using it.
+            Workbench {{ info?.version }} has been installed. Restart to start using it.
           </p>
         </template>
 

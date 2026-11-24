@@ -1,6 +1,6 @@
 <template>
   <div class="settings-section">
-    <h2>About TimeLogger</h2>
+    <h2>About Workbench</h2>
     <div class="settings-form">
       <div class="about-card">
         <div class="about-item">
@@ -63,7 +63,7 @@
       <div class="info-box">
         <span class="info-icon">ℹ️</span>
         <div>
-          <p><strong>TimeLogger</strong> - A simple and elegant time tracking application</p>
+          <p><strong>Workbench</strong> - Your working day in one place: time logging, daily scrum, sprint planning, pull requests and support tickets</p>
           <p>Built with Vue 3, Tauri, Vite, and TypeScript for maximum performance and reliability.</p>
           <p><strong>Features:</strong> Jira integration, Tempo tracking, Microsoft Graph, Ollama AI, OneNote sync, and more.</p>
         </div>
@@ -75,7 +75,7 @@
           <p>This project is open source and available on GitHub.</p>
         </div>
       </div>
-      <div class="form-hint">💡 Thank you for using TimeLogger! We're continuously improving the app based on your feedback.</div>
+      <div class="form-hint">💡 Thank you for using Workbench! We're continuously improving the app based on your feedback.</div>
     </div>
   </div>
 </template>
