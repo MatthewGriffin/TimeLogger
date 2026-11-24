@@ -4,6 +4,11 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.5-beta.13
+
+- Notes: creating and deleting a category now use proper dialogs in the app instead of the browser's pop-up boxes. Deleting a category with notes in it asks, in one dialog, whether to move the notes to another category or delete them too.
+- Daily Entries: the question about moving a conflicting entry when you edit one is a dialog too.
+
 ## 0.9.5-beta.12
 
 - Notes: each note now has a 🏷️ button that asks the AI to look at its category again without changing the text. A different suggestion appears for you to accept or edit like any other. If the AI would keep the category, it says so, and if the local AI isn't available it says that instead. Notes linked to a ticket don't have the button, since their category is the ticket.
