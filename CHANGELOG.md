@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.5-beta.14
+
+- Calendar: event names in the month view are no longer cut off after twelve characters. The whole name shows, wrapping onto a second line, and only a longer one is shortened (hover for the full name).
+
 ## 0.9.5-beta.13
 
 - Notes: creating and deleting a category now use proper dialogs in the app instead of the browser's pop-up boxes. Deleting a category with notes in it asks, in one dialog, whether to move the notes to another category or delete them too.
