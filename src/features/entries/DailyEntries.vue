@@ -244,34 +244,13 @@
             <div class="suggestion-preview">{{ jiraStore.lastQuery }}</div>
           </div>
 
-          <div class="suggestion-item">
-            <label class="suggestion-label">{{ jiraStore.lastQuery ? 'Your Matching Tickets:' : 'Your In-Progress Tickets:' }}</label>
-            <button
-              v-for="match in jiraStore.matches"
-              :key="match.key"
-              type="button"
-              class="ticket-match"
-              @click="acceptTicket(match)"
-            >
-              <span class="ticket-match-key">{{ match.key }}</span>
-              <span class="ticket-match-summary">{{ match.summary }}</span>
-              <span v-if="match.status" class="ticket-match-status">{{ match.status }}</span>
-            </button>
-          </div>
-
-          <div v-if="!jiraStore.lastQuery && timeTicketMatches.length" class="suggestion-item">
-            <label class="suggestion-label">Time Tickets:</label>
-            <button
-              v-for="match in timeTicketMatches"
-              :key="match.key"
-              type="button"
-              class="ticket-match"
-              @click="acceptTicket(match)"
-            >
-              <span class="ticket-match-key">{{ match.key }}</span>
-              <span class="ticket-match-summary">{{ match.summary }}</span>
-            </button>
-          </div>
+          <TicketPicker
+            :matches="jiraStore.matches"
+            :time-tickets="jiraStore.lastQuery ? [] : timeTicketMatches"
+            :exclude="loggedTodayKeys"
+            :label="jiraStore.lastQuery ? 'Your Matching Tickets:' : 'Your In-Progress Tickets:'"
+            @select="acceptTicket"
+          />
 
           <div class="lookup-note">
             <span>ℹ️</span>
@@ -308,6 +287,7 @@ import LunchConflictPrompt from '@/features/entries/components/LunchConflictProm
 import { useTicketOptions } from '@/shared/composables/useTicketOptions'
 import { timeTicketDetail, useTimeTickets } from '@/shared/composables/useTimeTickets'
 import TicketHint from '@/shared/components/TicketHint.vue'
+import TicketPicker from '@/shared/components/TicketPicker.vue'
 import TicketLabel from '@/shared/components/TicketLabel.vue'
 import { localDate } from '@/shared/utils/dates'
 
@@ -348,6 +328,10 @@ const timeTicketMatches = computed<JiraMatch[]>(() => {
     .filter(ticket => !listed.has(ticket.key.toLowerCase()))
     .map(ticket => ({ key: ticket.key, summary: timeTicketDetail(ticket), status: '', confidence: 1 }))
 })
+
+// Tickets that already have an entry today are left out of the lookup.
+const loggedTodayKeys = computed(() =>
+  entriesStore.getTodayEntries().map(entry => entry.ticketId ?? '').filter(Boolean))
 
 const entriesByDate = computed(() => {
   return entriesStore.getEntriesByDate(selectedDate.value)
@@ -1196,46 +1180,6 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   font-size: 1rem;
   font-weight: 600;
   word-break: break-word;
-}
-
-.ticket-match {
-  display: flex;
-  align-items: baseline;
-  gap: 0.75rem;
-  width: 100%;
-  padding: 0.75rem 1rem;
-  margin-bottom: 0.5rem;
-  background: var(--color-control);
-  border: 1px solid var(--color-border-strong);
-  border-radius: 0.5rem;
-  color: var(--color-text-muted);
-  font-size: 0.95rem;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.ticket-match:hover,
-.ticket-match:focus-visible {
-  background: rgba(6, 182, 212, 0.12);
-  border-color: rgba(6, 182, 212, 0.45);
-}
-
-.ticket-match-key {
-  flex-shrink: 0;
-  color: var(--color-accent);
-  font-weight: 600;
-}
-
-.ticket-match-summary {
-  flex: 1;
-  word-break: break-word;
-}
-
-.ticket-match-status {
-  flex-shrink: 0;
-  color: var(--color-text-subtle);
-  font-size: 0.8rem;
 }
 
 .lookup-note {

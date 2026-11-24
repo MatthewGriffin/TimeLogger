@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { executeApi, ApiError, asList } from '@/shared/utils/api'
 import type { JiraMatch } from '@/shared/models/jira'
+import { isLoggableStatus, isTicketKey } from '@/shared/utils/ticketStatus'
 
 export type { JiraMatch } from '@/shared/models/jira'
 
@@ -34,7 +35,9 @@ export const useJiraStore = defineStore('jira', () => {
     lastQuery.value = trimmed
     try {
       const response = await executeApi<FindTicketResponse>('jira_find_ticket', { query: trimmed, limit })
-      matches.value = asList<JiraMatch>(response, 'matches')
+      const found = asList<JiraMatch>(response, 'matches')
+      // A ticket typed in by its key is always shown; the rest skip those past development.
+      matches.value = isTicketKey(trimmed) ? found : found.filter(match => isLoggableStatus(match.status))
       if (matches.value.length === 0) {
         error.value = response.message || `No Jira tickets found for "${trimmed}"`
       }
@@ -61,6 +64,7 @@ export const useJiraStore = defineStore('jira', () => {
       })
       matches.value = asList<{ key: string; summary?: string; status?: string }>(response, 'issues')
         .map(issue => ({ key: issue.key, summary: issue.summary || '', status: issue.status || '', confidence: 1 }))
+        .filter(match => isLoggableStatus(match.status))
       return matches.value
     } catch (err) {
       matches.value = []

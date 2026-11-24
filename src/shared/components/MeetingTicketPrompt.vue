@@ -90,6 +90,7 @@ import { executeApi, asList } from '@/shared/utils/api'
 import { asRecord, asString, asNumber } from '@/shared/utils/schema'
 import { useUiStore } from '@/shared/stores/ui'
 import { useTimeTickets } from '@/shared/composables/useTimeTickets'
+import { isLoggableStatus, isTicketKey } from '@/shared/utils/ticketStatus'
 
 import type { UnmappedMeeting } from '@/features/entries/models/entries'
 interface PromptItem {
@@ -98,7 +99,7 @@ interface PromptItem {
   reason: string
   choice: string
   searchText: string
-  searchResults: { key: string; summary: string }[]
+  searchResults: { key: string; summary: string; status?: string }[]
   searchMessage: string
   searching: boolean
   saving: boolean
@@ -158,8 +159,8 @@ const searchJira = async (item: PromptItem): Promise<void> => {
     const result = asRecord(await executeApi('jira_find_ticket', { query: item.searchText, limit: 8 }))
     const matches = asList(result.matches).map(raw => {
       const row = asRecord(raw)
-      return { key: asString(row.key, ''), summary: asString(row.summary, '') }
-    }).filter(r => r.key)
+      return { key: asString(row.key, ''), summary: asString(row.summary, ''), status: asString(row.status, '') }
+    }).filter(r => r.key && (isTicketKey(item.searchText) || isLoggableStatus(r.status)))
     item.searchResults = matches
     if (matches.length > 0) {
       item.choice = matches[0].key
