@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.5-beta.12
+
+- Notes: each note now has a 🏷️ button that asks the AI to look at its category again without changing the text. A different suggestion appears for you to accept or edit like any other. If the AI would keep the category, it says so, and if the local AI isn't available it says that instead. Notes linked to a ticket don't have the button, since their category is the ticket.
+
 ## 0.9.5-beta.11
 
 - Dashboard: the panels now flow into as many columns as fit instead of always two, and the page stops widening at about 2200 pixels, so it no longer stretches on an ultrawide monitor.
