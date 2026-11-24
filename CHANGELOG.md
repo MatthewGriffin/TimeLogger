@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.5-beta.10
+
+- Daily Entries: a long task name now wraps onto two lines instead of stretching the whole table. If a name needs more than two lines, the task column widens just enough to bring it back to two, and the table scrolls sideways if that is wider than the window.
+
 ## 0.9.5-beta.9
 
 - Jira ticket lookups (the search button on Daily Entries, the ticket search on Notes and the meeting ticket prompt) now share one list. It scrolls when it is long, so the window no longer runs off the screen when you search with nothing typed.

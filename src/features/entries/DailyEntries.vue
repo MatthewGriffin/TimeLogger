@@ -41,7 +41,7 @@
           <button type="button" class="btn-nav" @click="setLunchBreak" :disabled="entriesStore.isLoading || !lunchStartTime || !lunchEndTime">Set lunch break</button>
         </div>
 
-        <div v-if="entriesByDate.length > 0" class="entries-table">
+        <div v-if="entriesByDate.length > 0" ref="entriesTableEl" class="entries-table" :style="taskColumnStyle">
           <div class="table-header">
             <div class="col-task">Task</div>
             <div class="col-ticket">Ticket</div>
@@ -271,7 +271,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { useEntriesStore } from '@/shared/stores/entries'
 import type { TimeEntry } from '@/shared/stores/entries'
@@ -336,6 +336,52 @@ const loggedTodayKeys = computed(() =>
 const entriesByDate = computed(() => {
   return entriesStore.getEntriesByDate(selectedDate.value)
 })
+
+// A task name wraps onto two lines before the table is allowed to widen. When a
+// name needs more than two lines at the usual width, the task column grows just
+// enough to bring it back to two, rather than the table stretching without limit.
+const entriesTableEl = ref<HTMLElement | null>(null)
+const taskColumnWidth = ref(0)
+const taskColumnStyle = computed(() => (taskColumnWidth.value ? { '--task-col-min': `${taskColumnWidth.value}px` } : {}))
+
+const updateTaskColumnWidth = async () => {
+  await nextTick()
+  const sample = entriesTableEl.value?.querySelector<HTMLElement>('.table-body .col-task')
+  if (!sample) { taskColumnWidth.value = 0; return }
+  const style = getComputedStyle(sample)
+  const probe = document.createElement('div')
+  probe.style.cssText = `position:absolute;visibility:hidden;left:-9999px;top:0;font:${style.font};letter-spacing:${style.letterSpacing};overflow-wrap:normal;word-break:normal;`
+  document.body.appendChild(probe)
+  try {
+    probe.textContent = 'X'
+    probe.style.whiteSpace = 'normal'
+    probe.style.width = '10000px'
+    const lineHeight = probe.offsetHeight
+    let needed = 0
+    for (const entry of entriesByDate.value) {
+      const text = entry.isLunch ? 'Lunch break' : entry.taskName
+      probe.textContent = text
+      probe.style.whiteSpace = 'nowrap'
+      probe.style.width = 'max-content'
+      let high = Math.ceil(probe.getBoundingClientRect().width)
+      probe.style.whiteSpace = 'normal'
+      let low = 1
+      // The narrowest width that still fits the name on two lines.
+      while (low < high) {
+        const middle = Math.floor((low + high) / 2)
+        probe.style.width = `${middle}px`
+        if (probe.offsetHeight <= lineHeight * 2 + 1) high = middle
+        else low = middle + 1
+      }
+      needed = Math.max(needed, high)
+    }
+    taskColumnWidth.value = needed ? needed + 2 : 0
+  } finally {
+    probe.remove()
+  }
+}
+
+watch(entriesByDate, () => { void updateTaskColumnWidth() }, { flush: 'post', deep: true })
 
 const totalHours = computed(() => {
   const minutes = entriesByDate.value.filter(e => !e.isLunch).reduce((sum, e) => sum + (Number(e.duration) || 0), 0)
@@ -650,6 +696,7 @@ const closeTicketLookup = () => {
 }
 
 onMounted(async () => {
+  void document.fonts?.ready.then(() => updateTaskColumnWidth())
   try {
     // A dashboard "Calendar conflicts" link may pass a specific date to jump to.
     const dateQuery = route.query.date
@@ -1202,6 +1249,30 @@ onUnmounted(() => window.removeEventListener('timelogger:focus-request', onFocus
   color: var(--color-text-muted);
   font-size: 0.9rem;
   line-height: 1.4;
+}
+
+/* On a wide window the header and rows share one set of columns, so a wide task
+   column lines up in every row. The task column is at least wide enough for a name
+   to fit on two lines (--task-col-min); beyond that the table scrolls sideways. */
+@media (min-width: 1025px) {
+  .entries-table {
+    display: grid;
+    grid-template-columns: minmax(var(--task-col-min, 8rem), 2fr) repeat(5, minmax(min-content, 1fr));
+    column-gap: 1rem;
+    overflow-x: auto;
+  }
+
+  .table-header,
+  .table-body {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: subgrid;
+  }
+
+  .table-row {
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+  }
 }
 
 /* Responsive */
