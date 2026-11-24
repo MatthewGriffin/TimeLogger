@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.5-beta.11
+
+- Dashboard: the panels now flow into as many columns as fit instead of always two, and the page stops widening at about 2200 pixels, so it no longer stretches on an ultrawide monitor.
+
 ## 0.9.5-beta.10
 
 - Daily Entries: a long task name now wraps onto two lines instead of stretching the whole table. If a name needs more than two lines, the task column widens just enough to bring it back to two, and the table scrolls sideways if that is wider than the window.

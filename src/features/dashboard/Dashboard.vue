@@ -554,7 +554,10 @@ onMounted(async () => {
   box-shadow: 0 8px 16px var(--color-accent-ring);
 }
 
-/* Content */
+/* Content: wide windows get more columns, but not an endless stretch on an ultrawide monitor. */
+.dashboard-content {
+  max-width: 2200px;
+}
 
 /* Stats Grid */
 .stats-grid {
@@ -564,9 +567,11 @@ onMounted(async () => {
   margin-bottom: var(--space-2xl);
 }
 
+/* As many panels across as fit, instead of two that stretch on a very wide window. */
 .dashboard-panels {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 28rem), 1fr));
+  align-items: start;
   gap: var(--space-lg);
   margin-bottom: var(--space-2xl);
 }
