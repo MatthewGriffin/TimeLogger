@@ -32,6 +32,8 @@
         </div>
       </div>
 
+      <!-- Points, progress and ticket search sit side by side when the window is wide enough -->
+      <div class="top-row">
       <!-- Points against what is available -->
       <section class="card points-card" aria-label="Story points">
         <div class="points-figures">
@@ -124,6 +126,7 @@
         </ul>
         <p v-else-if="searched && !searching" class="muted">No open tickets matched.</p>
       </section>
+      </div>
 
       <!-- Planning: the list -->
       <section v-if="!isActive" aria-label="Planned tickets">
@@ -306,6 +309,8 @@ onUnmounted(() => clearInterval(refreshTimer))
 .page-sub { margin: .35rem 0 0; color: var(--color-text-muted); }
 .header-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 .sprint-body { display: flex; flex-direction: column; gap: var(--space-lg); }
+/* As many side by side as fit, so the settings and search don't stretch across a wide window. */
+.top-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr)); gap: var(--space-lg); align-items: start; }
 .btn { padding: .55rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-control); color: var(--color-text); cursor: pointer; }
 .btn:disabled { opacity: .55; cursor: default; }
 .btn-primary { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent, #fff); }
