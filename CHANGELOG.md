@@ -4,6 +4,10 @@ What's new in each version, written for the people using the app. These notes
 appear in the update popup and on the GitHub release, so keep them in plain
 language. A version with nothing to notice can say "No visible changes."
 
+## 0.9.5-beta.8
+
+- Sprint Planning: the Open PR button now also shows on tickets that are in progress, not only in the pull request column, because some ticket types can't be moved to Ready for PR but still have a pull request.
+
 ## 0.9.5-beta.7
 
 - Sprint Planning and the Dashboard: the story points expected by now now allow for support. The sprint's working days are split between support (the points kept for it, or the time it has really taken if that is more) and everything else, and the planned points are spread over what is left. Time already spent on support no longer counts as time that should have gone into the planned points, so a sprint with a lot of support no longer shows as behind just because of it.
